@@ -1,0 +1,1 @@
+- Be AWARE that you are running on Windows 10, PowerShell 7, load and strictly follow the PowerShell guide from `c:\prj\aidev\specs\POWERSHELL_GUIDE.md`
