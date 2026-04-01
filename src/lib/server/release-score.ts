@@ -9,6 +9,19 @@ type ReleaseSelection = {
   payload: Record<string, unknown> | null;
 };
 
+type ReleaseSelectionOptions = {
+  kind: 'movie' | 'series';
+  preferredReleaser?: string | null;
+};
+
+const preferredReleasers = ['flux', 'ntb', 'framestor'];
+const hardRejectPatterns = [/\byts\b/i, /\bpsa\b/i, /\bcam\b/i, /(^|[\s.-])ts($|[\s.-])/i];
+const sourceWeights: Array<{ pattern: RegExp; score: number; label: string }> = [
+  { pattern: /\bweb[\s.-]?dl\b/i, score: 120, label: 'WEB-DL' },
+  { pattern: /\bwebrip\b/i, score: 80, label: 'WEBRip' },
+  { pattern: /\bblu[\s.-]?ray\b/i, score: 40, label: 'BluRay' }
+];
+
 function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
 }
@@ -31,6 +44,13 @@ function normalizeToken(value: string): string {
     .replace(/[^\w\s-]/g, '')
     .trim()
     .toLowerCase();
+}
+
+function splitWords(value: string): string[] {
+  return value
+    .split(/[^a-z0-9]+/i)
+    .map((part) => part.trim().toLowerCase())
+    .filter((part) => part.length > 0);
 }
 
 function parseLanguages(value: unknown): string[] {
@@ -72,7 +92,8 @@ function titleSignals(title: string, preferences: Preferences) {
       preferences.requireSubtitles &&
       /(sub|subs|subbed|multisub|multi sub|multi-sub|vostfr|softsub)/.test(normalized),
     multiLanguageHint: /(multi|dual audio|dual-audio)/.test(normalized),
-    badQualityHint: /(cam|telesync|telecine|workprint|hdts|ts\b|tc\b)/.test(normalized)
+    x265Hint: /\bx265\b|\bhevc\b/i.test(title),
+    sourceMatch: sourceWeights.find((entry) => entry.pattern.test(title)) ?? null
   };
 }
 
@@ -89,9 +110,24 @@ function rejectionReason(release: Record<string, unknown>): string | null {
   return null;
 }
 
+function extractReleaser(title: string): string | null {
+  const trimmed = title.trim();
+  const match = trimmed.match(/-([A-Za-z0-9][A-Za-z0-9._-]{1,})$/);
+  return match ? match[1].toLowerCase() : null;
+}
+
+function includesEnglish(languages: string[], title: string): boolean {
+  if (containsPreferredLanguage(languages, 'English')) {
+    return true;
+  }
+
+  return /\beng\b|\benglish\b/i.test(title);
+}
+
 function buildCandidate(
   release: Record<string, unknown>,
-  preferences: Preferences
+  preferences: Preferences,
+  options: ReleaseSelectionOptions
 ): { candidate: ReleaseDecisionCandidate; payload: Record<string, unknown> } | null {
   const guid = asString(release.guid);
   const indexerId = asNumber(release.indexerId);
@@ -105,6 +141,9 @@ function buildCandidate(
   const languages = parseLanguages(release.languages);
   const signals = titleSignals(title, preferences);
   const preferredLanguageMatch = containsPreferredLanguage(languages, preferences.preferredLanguage);
+  const releaser = extractReleaser(title);
+  const isMultiAudio = signals.multiLanguageHint || /\bmulti\b|\bdual[ .-]?audio\b/i.test(title);
+  const hasEnglish = includesEnglish(languages, title);
 
   let score =
     (asNumber(release.qualityWeight) ?? 0) +
@@ -113,17 +152,54 @@ function buildCandidate(
 
   const reasons: string[] = [];
 
+  if (rejection) {
+    score = -10_000;
+    reasons.push(rejection);
+  }
+
+  if (hardRejectPatterns.some((pattern) => pattern.test(title))) {
+    score = -10_000;
+    reasons.push('blocked releaser or source pattern');
+  }
+
+  if (!hasEnglish || (!preferredLanguageMatch && !isMultiAudio)) {
+    score = -10_000;
+    reasons.push('missing English audio');
+  }
+
   if (preferredLanguageMatch) {
     score += 120;
     reasons.push(`preferred audio ${preferences.preferredLanguage}`);
-  } else if (languages.length > 0) {
-    score -= 80;
-    reasons.push(`language mismatch (${languages.join(', ')})`);
   }
 
   if (signals.multiLanguageHint) {
     score += 18;
     reasons.push('multi-language release');
+  }
+
+  if (signals.sourceMatch) {
+    score += signals.sourceMatch.score;
+    reasons.push(`${signals.sourceMatch.label} source`);
+  }
+
+  if (signals.x265Hint) {
+    score += 45;
+    reasons.push('x265/HEVC');
+  }
+
+  if (options.kind === 'movie' && (asNumber(release.size) ?? 0) > 13 * 1024 * 1024 * 1024) {
+    score -= 240;
+    reasons.push('movie larger than 13 GB');
+  }
+
+  if (releaser && preferredReleasers.includes(releaser)) {
+    score += 160;
+    reasons.push(`preferred releaser ${releaser}`);
+  }
+
+  if (options.preferredReleaser && releaser === options.preferredReleaser.toLowerCase()) {
+    score += 220;
+    reasons.push(`matched proven releaser ${options.preferredReleaser}`);
   }
 
   if (signals.subtitleHint) {
@@ -133,19 +209,9 @@ function buildCandidate(
     reasons.push('no subtitle hint');
   }
 
-  if (signals.badQualityHint) {
-    score -= 200;
-    reasons.push('low-quality source hint');
-  }
-
   const protocol = asString(release.protocol) ?? 'unknown';
   if (protocol.toLowerCase() === 'usenet') {
     score += 4;
-  }
-
-  if (rejection) {
-    score -= 1_000;
-    reasons.push(rejection);
   }
 
   return {
@@ -166,10 +232,11 @@ function buildCandidate(
 
 export function selectBestRelease(
   rawReleases: unknown[],
-  preferences: Preferences
+  preferences: Preferences,
+  options: ReleaseSelectionOptions
 ): ReleaseSelection {
   const evaluated = rawReleases
-    .map((entry) => buildCandidate(asRecord(entry), preferences))
+    .map((entry) => buildCandidate(asRecord(entry), preferences, options))
     .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
 
   const accepted = evaluated.filter((entry) => entry.candidate.score > -900);

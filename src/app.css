@@ -29,7 +29,7 @@ body {
   margin: 0;
   font-family: 'Manrope', sans-serif;
   color: var(--text);
-  background: linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
+  background: var(--bg-top);
 }
 
 button,
@@ -44,4 +44,13 @@ button {
 
 * {
   box-sizing: border-box;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }

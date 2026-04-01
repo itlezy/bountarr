@@ -11,6 +11,11 @@ coverage/
 # package manager caches
 .npm/
 .pnpm-store/
+.cache/
+tmp/
+temp/
+data/
+tmp-plex-*.json
 
 # environment and local overrides
 .env
