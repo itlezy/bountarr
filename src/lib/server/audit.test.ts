@@ -12,12 +12,25 @@ describe('evaluateAudit', () => {
   });
 
   it('returns no-subs when subtitles are required but absent', () => {
-    expect(evaluateAudit(['english'], [], defaultPreferences, true)).toBe('no-subs');
+    expect(
+      evaluateAudit(['english'], [], { ...defaultPreferences, subtitleLanguage: 'English' }, true),
+    ).toBe('no-subs');
   });
 
-  it('returns verified when subtitles are optional', () => {
+  it('returns no-subs when the configured subtitle language is absent', () => {
     expect(
-      evaluateAudit(['english'], [], { ...defaultPreferences, requireSubtitles: false }, true)
+      evaluateAudit(
+        ['english'],
+        ['Spanish'],
+        { ...defaultPreferences, subtitleLanguage: 'German' },
+        true,
+      ),
+    ).toBe('no-subs');
+  });
+
+  it('returns verified when subtitle language is Any', () => {
+    expect(
+      evaluateAudit(['english'], [], { ...defaultPreferences, subtitleLanguage: 'Any' }, true),
     ).toBe('verified');
   });
 

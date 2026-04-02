@@ -84,8 +84,12 @@ try {
     $config = Invoke-RestMethod -Uri "$BaseUrl/api/config/status"
     Assert-True ($config.configured -eq $true) 'Config endpoint reports no Arr service configured.'
 
+    $health = Invoke-RestMethod -Uri "$BaseUrl/api/health"
+    Assert-True ($health.status -eq 'ok') 'Health endpoint did not report an ok runtime state.'
+    Assert-True ($health.runtime.healthy -eq $true) 'Health endpoint reported runtime issues.'
+
     if ($config.plexConfigured) {
-        $plexRecent = Invoke-RestMethod -Uri "$BaseUrl/api/plex/recent"
+      $plexRecent = Invoke-RestMethod -Uri "$BaseUrl/api/plex/recent"
         Assert-True (($plexRecent | Measure-Object).Count -gt 0) 'Plex recent endpoint returned no items.'
 
         $plexBlocked = Invoke-RestMethod -Uri "$BaseUrl/api/search?q=high%20potential&kind=series"
@@ -122,6 +126,7 @@ try {
     [pscustomobject]@{
         RootStatus          = $rootResponse.StatusCode
         Configured          = $config.configured
+        HealthStatus        = $health.status
         PlexConfigured      = $config.plexConfigured
         SearchResults       = ($search | Measure-Object).Count
         DuplicateMessage    = $duplicateResult.message

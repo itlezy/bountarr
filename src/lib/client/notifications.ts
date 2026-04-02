@@ -2,7 +2,9 @@ import type { MediaItem } from '$lib/shared/types';
 
 const seenAlerts = new Set<string>();
 
-export async function ensureNotificationPermission(): Promise<NotificationPermission | 'unsupported'> {
+export async function ensureNotificationPermission(): Promise<
+  NotificationPermission | 'unsupported'
+> {
   if (typeof window === 'undefined' || !('Notification' in window)) {
     return 'unsupported';
   }
@@ -39,7 +41,7 @@ export function notifyAuditFailures(items: MediaItem[]): void {
     const reason =
       item.auditStatus === 'missing-language'
         ? 'missing the preferred audio language'
-        : 'missing required subtitles';
+        : 'missing the selected subtitle language';
 
     pushNotification('Bountarr audit warning', `${item.title} is ${reason}.`);
   }

@@ -1,12 +1,17 @@
-import type {
-  Preferences,
-  ReleaseDecision,
-  ReleaseDecisionCandidate
-} from '$lib/shared/types';
+import { languageMatchesPreferred } from '$lib/shared/languages';
+import type { Preferences, ReleaseDecision, ReleaseDecisionCandidate } from '$lib/shared/types';
 
 type ReleaseSelection = {
   decision: ReleaseDecision;
   payload: Record<string, unknown> | null;
+};
+
+export type EvaluatedRelease = {
+  acceptedByLocalRules: boolean;
+  arrRejected: boolean;
+  candidate: ReleaseDecisionCandidate;
+  payload: Record<string, unknown>;
+  rejectionReasons: string[];
 };
 
 type ReleaseSelectionOptions = {
@@ -14,12 +19,32 @@ type ReleaseSelectionOptions = {
   preferredReleaser?: string | null;
 };
 
+type ReleaseSignals = {
+  subtitleHint: boolean;
+  multiLanguageHint: boolean;
+  x265Hint: boolean;
+  sourceMatch: (typeof sourceWeights)[number] | null;
+};
+
+type CandidateScoreState = {
+  score: number;
+  reasons: string[];
+};
+
+const REJECTED_SCORE = -10_000;
+const ACCEPTED_SCORE_FLOOR = -900;
+
+// These groups consistently win in this library, so give them a stable bonus.
 const preferredReleasers = ['flux', 'ntb', 'framestor'];
+
+// These patterns are treated as hard blocks regardless of the Arr-provided score.
 const hardRejectPatterns = [/\byts\b/i, /\bpsa\b/i, /\bcam\b/i, /(^|[\s.-])ts($|[\s.-])/i];
+
+// Local source preferences sit on top of Arr quality weights to break close ties.
 const sourceWeights: Array<{ pattern: RegExp; score: number; label: string }> = [
   { pattern: /\bweb[\s.-]?dl\b/i, score: 120, label: 'WEB-DL' },
   { pattern: /\bwebrip\b/i, score: 80, label: 'WEBRip' },
-  { pattern: /\bblu[\s.-]?ray\b/i, score: 40, label: 'BluRay' }
+  { pattern: /\bblu[\s.-]?ray\b/i, score: 40, label: 'BluRay' },
 ];
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -46,13 +71,6 @@ function normalizeToken(value: string): string {
     .toLowerCase();
 }
 
-function splitWords(value: string): string[] {
-  return value
-    .split(/[^a-z0-9]+/i)
-    .map((part) => part.trim().toLowerCase())
-    .filter((part) => part.length > 0);
-}
-
 function parseLanguages(value: unknown): string[] {
   const languages = new Set<string>();
 
@@ -72,63 +90,146 @@ function parseLanguages(value: unknown): string[] {
   return [...languages];
 }
 
-function containsPreferredLanguage(languages: string[], preferredLanguage: string): boolean {
-  const preferred = normalizeToken(preferredLanguage);
-  if (preferred.length === 0) {
-    return true;
-  }
-
-  return languages.some((language) => {
-    const normalized = normalizeToken(language);
-    return normalized === preferred || normalized.includes(preferred) || preferred.includes(normalized);
-  });
-}
-
-function titleSignals(title: string, preferences: Preferences) {
+function titleSignals(title: string, preferences: Preferences): ReleaseSignals {
   const normalized = normalizeToken(title);
 
   return {
     subtitleHint:
-      preferences.requireSubtitles &&
+      preferences.subtitleLanguage !== 'Any' &&
       /(sub|subs|subbed|multisub|multi sub|multi-sub|vostfr|softsub)/.test(normalized),
     multiLanguageHint: /(multi|dual audio|dual-audio)/.test(normalized),
     x265Hint: /\bx265\b|\bhevc\b/i.test(title),
-    sourceMatch: sourceWeights.find((entry) => entry.pattern.test(title)) ?? null
+    sourceMatch: sourceWeights.find((entry) => entry.pattern.test(title)) ?? null,
   };
 }
 
-function rejectionReason(release: Record<string, unknown>): string | null {
+function rejectionReasons(release: Record<string, unknown>): string[] {
+  const reasons: string[] = [];
+
   if (release.downloadAllowed !== true) {
-    return 'Arr marked this release as not downloadable';
+    reasons.push('Arr marked this release as not downloadable');
   }
 
   if (release.rejected === true) {
-    const firstRejection = asString(asArray(release.rejections)[0]);
-    return firstRejection ?? 'Arr rejected this release';
+    const mapped = asArray(release.rejections)
+      .map((entry) => asString(entry))
+      .filter((entry): entry is string => entry !== null);
+    reasons.push(...(mapped.length > 0 ? mapped : ['Arr rejected this release']));
   }
 
-  return null;
+  return reasons;
 }
 
 function extractReleaser(title: string): string | null {
   const trimmed = title.trim();
-  const match = trimmed.match(/-([A-Za-z0-9][A-Za-z0-9._-]{1,})$/);
-  return match ? match[1].toLowerCase() : null;
+  const candidate = trimmed.split('-').at(-1)?.trim() ?? '';
+  return /^[A-Za-z0-9][A-Za-z0-9._-]{1,}$/.test(candidate) ? candidate.toLowerCase() : null;
 }
 
 function includesEnglish(languages: string[], title: string): boolean {
-  if (containsPreferredLanguage(languages, 'English')) {
+  if (languageMatchesPreferred(languages, 'English')) {
     return true;
   }
 
   return /\beng\b|\benglish\b/i.test(title);
 }
 
+function createScoreState(release: Record<string, unknown>): CandidateScoreState {
+  return {
+    score:
+      (asNumber(release.qualityWeight) ?? 0) +
+      (asNumber(release.releaseWeight) ?? 0) +
+      (asNumber(release.customFormatScore) ?? 0) * 5,
+    reasons: [],
+  };
+}
+
+function rejectCandidate(state: CandidateScoreState, reason: string): void {
+  state.score = REJECTED_SCORE;
+  state.reasons.push(reason);
+}
+
+function awardCandidate(state: CandidateScoreState, score: number, reason: string): void {
+  state.score += score;
+  state.reasons.push(reason);
+}
+
+function applyAvailabilityRules(
+  state: CandidateScoreState,
+  release: Record<string, unknown>,
+  title: string,
+  hasEnglish: boolean,
+  preferredLanguageMatch: boolean,
+  enforceAudioRules: boolean,
+  isMultiAudio: boolean,
+): void {
+  for (const rejection of rejectionReasons(release)) {
+    rejectCandidate(state, rejection);
+  }
+
+  if (hardRejectPatterns.some((pattern) => pattern.test(title))) {
+    rejectCandidate(state, 'blocked releaser or source pattern');
+  }
+
+  if (enforceAudioRules && (!hasEnglish || (!preferredLanguageMatch && !isMultiAudio))) {
+    rejectCandidate(state, 'missing English audio');
+  }
+}
+
+function applyPreferenceBonuses(
+  state: CandidateScoreState,
+  preferences: Preferences,
+  options: ReleaseSelectionOptions,
+  release: Record<string, unknown>,
+  signals: ReleaseSignals,
+  preferredLanguageMatch: boolean,
+  releaser: string | null,
+): void {
+  if (preferredLanguageMatch) {
+    awardCandidate(state, 120, `preferred audio ${preferences.preferredLanguage}`);
+  }
+
+  if (signals.multiLanguageHint) {
+    awardCandidate(state, 18, 'multi-language release');
+  }
+
+  if (signals.sourceMatch) {
+    awardCandidate(state, signals.sourceMatch.score, `${signals.sourceMatch.label} source`);
+  }
+
+  if (signals.x265Hint) {
+    awardCandidate(state, 45, 'x265/HEVC');
+  }
+
+  if (options.kind === 'movie' && (asNumber(release.size) ?? 0) > 13 * 1024 * 1024 * 1024) {
+    awardCandidate(state, -240, 'movie larger than 13 GB');
+  }
+
+  if (releaser && preferredReleasers.includes(releaser)) {
+    awardCandidate(state, 160, `preferred releaser ${releaser}`);
+  }
+
+  if (options.preferredReleaser && releaser === options.preferredReleaser.toLowerCase()) {
+    awardCandidate(state, 220, `matched proven releaser ${options.preferredReleaser}`);
+  }
+
+  if (signals.subtitleHint) {
+    awardCandidate(state, 16, `${preferences.subtitleLanguage} subtitle hint in title`);
+  } else if (preferences.subtitleLanguage !== 'Any') {
+    state.reasons.push(`no ${preferences.subtitleLanguage} subtitle hint`);
+  }
+
+  const protocol = asString(release.protocol) ?? 'unknown';
+  if (protocol.toLowerCase() === 'usenet') {
+    awardCandidate(state, 4, 'usenet');
+  }
+}
+
 function buildCandidate(
   release: Record<string, unknown>,
   preferences: Preferences,
-  options: ReleaseSelectionOptions
-): { candidate: ReleaseDecisionCandidate; payload: Record<string, unknown> } | null {
+  options: ReleaseSelectionOptions,
+): EvaluatedRelease | null {
   const guid = asString(release.guid);
   const indexerId = asNumber(release.indexerId);
   const title = asString(release.title);
@@ -137,110 +238,58 @@ function buildCandidate(
     return null;
   }
 
-  const rejection = rejectionReason(release);
   const languages = parseLanguages(release.languages);
   const signals = titleSignals(title, preferences);
-  const preferredLanguageMatch = containsPreferredLanguage(languages, preferences.preferredLanguage);
+  const preferredLanguageMatch = languageMatchesPreferred(languages, preferences.preferredLanguage);
+  const enforceAudioRules = preferences.preferredLanguage !== 'Any';
   const releaser = extractReleaser(title);
   const isMultiAudio = signals.multiLanguageHint || /\bmulti\b|\bdual[ .-]?audio\b/i.test(title);
   const hasEnglish = includesEnglish(languages, title);
+  const state = createScoreState(release);
 
-  let score =
-    (asNumber(release.qualityWeight) ?? 0) +
-    (asNumber(release.releaseWeight) ?? 0) +
-    (asNumber(release.customFormatScore) ?? 0) * 5;
+  applyAvailabilityRules(
+    state,
+    release,
+    title,
+    hasEnglish,
+    preferredLanguageMatch,
+    enforceAudioRules,
+    isMultiAudio,
+  );
+  applyPreferenceBonuses(
+    state,
+    preferences,
+    options,
+    release,
+    signals,
+    preferredLanguageMatch,
+    releaser,
+  );
 
-  const reasons: string[] = [];
-
-  if (rejection) {
-    score = -10_000;
-    reasons.push(rejection);
-  }
-
-  if (hardRejectPatterns.some((pattern) => pattern.test(title))) {
-    score = -10_000;
-    reasons.push('blocked releaser or source pattern');
-  }
-
-  if (!hasEnglish || (!preferredLanguageMatch && !isMultiAudio)) {
-    score = -10_000;
-    reasons.push('missing English audio');
-  }
-
-  if (preferredLanguageMatch) {
-    score += 120;
-    reasons.push(`preferred audio ${preferences.preferredLanguage}`);
-  }
-
-  if (signals.multiLanguageHint) {
-    score += 18;
-    reasons.push('multi-language release');
-  }
-
-  if (signals.sourceMatch) {
-    score += signals.sourceMatch.score;
-    reasons.push(`${signals.sourceMatch.label} source`);
-  }
-
-  if (signals.x265Hint) {
-    score += 45;
-    reasons.push('x265/HEVC');
-  }
-
-  if (options.kind === 'movie' && (asNumber(release.size) ?? 0) > 13 * 1024 * 1024 * 1024) {
-    score -= 240;
-    reasons.push('movie larger than 13 GB');
-  }
-
-  if (releaser && preferredReleasers.includes(releaser)) {
-    score += 160;
-    reasons.push(`preferred releaser ${releaser}`);
-  }
-
-  if (options.preferredReleaser && releaser === options.preferredReleaser.toLowerCase()) {
-    score += 220;
-    reasons.push(`matched proven releaser ${options.preferredReleaser}`);
-  }
-
-  if (signals.subtitleHint) {
-    score += 16;
-    reasons.push('subtitle hint in title');
-  } else if (preferences.requireSubtitles) {
-    reasons.push('no subtitle hint');
-  }
-
-  const protocol = asString(release.protocol) ?? 'unknown';
-  if (protocol.toLowerCase() === 'usenet') {
-    score += 4;
-  }
+  const releaseRejectionReasons = rejectionReasons(release);
 
   return {
+    acceptedByLocalRules: state.score > ACCEPTED_SCORE_FLOOR,
+    arrRejected: releaseRejectionReasons.length > 0,
     candidate: {
       title,
       guid,
       indexer: asString(release.indexer) ?? 'Unknown',
       indexerId,
-      protocol,
+      protocol: asString(release.protocol) ?? 'unknown',
       size: asNumber(release.size) ?? 0,
       languages,
-      score,
-      reason: reasons.join('; ') || 'Arr score only'
+      score: state.score,
+      reason: state.reasons.join('; ') || 'Arr score only',
     },
-    payload: release
+    payload: release,
+    rejectionReasons: releaseRejectionReasons,
   };
 }
 
-export function selectBestRelease(
-  rawReleases: unknown[],
-  preferences: Preferences,
-  options: ReleaseSelectionOptions
-): ReleaseSelection {
-  const evaluated = rawReleases
-    .map((entry) => buildCandidate(asRecord(entry), preferences, options))
-    .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
-
-  const accepted = evaluated.filter((entry) => entry.candidate.score > -900);
-  const ordered = [...accepted].sort((left, right) => {
+function orderAcceptedCandidates(accepted: EvaluatedRelease[]): EvaluatedRelease[] {
+  // Keep the selection deterministic: score first, then larger release, then title.
+  return [...accepted].sort((left, right) => {
     if (left.candidate.score !== right.candidate.score) {
       return right.candidate.score - left.candidate.score;
     }
@@ -251,31 +300,59 @@ export function selectBestRelease(
 
     return left.candidate.title.localeCompare(right.candidate.title);
   });
+}
 
+export function evaluateReleaseCandidates(
+  rawReleases: unknown[],
+  preferences: Preferences,
+  options: ReleaseSelectionOptions,
+): EvaluatedRelease[] {
+  return rawReleases
+    .map((entry) => buildCandidate(asRecord(entry), preferences, options))
+    .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+}
+
+export function selectBestEvaluatedRelease(
+  evaluated: EvaluatedRelease[],
+  considered = evaluated.length,
+): ReleaseSelection {
+  const accepted = evaluated.filter((entry) => entry.acceptedByLocalRules);
+  const ordered = orderAcceptedCandidates(accepted);
   const selected = ordered[0] ?? null;
 
   if (!selected) {
     return {
       payload: null,
       decision: {
-        considered: rawReleases.length,
+        considered,
         accepted: accepted.length,
         selected: null,
         reason:
-          rawReleases.length === 0
+          considered === 0
             ? 'No manual-search releases were returned by Arr'
-            : 'No acceptable release passed the local scoring rules'
-      }
+            : 'No acceptable release passed the local scoring rules',
+      },
     };
   }
 
   return {
     payload: selected.payload,
     decision: {
-      considered: rawReleases.length,
+      considered,
       accepted: accepted.length,
       selected: selected.candidate,
-      reason: `Picked ${selected.candidate.title}: ${selected.candidate.reason}`
-    }
+      reason: `Picked ${selected.candidate.title}: ${selected.candidate.reason}`,
+    },
   };
+}
+
+export function selectBestRelease(
+  rawReleases: unknown[],
+  preferences: Preferences,
+  options: ReleaseSelectionOptions,
+): ReleaseSelection {
+  return selectBestEvaluatedRelease(
+    evaluateReleaseCandidates(rawReleases, preferences, options),
+    rawReleases.length,
+  );
 }

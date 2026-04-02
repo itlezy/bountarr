@@ -6,6 +6,6 @@ export default defineConfig({
   plugins: [UnoCSS(), sveltekit()],
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts']
-  }
+    include: ['src/**/*.test.ts'],
+  },
 });

@@ -1,28 +1,79 @@
+import type { PreferredLanguage } from '$lib/shared/languages';
+export type { CardViewMode } from '$lib/shared/card-views';
+export type { ThemeMode } from '$lib/shared/themes';
+
 export type SearchKind = 'all' | 'movie' | 'series';
+export type SearchAvailability = 'all' | 'available-only' | 'not-available-only';
+export type SearchSortField = 'title' | 'year' | 'popularity' | 'rating';
+export type SearchSortDirection = 'asc' | 'desc';
 export type MediaKind = 'movie' | 'series';
-export type ThemeMode = 'system' | 'light' | 'dark';
 export type AuditStatus = 'pending' | 'verified' | 'missing-language' | 'no-subs' | 'unknown';
 export type AppView = 'search' | 'queue' | 'dashboard' | 'status' | 'settings';
 export type AcquisitionStatus =
   | 'queued'
   | 'searching'
   | 'grabbing'
-  | 'downloading'
-  | 'import-check'
+  | 'validating'
   | 'retrying'
   | 'completed'
-  | 'failed';
+  | 'failed'
+  | 'cancelled';
 
 export interface Preferences {
-  preferredLanguage: string;
-  requireSubtitles: boolean;
-  theme: ThemeMode;
+  cardsView: import('$lib/shared/card-views').CardViewMode;
+  preferredLanguage: PreferredLanguage;
+  subtitleLanguage: PreferredLanguage;
+  theme: import('$lib/shared/themes').ThemeMode;
 }
 
 export interface QualityProfileOption {
   id: number;
   name: string;
   isDefault: boolean;
+}
+
+export interface RuntimeHealth {
+  checkedAt: string;
+  healthy: boolean;
+  issues: string[];
+  warnings: string[];
+  logFilePath: string;
+  logLevel: string;
+  dataPath: string;
+  storagePath: string;
+  freeSpaceBytes: number | null;
+  totalSpaceBytes: number | null;
+  databasePath: string;
+  databaseSizeBytes: number | null;
+  databaseJobCount: number | null;
+  databaseAttemptCount: number | null;
+  databaseEventCount: number | null;
+  uptimeSeconds: number;
+  nodeVersion: string;
+  hostName: string;
+  platform: string;
+  arch: string;
+  processId: number;
+  rssBytes: number;
+  heapTotalBytes: number;
+  heapUsedBytes: number;
+  systemTotalMemoryBytes: number;
+  systemFreeMemoryBytes: number;
+}
+
+export interface ArrServiceStats {
+  qualityProfileCount: number;
+  rootFolderCount: number;
+  queueCount: number | null;
+  defaultQualityProfileName: string | null;
+  primaryRootFolderPath: string | null;
+}
+
+export interface PlexServiceStats {
+  libraryCount: number;
+  movieLibraryCount: number;
+  showLibraryCount: number;
+  libraryTitles: string[];
 }
 
 export interface ConfigStatus {
@@ -34,15 +85,33 @@ export interface ConfigStatus {
   sonarrQualityProfiles: QualityProfileOption[];
   defaultRadarrQualityProfileId: number | null;
   defaultSonarrQualityProfileId: number | null;
+  radarrStats: ArrServiceStats;
+  sonarrStats: ArrServiceStats;
+  plexStats: PlexServiceStats;
+  runtime: RuntimeHealth;
+}
+
+export interface HealthResponse {
+  checkedAt: string;
+  status: 'ok' | 'degraded';
+  configured: boolean;
+  services: {
+    radarr: boolean;
+    sonarr: boolean;
+    plex: boolean;
+  };
+  runtime: RuntimeHealth;
 }
 
 export type ResultOrigin = 'arr' | 'plex' | 'merged';
 
 export interface MediaItem {
   id: string;
+  arrItemId?: number | null;
   kind: MediaKind;
   title: string;
   year: number | null;
+  rating: number | null;
   poster: string | null;
   overview: string;
   status: string;
@@ -57,8 +126,18 @@ export interface MediaItem {
   inPlex: boolean;
   plexLibraries: string[];
   canAdd: boolean;
+  canDeleteFromArr?: boolean;
   detail: string | null;
   requestPayload: Record<string, unknown> | null;
+}
+
+export interface ArrDeleteTarget {
+  id: string;
+  arrItemId: number | null;
+  kind: MediaKind;
+  sourceService: 'radarr' | 'sonarr';
+  title: string;
+  queueId?: number | null;
 }
 
 export interface ReleaseDecisionCandidate {
@@ -73,11 +152,34 @@ export interface ReleaseDecisionCandidate {
   reason: string;
 }
 
+export type ManualReleaseStatus =
+  | 'selected'
+  | 'accepted'
+  | 'locally-rejected'
+  | 'arr-rejected'
+  | 'previously-failed';
+
+export interface ManualReleaseResult extends ReleaseDecisionCandidate {
+  canSelect: boolean;
+  downloadAllowed: boolean;
+  rejectedByArr: boolean;
+  rejectionReasons: string[];
+  status: ManualReleaseStatus;
+}
+
 export interface ReleaseDecision {
   considered: number;
   accepted: number;
   selected: ReleaseDecisionCandidate | null;
   reason: string;
+}
+
+export interface ManualReleaseListResponse {
+  jobId: string;
+  releases: ManualReleaseResult[];
+  selectedGuid: string | null;
+  summary: string;
+  updatedAt: string;
 }
 
 export interface AcquisitionAttempt {
@@ -107,7 +209,7 @@ export interface AcquisitionJob {
   validationSummary: string | null;
   progress: number | null;
   queueStatus: string | null;
-  preferences: Pick<Preferences, 'preferredLanguage' | 'requireSubtitles'>;
+  preferences: Pick<Preferences, 'preferredLanguage' | 'subtitleLanguage'>;
   startedAt: string;
   updatedAt: string;
   completedAt: string | null;
@@ -139,11 +241,15 @@ export interface SearchState {
   activeView: AppView;
   query: string;
   kind: SearchKind;
-  includeAvailable: boolean;
+  availability: SearchAvailability;
+  sortField: SearchSortField;
+  sortDirection: SearchSortDirection;
 }
 
 export interface QueueItem {
   id: string;
+  arrItemId: number | null;
+  canCancel: boolean;
   kind: MediaKind;
   title: string;
   year: number | null;
@@ -155,6 +261,7 @@ export interface QueueItem {
   estimatedCompletionTime: string | null;
   size: number | null;
   sizeLeft: number | null;
+  queueId: number | null;
   detail: string | null;
 }
 
@@ -168,4 +275,19 @@ export interface QueueResponse {
 export interface AcquisitionResponse {
   updatedAt: string;
   jobs: AcquisitionJob[];
+}
+
+export interface AcquisitionJobActionResponse {
+  job: AcquisitionJob;
+  message: string;
+}
+
+export interface QueueActionResponse {
+  itemId: string;
+  message: string;
+}
+
+export interface MediaItemActionResponse {
+  itemId: string;
+  message: string;
 }

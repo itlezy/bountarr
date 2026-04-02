@@ -17,7 +17,7 @@ describe('selectBestRelease', () => {
           customFormatScore: 0,
           size: 1_000,
           protocol: 'torrent',
-          downloadAllowed: true
+          downloadAllowed: true,
         },
         {
           guid: 'b',
@@ -30,13 +30,13 @@ describe('selectBestRelease', () => {
           customFormatScore: 0,
           size: 900,
           protocol: 'torrent',
-          downloadAllowed: true
-        }
+          downloadAllowed: true,
+        },
       ],
       defaultPreferences,
       {
-        kind: 'movie'
-      }
+        kind: 'movie',
+      },
     );
 
     expect(result.decision.selected?.guid).toBe('b');
@@ -56,7 +56,7 @@ describe('selectBestRelease', () => {
           customFormatScore: 20,
           size: 1_000,
           protocol: 'torrent',
-          downloadAllowed: true
+          downloadAllowed: true,
         },
         {
           guid: 'b',
@@ -69,13 +69,13 @@ describe('selectBestRelease', () => {
           customFormatScore: 0,
           size: 1_000,
           protocol: 'torrent',
-          downloadAllowed: true
-        }
+          downloadAllowed: true,
+        },
       ],
       defaultPreferences,
       {
-        kind: 'movie'
-      }
+        kind: 'movie',
+      },
     );
 
     expect(result.decision.selected?.guid).toBe('b');
@@ -95,13 +95,13 @@ describe('selectBestRelease', () => {
           customFormatScore: 0,
           size: 1_000,
           protocol: 'torrent',
-          downloadAllowed: false
-        }
+          downloadAllowed: false,
+        },
       ],
       defaultPreferences,
       {
-        kind: 'movie'
-      }
+        kind: 'movie',
+      },
     );
 
     expect(result.decision.selected).toBeNull();
@@ -110,11 +110,91 @@ describe('selectBestRelease', () => {
 
   it('returns a non-fatal empty result when nothing is available', () => {
     const result = selectBestRelease([], defaultPreferences, {
-      kind: 'movie'
+      kind: 'movie',
     });
 
     expect(result.decision.selected).toBeNull();
     expect(result.decision.considered).toBe(0);
     expect(result.decision.reason).toContain('No manual-search releases');
+  });
+
+  it('uses size as the tie-breaker when scores match', () => {
+    const result = selectBestRelease(
+      [
+        {
+          guid: 'a',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Movie.2024.1080p.WEB-DL.ENG-GROUPA',
+          languages: [{ name: 'English' }],
+          qualityWeight: 80,
+          releaseWeight: 40,
+          customFormatScore: 0,
+          size: 1_000,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+        {
+          guid: 'b',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Movie.2024.1080p.WEB-DL.ENG-GROUPB',
+          languages: [{ name: 'English' }],
+          qualityWeight: 80,
+          releaseWeight: 40,
+          customFormatScore: 0,
+          size: 2_000,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+      ],
+      defaultPreferences,
+      {
+        kind: 'movie',
+      },
+    );
+
+    expect(result.decision.selected?.guid).toBe('b');
+  });
+
+  it('boosts the proven releaser from previous successful grabs', () => {
+    const result = selectBestRelease(
+      [
+        {
+          guid: 'a',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Movie.2024.1080p.WEB-DL.ENG-OTHER',
+          languages: [{ name: 'English' }],
+          qualityWeight: 90,
+          releaseWeight: 40,
+          customFormatScore: 0,
+          size: 2_000,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+        {
+          guid: 'b',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Movie.2024.1080p.WEB-DL.ENG-FLUX',
+          languages: [{ name: 'English' }],
+          qualityWeight: 70,
+          releaseWeight: 40,
+          customFormatScore: 0,
+          size: 1_000,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+      ],
+      defaultPreferences,
+      {
+        kind: 'movie',
+        preferredReleaser: 'FLUX',
+      },
+    );
+
+    expect(result.decision.selected?.guid).toBe('b');
+    expect(result.decision.reason).toContain('matched proven releaser FLUX');
   });
 });

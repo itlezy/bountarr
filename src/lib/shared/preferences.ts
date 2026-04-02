@@ -1,30 +1,36 @@
+import { sanitizeCardView } from '$lib/shared/card-views';
+import { sanitizePreferredLanguage } from '$lib/shared/languages';
+import { sanitizeTheme } from '$lib/shared/themes';
 import type { Preferences } from '$lib/shared/types';
 
-export const defaultPreferences: Preferences = {
-  preferredLanguage: 'English',
-  requireSubtitles: true,
-  theme: 'system'
+type PreferencesInput = {
+  cardsView?: unknown;
+  preferredLanguage?: unknown;
+  subtitleLanguage?: unknown;
+  theme?: unknown;
 };
 
-export function sanitizePreferences(input: Partial<Preferences> | null | undefined): Preferences {
-  const preferredLanguage =
-    typeof input?.preferredLanguage === 'string' && input.preferredLanguage.trim().length > 0
-      ? input.preferredLanguage.trim()
-      : defaultPreferences.preferredLanguage;
+export const defaultPreferences: Preferences = {
+  cardsView: 'rounded',
+  preferredLanguage: 'English',
+  subtitleLanguage: 'Any',
+  theme: 'system',
+};
 
-  const requireSubtitles =
-    typeof input?.requireSubtitles === 'boolean'
-      ? input.requireSubtitles
-      : defaultPreferences.requireSubtitles;
-
-  const theme =
-    input?.theme === 'light' || input?.theme === 'dark' || input?.theme === 'system'
-      ? input.theme
-      : defaultPreferences.theme;
+export function sanitizePreferences(input: PreferencesInput | null | undefined): Preferences {
+  const preferredLanguage = sanitizePreferredLanguage(
+    input?.preferredLanguage,
+    defaultPreferences.preferredLanguage,
+  );
+  const subtitleLanguage = sanitizePreferredLanguage(
+    input?.subtitleLanguage,
+    defaultPreferences.subtitleLanguage,
+  );
 
   return {
+    cardsView: sanitizeCardView(input?.cardsView, defaultPreferences.cardsView),
     preferredLanguage,
-    requireSubtitles,
-    theme
+    subtitleLanguage,
+    theme: sanitizeTheme(input?.theme, defaultPreferences.theme),
   };
 }

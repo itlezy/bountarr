@@ -1,23 +1,435 @@
 :root {
   color-scheme: light;
-  --bg-top: #f3f5f7;
-  --bg-bottom: #eef2f5;
-  --surface: #ffffff;
-  --surface-strong: #ffffff;
+  --bg-top: #edf2f7;
+  --bg-bottom: #dfe7ef;
+  --surface: rgba(255, 255, 255, 0.74);
+  --surface-panel: rgba(255, 255, 255, 0.82);
+  --surface-strong: rgba(255, 255, 255, 0.94);
+  --surface-float: rgba(255, 255, 255, 0.96);
   --text: #17212b;
   --muted: #5a6877;
-  --line: #d9e0e7;
+  --line: rgba(122, 140, 159, 0.26);
+  --line-strong: rgba(85, 105, 126, 0.4);
+  --shadow-sm: 0 10px 30px rgba(35, 55, 80, 0.08);
+  --shadow-md: 0 18px 44px rgba(35, 55, 80, 0.14);
+  --font-body: "Manrope", "Segoe UI", sans-serif;
+  --font-display: "Manrope", "Segoe UI", sans-serif;
+  --radius-panel: 18px;
+  --radius-control: 14px;
+  --radius-pill: 999px;
+  --panel-border-width: 1px;
+  --panel-border-style: solid;
+  --control-border-width: 1px;
+  --control-border-style: solid;
+  --panel-shell-radius: var(--radius-panel);
+  --card-shell-radius: calc(var(--radius-panel) - 4px);
+  --floating-shell-radius: calc(var(--radius-panel) - 2px);
+  --control-shell-radius: var(--radius-control);
+  --chrome-panel-border-width: var(--panel-border-width);
+  --chrome-panel-border-style: var(--panel-border-style);
+  --chrome-control-border-width: var(--control-border-width);
+  --chrome-control-border-style: var(--control-border-style);
+  --chrome-shadow-sm: var(--shadow-sm);
+  --chrome-shadow-md: var(--shadow-md);
+  --chrome-control-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 6px 18px rgba(31, 47, 68, 0.06);
+  --toolbar-button-radius: calc(var(--control-shell-radius) - 2px);
+  --toolbar-label-spacing: 0.08em;
+  --focus-ring: 0 0 0 4px rgba(86, 127, 171, 0.16);
+  --control-primary-border: rgba(15, 23, 42, 0.12);
+  --control-primary-bg: linear-gradient(180deg, #1f3348, #172637);
+  --control-primary-text: #f8fbff;
+  --control-primary-shadow: 0 10px 24px rgba(17, 31, 49, 0.22);
+  --progress-fill-bg: linear-gradient(90deg, #253e58, #3a6286);
+  --toolbar-active-bg: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--surface-strong) 92%, white 8%),
+    color-mix(in srgb, var(--surface) 88%, transparent)
+  );
+  --toolbar-active-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 10px 22px rgba(31, 47, 68, 0.08);
 }
 
-:root[data-theme='dark'] {
+:root[data-theme="dark"] {
   color-scheme: dark;
-  --bg-top: #0f1419;
-  --bg-bottom: #151b22;
-  --surface: #18212b;
-  --surface-strong: #1d2732;
+  --bg-top: #0d141b;
+  --bg-bottom: #131c26;
+  --surface: rgba(20, 29, 39, 0.72);
+  --surface-panel: rgba(22, 32, 44, 0.82);
+  --surface-strong: rgba(28, 40, 54, 0.92);
+  --surface-float: rgba(30, 43, 58, 0.96);
   --text: #f3f6f8;
   --muted: #a8b3be;
-  --line: #2b3744;
+  --line: rgba(152, 173, 194, 0.18);
+  --line-strong: rgba(152, 173, 194, 0.32);
+  --shadow-sm: 0 14px 34px rgba(0, 0, 0, 0.28);
+  --shadow-md: 0 22px 52px rgba(0, 0, 0, 0.36);
+  --font-body: "Manrope", "Segoe UI", sans-serif;
+  --font-display: "Manrope", "Segoe UI", sans-serif;
+  --focus-ring: 0 0 0 4px rgba(124, 169, 216, 0.18);
+  --control-primary-border: rgba(255, 255, 255, 0.12);
+  --control-primary-bg: linear-gradient(180deg, #f6f9fc, #dbe6f1);
+  --control-primary-text: #102030;
+  --control-primary-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+  --progress-fill-bg: linear-gradient(90deg, #b7cfeb, #e7f1fb);
+}
+
+:root[data-theme="wooden"] {
+  color-scheme: light;
+  --bg-top: #d8c0a3;
+  --bg-bottom: #a46f43;
+  --surface: rgba(255, 248, 240, 0.68);
+  --surface-panel: rgba(255, 246, 235, 0.8);
+  --surface-strong: rgba(255, 251, 245, 0.92);
+  --surface-float: rgba(255, 250, 243, 0.95);
+  --text: #2b1a11;
+  --muted: #6a4a36;
+  --line: rgba(114, 73, 38, 0.2);
+  --line-strong: rgba(88, 54, 28, 0.34);
+  --shadow-sm: 0 12px 30px rgba(71, 42, 20, 0.16);
+  --shadow-md: 0 18px 40px rgba(64, 38, 19, 0.22);
+  --font-body: "Georgia", "Palatino Linotype", serif;
+  --font-display: "Georgia", "Times New Roman", serif;
+  --radius-panel: 16px;
+  --radius-control: 12px;
+  --panel-border-width: 1px;
+  --panel-border-style: solid;
+  --control-border-width: 1px;
+  --control-border-style: solid;
+  --toolbar-label-spacing: 0.12em;
+  --focus-ring: 0 0 0 4px rgba(150, 95, 49, 0.18);
+  --control-primary-border: rgba(85, 51, 25, 0.18);
+  --control-primary-bg: linear-gradient(180deg, #85552c, #5d371b);
+  --control-primary-text: #fff6e9;
+  --control-primary-shadow: 0 12px 26px rgba(69, 41, 19, 0.24);
+  --progress-fill-bg: linear-gradient(90deg, #72431c, #ae7a42);
+}
+
+:root[data-theme="glass"] {
+  color-scheme: light;
+  --bg-top: #dceeff;
+  --bg-bottom: #c5d8eb;
+  --surface: rgba(242, 248, 255, 0.52);
+  --surface-panel: rgba(248, 252, 255, 0.58);
+  --surface-strong: rgba(255, 255, 255, 0.72);
+  --surface-float: rgba(255, 255, 255, 0.82);
+  --text: #112438;
+  --muted: #557089;
+  --line: rgba(114, 148, 176, 0.22);
+  --line-strong: rgba(95, 133, 164, 0.36);
+  --shadow-sm: 0 16px 32px rgba(75, 107, 139, 0.12);
+  --shadow-md: 0 22px 48px rgba(75, 107, 139, 0.18);
+  --font-body: "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI", sans-serif;
+  --radius-panel: 22px;
+  --radius-control: 16px;
+  --panel-border-width: 1px;
+  --panel-border-style: solid;
+  --control-border-width: 1px;
+  --control-border-style: solid;
+  --toolbar-label-spacing: 0.1em;
+  --focus-ring: 0 0 0 4px rgba(96, 157, 214, 0.18);
+  --control-primary-border: rgba(79, 122, 160, 0.22);
+  --control-primary-bg: linear-gradient(180deg, #7db6ea, #4b7ba6);
+  --control-primary-text: #f6fbff;
+  --control-primary-shadow: 0 12px 24px rgba(74, 116, 154, 0.24);
+  --progress-fill-bg: linear-gradient(90deg, #67a7db, #9dd8ff);
+}
+
+:root[data-theme="lava"] {
+  color-scheme: dark;
+  --bg-top: #240a08;
+  --bg-bottom: #4f120f;
+  --surface: rgba(43, 13, 10, 0.76);
+  --surface-panel: rgba(57, 17, 13, 0.84);
+  --surface-strong: rgba(72, 23, 18, 0.92);
+  --surface-float: rgba(84, 26, 20, 0.95);
+  --text: #ffe9dd;
+  --muted: #f0aa8e;
+  --line: rgba(255, 147, 107, 0.16);
+  --line-strong: rgba(255, 138, 92, 0.34);
+  --shadow-sm: 0 16px 34px rgba(0, 0, 0, 0.34);
+  --shadow-md: 0 24px 54px rgba(0, 0, 0, 0.42);
+  --font-body: "Trebuchet MS", "Segoe UI", sans-serif;
+  --font-display: "Trebuchet MS", "Arial", sans-serif;
+  --radius-panel: 16px;
+  --radius-control: 12px;
+  --panel-border-width: 1px;
+  --panel-border-style: solid;
+  --control-border-width: 1px;
+  --control-border-style: solid;
+  --toolbar-label-spacing: 0.12em;
+  --focus-ring: 0 0 0 4px rgba(255, 116, 67, 0.18);
+  --control-primary-border: rgba(255, 166, 130, 0.14);
+  --control-primary-bg: linear-gradient(180deg, #ff7d45, #ba2f1a);
+  --control-primary-text: #fff8f4;
+  --control-primary-shadow: 0 12px 30px rgba(112, 21, 11, 0.34);
+  --progress-fill-bg: linear-gradient(90deg, #ff7e3c, #ffd26a);
+}
+
+:root[data-theme="tron"] {
+  color-scheme: dark;
+  --bg-top: #020914;
+  --bg-bottom: #03111f;
+  --surface: rgba(3, 16, 30, 0.76);
+  --surface-panel: rgba(5, 24, 43, 0.84);
+  --surface-strong: rgba(9, 33, 58, 0.92);
+  --surface-float: rgba(12, 40, 70, 0.96);
+  --text: #ddf8ff;
+  --muted: #85d9ec;
+  --line: rgba(87, 215, 255, 0.16);
+  --line-strong: rgba(87, 215, 255, 0.38);
+  --shadow-sm: 0 16px 34px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 24px 54px rgba(0, 0, 0, 0.4);
+  --font-body: "Bahnschrift", "Segoe UI", sans-serif;
+  --font-display: "Bahnschrift", "Segoe UI", sans-serif;
+  --radius-panel: 12px;
+  --radius-control: 10px;
+  --panel-border-width: 1px;
+  --panel-border-style: solid;
+  --control-border-width: 1px;
+  --control-border-style: solid;
+  --toolbar-label-spacing: 0.16em;
+  --focus-ring: 0 0 0 4px rgba(72, 228, 255, 0.2);
+  --control-primary-border: rgba(144, 238, 255, 0.16);
+  --control-primary-bg: linear-gradient(180deg, #4df4ff, #0f7bc0);
+  --control-primary-text: #031018;
+  --control-primary-shadow: 0 12px 30px rgba(4, 113, 165, 0.3);
+  --progress-fill-bg: linear-gradient(90deg, #27d8ff, #9bf6ff);
+}
+
+:root[data-theme="matrix"] {
+  color-scheme: dark;
+  --bg-top: #020804;
+  --bg-bottom: #07140b;
+  --surface: rgba(5, 16, 8, 0.78);
+  --surface-panel: rgba(7, 22, 11, 0.86);
+  --surface-strong: rgba(10, 30, 14, 0.92);
+  --surface-float: rgba(13, 36, 17, 0.96);
+  --text: #d8ffd5;
+  --muted: #87c889;
+  --line: rgba(90, 210, 105, 0.16);
+  --line-strong: rgba(90, 210, 105, 0.34);
+  --shadow-sm: 0 16px 34px rgba(0, 0, 0, 0.34);
+  --shadow-md: 0 24px 54px rgba(0, 0, 0, 0.42);
+  --font-body: "Consolas", "Lucida Console", monospace;
+  --font-display: "Consolas", "Lucida Console", monospace;
+  --radius-panel: 10px;
+  --radius-control: 9px;
+  --panel-border-width: 1px;
+  --panel-border-style: solid;
+  --control-border-width: 1px;
+  --control-border-style: solid;
+  --toolbar-label-spacing: 0.18em;
+  --focus-ring: 0 0 0 4px rgba(83, 235, 93, 0.18);
+  --control-primary-border: rgba(161, 255, 166, 0.14);
+  --control-primary-bg: linear-gradient(180deg, #88ff7a, #227c2f);
+  --control-primary-text: #041009;
+  --control-primary-shadow: 0 12px 30px rgba(20, 92, 29, 0.32);
+  --progress-fill-bg: linear-gradient(90deg, #34ca4e, #a7ff94);
+}
+
+:root[data-theme="short-circuit"] {
+  color-scheme: dark;
+  --bg-top: #141109;
+  --bg-bottom: #2c1f0a;
+  --surface: rgba(24, 20, 10, 0.76);
+  --surface-panel: rgba(33, 26, 12, 0.84);
+  --surface-strong: rgba(43, 33, 15, 0.92);
+  --surface-float: rgba(54, 41, 19, 0.96);
+  --text: #fff4d7;
+  --muted: #f0c97d;
+  --line: rgba(255, 196, 84, 0.16);
+  --line-strong: rgba(255, 196, 84, 0.34);
+  --shadow-sm: 0 16px 34px rgba(0, 0, 0, 0.34);
+  --shadow-md: 0 24px 54px rgba(0, 0, 0, 0.42);
+  --font-body: "Trebuchet MS", "Segoe UI", sans-serif;
+  --font-display: "Consolas", "Segoe UI", monospace;
+  --radius-panel: 14px;
+  --radius-control: 10px;
+  --panel-border-width: 1px;
+  --panel-border-style: dashed;
+  --control-border-width: 1px;
+  --control-border-style: dashed;
+  --toolbar-label-spacing: 0.14em;
+  --focus-ring: 0 0 0 4px rgba(255, 196, 84, 0.18);
+  --control-primary-border: rgba(255, 219, 146, 0.14);
+  --control-primary-bg: linear-gradient(180deg, #ffd25f, #d96e1e);
+  --control-primary-text: #221207;
+  --control-primary-shadow: 0 12px 30px rgba(125, 63, 16, 0.32);
+  --progress-fill-bg: linear-gradient(90deg, #ffb63b, #ffe48b);
+}
+
+:root[data-theme="back-to-the-future"] {
+  color-scheme: dark;
+  --bg-top: #0f1025;
+  --bg-bottom: #1d1237;
+  --surface: rgba(19, 15, 44, 0.76);
+  --surface-panel: rgba(27, 18, 58, 0.84);
+  --surface-strong: rgba(37, 25, 77, 0.92);
+  --surface-float: rgba(44, 31, 92, 0.96);
+  --text: #fff2df;
+  --muted: #f4adcb;
+  --line: rgba(255, 127, 92, 0.18);
+  --line-strong: rgba(94, 225, 255, 0.36);
+  --shadow-sm: 0 16px 34px rgba(0, 0, 0, 0.34);
+  --shadow-md: 0 24px 54px rgba(0, 0, 0, 0.42);
+  --font-body: "Segoe UI", "Trebuchet MS", sans-serif;
+  --font-display: "Bahnschrift", "Segoe UI", sans-serif;
+  --radius-panel: 18px;
+  --radius-control: 12px;
+  --panel-border-width: 1px;
+  --panel-border-style: solid;
+  --control-border-width: 1px;
+  --control-border-style: solid;
+  --toolbar-label-spacing: 0.16em;
+  --focus-ring: 0 0 0 4px rgba(98, 236, 255, 0.2);
+  --control-primary-border: rgba(255, 196, 146, 0.14);
+  --control-primary-bg: linear-gradient(180deg, #ff855d, #33d7ff);
+  --control-primary-text: #160a25;
+  --control-primary-shadow: 0 12px 30px rgba(30, 20, 90, 0.34);
+  --progress-fill-bg: linear-gradient(90deg, #ff9a4f, #ff4fa8, #5fe6ff);
+}
+
+:root[data-theme="snatch"] {
+  color-scheme: light;
+  --bg-top: #ddd1b3;
+  --bg-bottom: #b49869;
+  --surface: rgba(251, 244, 225, 0.68);
+  --surface-panel: rgba(249, 239, 214, 0.8);
+  --surface-strong: rgba(255, 249, 235, 0.92);
+  --surface-float: rgba(255, 250, 238, 0.95);
+  --text: #201811;
+  --muted: #6f5f4a;
+  --line: rgba(122, 98, 61, 0.18);
+  --line-strong: rgba(102, 78, 43, 0.32);
+  --shadow-sm: 0 12px 30px rgba(72, 52, 26, 0.14);
+  --shadow-md: 0 18px 40px rgba(72, 52, 26, 0.2);
+  --font-body: "Georgia", "Palatino Linotype", serif;
+  --font-display: "Trebuchet MS", "Segoe UI", sans-serif;
+  --radius-panel: 13px;
+  --radius-control: 10px;
+  --panel-border-width: 1px;
+  --panel-border-style: solid;
+  --control-border-width: 1px;
+  --control-border-style: solid;
+  --toolbar-label-spacing: 0.14em;
+  --focus-ring: 0 0 0 4px rgba(149, 118, 55, 0.16);
+  --control-primary-border: rgba(95, 71, 39, 0.16);
+  --control-primary-bg: linear-gradient(180deg, #9f7f41, #6c5028);
+  --control-primary-text: #fff8ee;
+  --control-primary-shadow: 0 12px 26px rgba(78, 58, 28, 0.24);
+  --progress-fill-bg: linear-gradient(90deg, #8e6c34, #c4a36a);
+}
+
+:root[data-theme="zebra"] {
+  color-scheme: light;
+  --bg-top: #f7f7f7;
+  --bg-bottom: #d7d7d7;
+  --surface: rgba(255, 255, 255, 0.76);
+  --surface-panel: rgba(255, 255, 255, 0.86);
+  --surface-strong: rgba(255, 255, 255, 0.96);
+  --surface-float: rgba(255, 255, 255, 0.98);
+  --text: #111111;
+  --muted: #555555;
+  --line: rgba(25, 25, 25, 0.14);
+  --line-strong: rgba(25, 25, 25, 0.3);
+  --shadow-sm: 0 12px 28px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 18px 40px rgba(0, 0, 0, 0.14);
+  --font-body: "Arial", "Helvetica Neue", sans-serif;
+  --font-display: "Arial Black", "Arial", sans-serif;
+  --radius-panel: 10px;
+  --radius-control: 8px;
+  --panel-border-width: 2px;
+  --panel-border-style: solid;
+  --control-border-width: 2px;
+  --control-border-style: solid;
+  --toolbar-label-spacing: 0.2em;
+  --focus-ring: 0 0 0 4px rgba(24, 24, 24, 0.14);
+  --control-primary-border: rgba(17, 17, 17, 0.12);
+  --control-primary-bg: linear-gradient(180deg, #262626, #050505);
+  --control-primary-text: #ffffff;
+  --control-primary-shadow: 0 10px 22px rgba(0, 0, 0, 0.22);
+  --progress-fill-bg: linear-gradient(90deg, #111111, #6c6c6c);
+}
+
+:root[data-cards-view="rounded"] {
+  --panel-shell-radius: var(--radius-panel);
+  --card-shell-radius: calc(var(--radius-panel) - 4px);
+  --floating-shell-radius: calc(var(--radius-panel) - 2px);
+  --control-shell-radius: var(--radius-control);
+  --chrome-panel-border-width: var(--panel-border-width);
+  --chrome-panel-border-style: var(--panel-border-style);
+  --chrome-control-border-width: var(--control-border-width);
+  --chrome-control-border-style: var(--control-border-style);
+  --chrome-shadow-sm: var(--shadow-sm);
+  --chrome-shadow-md: var(--shadow-md);
+  --chrome-control-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 6px 18px rgba(31, 47, 68, 0.06);
+  --toolbar-button-radius: calc(var(--control-shell-radius) - 2px);
+}
+
+:root[data-cards-view="square"] {
+  --panel-shell-radius: 6px;
+  --card-shell-radius: 4px;
+  --floating-shell-radius: 5px;
+  --control-shell-radius: 4px;
+  --chrome-panel-border-width: max(1px, var(--panel-border-width));
+  --chrome-panel-border-style: solid;
+  --chrome-control-border-width: max(1px, var(--control-border-width));
+  --chrome-control-border-style: solid;
+  --chrome-shadow-sm: 0 8px 22px rgba(17, 24, 39, 0.08);
+  --chrome-shadow-md: 0 14px 34px rgba(17, 24, 39, 0.12);
+  --chrome-control-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 4px 12px rgba(17, 24, 39, 0.05);
+  --toolbar-button-radius: 4px;
+}
+
+:root[data-cards-view="soft"] {
+  --panel-shell-radius: calc(var(--radius-panel) + 8px);
+  --card-shell-radius: calc(var(--radius-panel) + 2px);
+  --floating-shell-radius: calc(var(--radius-panel) + 4px);
+  --control-shell-radius: calc(var(--radius-control) + 4px);
+  --chrome-panel-border-width: 1px;
+  --chrome-panel-border-style: solid;
+  --chrome-control-border-width: 1px;
+  --chrome-control-border-style: solid;
+  --chrome-shadow-sm: 0 14px 34px rgba(35, 55, 80, 0.07);
+  --chrome-shadow-md: 0 24px 50px rgba(35, 55, 80, 0.12);
+  --chrome-control-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.26), 0 10px 22px rgba(31, 47, 68, 0.05);
+  --toolbar-button-radius: calc(var(--control-shell-radius) - 3px);
+}
+
+:root[data-cards-view="outline"] {
+  --panel-shell-radius: calc(var(--radius-panel) - 2px);
+  --card-shell-radius: calc(var(--radius-panel) - 6px);
+  --floating-shell-radius: calc(var(--radius-panel) - 4px);
+  --control-shell-radius: calc(var(--radius-control) - 2px);
+  --chrome-panel-border-width: 2px;
+  --chrome-panel-border-style: solid;
+  --chrome-control-border-width: 2px;
+  --chrome-control-border-style: solid;
+  --chrome-shadow-sm: 0 2px 0 rgba(17, 24, 39, 0.04);
+  --chrome-shadow-md: 0 4px 0 rgba(17, 24, 39, 0.06);
+  --chrome-control-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --toolbar-button-radius: calc(var(--control-shell-radius) - 1px);
+}
+
+:root[data-cards-view="borderless"] {
+  --panel-shell-radius: calc(var(--radius-panel) + 2px);
+  --card-shell-radius: calc(var(--radius-panel) - 2px);
+  --floating-shell-radius: var(--radius-panel);
+  --control-shell-radius: var(--radius-control);
+  --chrome-panel-border-width: 0px;
+  --chrome-panel-border-style: solid;
+  --chrome-control-border-width: 0px;
+  --chrome-control-border-style: solid;
+  --chrome-shadow-sm: 0 12px 28px rgba(17, 24, 39, 0.12);
+  --chrome-shadow-md: 0 18px 38px rgba(17, 24, 39, 0.18);
+  --chrome-control-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 8px 18px rgba(17, 24, 39, 0.08);
+  --toolbar-button-radius: calc(var(--control-shell-radius) - 2px);
 }
 
 html,
@@ -27,9 +439,11 @@ body {
 
 body {
   margin: 0;
-  font-family: 'Manrope', sans-serif;
+  font-family: var(--font-body);
   color: var(--text);
-  background: var(--bg-top);
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.34), transparent 36%),
+    linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
 }
 
 button,
@@ -44,6 +458,168 @@ button {
 
 * {
   box-sizing: border-box;
+}
+
+button,
+input,
+select,
+textarea {
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.app-shell {
+  padding: 86px 10px 28px;
+}
+
+.app-main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.panel-shell {
+  border: var(--chrome-panel-border-width) var(--chrome-panel-border-style) var(--line);
+  border-radius: var(--panel-shell-radius);
+  background: var(--surface-panel);
+  box-shadow: var(--chrome-shadow-sm);
+  backdrop-filter: blur(12px);
+}
+
+.card-shell {
+  border: var(--chrome-panel-border-width) var(--chrome-panel-border-style) var(--line);
+  border-radius: var(--card-shell-radius);
+  background: var(--surface-strong);
+  box-shadow: var(--chrome-shadow-sm);
+}
+
+.floating-shell {
+  border: var(--chrome-panel-border-width) var(--chrome-panel-border-style) var(--line-strong);
+  border-radius: var(--floating-shell-radius);
+  background: var(--surface-float);
+  box-shadow: var(--chrome-shadow-md);
+  backdrop-filter: blur(18px);
+}
+
+.control-shell {
+  border: var(--chrome-control-border-width) var(--chrome-control-border-style) var(--line-strong);
+  border-radius: var(--control-shell-radius);
+  background: var(--surface-strong);
+  box-shadow: var(--chrome-control-shadow);
+}
+
+.control-shell:hover {
+  border-color: color-mix(in srgb, var(--line-strong) 80%, var(--text));
+}
+
+.control-primary {
+  border: var(--chrome-control-border-width) var(--chrome-control-border-style)
+    var(--control-primary-border);
+  border-radius: var(--control-shell-radius);
+  background: var(--control-primary-bg);
+  color: var(--control-primary-text);
+  box-shadow: var(--chrome-shadow-sm), var(--control-primary-shadow);
+}
+
+.control-primary:hover,
+.control-shell:hover {
+  transform: translateY(-1px);
+}
+
+.pill-shell {
+  border-radius: var(--radius-pill);
+}
+
+.progress-track {
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--line) 72%, transparent);
+}
+
+.progress-fill {
+  border-radius: var(--radius-pill);
+  background: var(--progress-fill-bg);
+}
+
+.spinner {
+  display: inline-block;
+  border: 2px solid color-mix(in srgb, var(--line-strong) 80%, transparent);
+  border-top-color: var(--text);
+  border-radius: 999px;
+  animation: spinner-rotate 0.75s linear infinite;
+}
+
+.toolbar-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: var(--chrome-control-border-width) var(--chrome-control-border-style) transparent;
+  border-radius: var(--toolbar-button-radius);
+  background: transparent;
+  color: var(--muted);
+}
+
+.toolbar-button:hover {
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--surface-strong) 78%, transparent);
+}
+
+.toolbar-button-active {
+  border-color: var(--line-strong);
+  background: var(--toolbar-active-bg);
+  color: var(--text);
+  box-shadow: var(--toolbar-active-shadow);
+}
+
+.toolbar-glyph {
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.toolbar-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  font-family: var(--font-display);
+  letter-spacing: var(--toolbar-label-spacing);
+  text-transform: uppercase;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+}
+
+@keyframes spinner-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (min-width: 640px) {
+  .app-shell {
+    padding: 94px 14px 36px;
+  }
+
+  .app-main {
+    gap: 14px;
+  }
 }
 
 .no-scrollbar {

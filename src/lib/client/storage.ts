@@ -1,5 +1,14 @@
 import { defaultPreferences, sanitizePreferences } from '$lib/shared/preferences';
-import type { Preferences, SearchState, ThemeMode } from '$lib/shared/types';
+import { resolveTheme } from '$lib/shared/themes';
+import type {
+  CardViewMode,
+  Preferences,
+  SearchAvailability,
+  SearchSortDirection,
+  SearchSortField,
+  SearchState,
+  ThemeMode,
+} from '$lib/shared/types';
 
 const storageKey = 'bountarr.preferences';
 const searchStateKey = 'bountarr.search-state';
@@ -7,8 +16,22 @@ const defaultSearchState: SearchState = {
   activeView: 'search',
   query: '',
   kind: 'all',
-  includeAvailable: true
+  availability: 'not-available-only',
+  sortField: 'popularity',
+  sortDirection: 'desc',
 };
+
+function isSearchAvailability(value: unknown): value is SearchAvailability {
+  return value === 'all' || value === 'available-only' || value === 'not-available-only';
+}
+
+function isSearchSortField(value: unknown): value is SearchSortField {
+  return value === 'title' || value === 'year' || value === 'popularity' || value === 'rating';
+}
+
+function isSearchSortDirection(value: unknown): value is SearchSortDirection {
+  return value === 'asc' || value === 'desc';
+}
 
 export function loadPreferences(): Preferences {
   if (typeof localStorage === 'undefined') {
@@ -61,10 +84,15 @@ export function loadSearchState(): SearchState {
         parsed.kind === 'all' || parsed.kind === 'movie' || parsed.kind === 'series'
           ? parsed.kind
           : defaultSearchState.kind,
-      includeAvailable:
-        typeof parsed.includeAvailable === 'boolean'
-          ? parsed.includeAvailable
-          : defaultSearchState.includeAvailable
+      availability: isSearchAvailability(parsed.availability)
+        ? parsed.availability
+        : defaultSearchState.availability,
+      sortField: isSearchSortField(parsed.sortField)
+        ? parsed.sortField
+        : defaultSearchState.sortField,
+      sortDirection: isSearchSortDirection(parsed.sortDirection)
+        ? parsed.sortDirection
+        : defaultSearchState.sortDirection,
     };
   } catch {
     return defaultSearchState;
@@ -79,17 +107,18 @@ export function saveSearchState(state: SearchState): void {
   localStorage.setItem(searchStateKey, JSON.stringify(state));
 }
 
-export function applyTheme(theme: ThemeMode): void {
+export function applyTheme(
+  theme: ThemeMode,
+  cardsView: CardViewMode = defaultPreferences.cardsView,
+): void {
   if (typeof document === 'undefined') {
     return;
   }
 
-  const resolvedTheme =
-    theme === 'system'
-      ? window.matchMedia('(prefers-color-scheme: dark)').matches
-        ? 'dark'
-        : 'light'
-      : theme;
+  const prefersDark =
+    typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const resolvedTheme = resolveTheme(theme, prefersDark);
 
   document.documentElement.dataset.theme = resolvedTheme;
+  document.documentElement.dataset.cardsView = cardsView;
 }
