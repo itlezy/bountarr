@@ -38,8 +38,8 @@ Backend logs are written to `data/logs/backend.log` using human-readable lines. 
 ## Development
 
 ```powershell
-pwsh -NoLogo -NoProfile -Command { npm install }
-pwsh -NoLogo -NoProfile -Command { npm run dev }
+npm install
+npm run dev
 ```
 
 ## Workspace Validation
@@ -47,9 +47,9 @@ pwsh -NoLogo -NoProfile -Command { npm run dev }
 Canonical local checks:
 
 ```powershell
-pwsh -NoLogo -NoProfile -Command { npm run format }
-pwsh -NoLogo -NoProfile -Command { npm run lint }
-pwsh -NoLogo -NoProfile -Command { npm run validate }
+npm run format
+npm run lint
+npm run validate
 ```
 
 Coding and logging conventions live in [`docs/CODING_STANDARDS.md`](docs/CODING_STANDARDS.md).
@@ -58,22 +58,37 @@ Coding and logging conventions live in [`docs/CODING_STANDARDS.md`](docs/CODING_
 
 - Runtime health is available at `/api/health`.
 - Logs are written to `data/logs/backend.log`.
-- Runtime state and other local app data live under `data/`.
+- Runtime state, smoke helper logs, and other local app data live under `data/`.
 - If startup looks wrong, check `/api/health`, then `data/logs/backend.log`, then the PM2 stdout/stderr logs if you are running under PM2.
 
 ## Smoke Test
 
-Run the app, then execute:
+`npm run smoke` can target an already running server. If nothing is listening on the local target port, it starts the built app automatically and writes temporary helper logs under `data/runtime/smoke/`.
 
 ```powershell
-pwsh -NoLogo -NoProfile -Command { npm run smoke }
+npm run smoke
+```
+
+## Build And Run
+
+```powershell
+npm run build
+npm run start
 ```
 
 ## Production
 
+PM2 remains available as an optional process manager:
+
 ```powershell
-pwsh -NoLogo -NoProfile -Command { npm run build }
-pwsh -NoLogo -NoProfile -Command { pm2 start ecosystem.config.cjs }
+npm run build
+pm2 start ecosystem.config.cjs
 ```
 
 PM2 keeps the process in `fork` mode with a restart delay and timestamped logs for simpler local operations.
+
+## Maintenance
+
+```powershell
+npm run reset:db
+```

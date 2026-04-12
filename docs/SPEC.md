@@ -51,13 +51,22 @@ This specification outlines a lightweight, modern web frontend designed for loca
 
 ## 🚀 Implementation Details
 
+Canonical local workflow uses npm scripts:
+
+```powershell
+npm run dev
+npm run build
+npm run start
+npm run smoke
+```
+
 ### PM2 Deployment Configuration
 Create an `ecosystem.config.cjs` to ensure the app stays alive and restarts on crash:
 
 ```javascript
 module.exports = {
   apps: [{
-    name: "media-requester",
+    name: "bountarr",
     script: "build/index.js",
     env: {
       NODE_ENV: "production",
@@ -105,5 +114,3 @@ The UI should utilize UnoCSS's shortcut features for a clean, mobile-optimized "
 ## 🛡 Security & LAN Considerations
 * **No Auth:** Since there is no login, ensure this is **not** exposed to the internet. Use a VPN (Tailscale/Wireguard) to access it remotely.
 * **CORS:** The Node backend must act as a proxy for the *Arr APIs to avoid Browser CORS issues when calling different ports (8989/7878) from the main app port (3000).
-
-Would you like the specific API endpoints for checking file metadata in Radarr and Sonarr to get started on the logic?

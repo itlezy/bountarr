@@ -7,12 +7,12 @@ Deletes the acquisition database and its SQLite sidecar files from the local
 data directory. This is intended for development-only resets.
 
 .PARAMETER RepoRoot
-Optional repository root override. Defaults to the parent of the scripts folder.
+Optional repository root override. Defaults to the parent of the helpers folder.
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(
     [Parameter()]
-    [string]$RepoRoot = (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent)
+    [string]$RepoRoot = (Split-Path -Path $PSScriptRoot -Parent)
 )
 
 $ErrorActionPreference = 'Stop'

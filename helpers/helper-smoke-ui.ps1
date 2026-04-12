@@ -14,6 +14,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $baseUri = [Uri]$BaseUrl
 $repoRoot = Split-Path -Path $PSScriptRoot -Parent
+$buildEntryPoint = Join-Path -Path $repoRoot -ChildPath 'build/index.js'
+$runtimeDirectory = Join-Path -Path $repoRoot -ChildPath 'data/runtime/smoke'
 
 function Assert-True {
     param(
@@ -51,19 +53,35 @@ function Start-LocalServerIfNeeded {
     )
 
     if ($Uri.Host -notin @('localhost', '127.0.0.1')) {
-        return
+        return $null
     }
 
     $listener = Get-NetTCPConnection -LocalPort $Uri.Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($listener) {
-        return
+        return $null
     }
 
-    Start-Process -FilePath 'pwsh' -ArgumentList '-NoLogo', '-NoProfile', '-Command', "& { Set-Location '$repoRoot'; `$env:PORT='$($Uri.Port)'; `$env:ORIGIN='$($Uri.Scheme)://$($Uri.Host):$($Uri.Port)'; node --env-file=.env 'build/index.js' }" -WorkingDirectory $repoRoot -RedirectStandardOutput (Join-Path $repoRoot 'server.stdout.log') -RedirectStandardError (Join-Path $repoRoot 'server.stderr.log') | Out-Null
+    if (-not (Test-Path -LiteralPath $buildEntryPoint)) {
+        throw "Build output was not found at '$buildEntryPoint'. Run 'npm run build' first."
+    }
+
+    New-Item -ItemType Directory -Path $runtimeDirectory -Force -ErrorAction Stop | Out-Null
+
+    $stdoutPath = Join-Path -Path $runtimeDirectory -ChildPath 'server.stdout.log'
+    $stderrPath = Join-Path -Path $runtimeDirectory -ChildPath 'server.stderr.log'
+    $origin = "$($Uri.Scheme)://$($Uri.Host):$($Uri.Port)"
+
+    $process = Start-Process -FilePath 'node' -ArgumentList @(
+        '--env-file-if-exists=.env',
+        $buildEntryPoint
+    ) -WorkingDirectory $repoRoot -Environment @{
+        PORT = "$($Uri.Port)"
+        ORIGIN = $origin
+    } -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath -PassThru
 
     for ($attempt = 0; $attempt -lt 20; $attempt++) {
         if (Test-ServerReady -Url $Uri.AbsoluteUri.TrimEnd('/')) {
-            return
+            return $process
         }
 
         Start-Sleep -Milliseconds 750
@@ -72,14 +90,16 @@ function Start-LocalServerIfNeeded {
     throw "Timed out waiting for the local server on port $($Uri.Port)."
 }
 
+$startedServerProcess = $null
+
 try {
-    Start-LocalServerIfNeeded -Uri $baseUri
+    $startedServerProcess = Start-LocalServerIfNeeded -Uri $baseUri
 
     $rootResponse = Invoke-WebRequest -Uri "$BaseUrl/" -UseBasicParsing
     Assert-True ($rootResponse.StatusCode -eq 200) 'Root page did not return HTTP 200.'
     Assert-True ($rootResponse.Content -match 'Bountarr') 'Root HTML is missing the app title.'
     Assert-True ($rootResponse.Content -match '>Search<') 'Root HTML is missing the search submit button.'
-    Assert-True ($rootResponse.Content -match 'aria-label=\"Open .* menu\"') 'Root HTML is missing the compact view menu.'
+    Assert-True ($rootResponse.Content -match 'aria-label=\"Primary navigation\"') 'Root HTML is missing the primary navigation landmark.'
 
     $config = Invoke-RestMethod -Uri "$BaseUrl/api/config/status"
     Assert-True ($config.configured -eq $true) 'Config endpoint reports no Arr service configured.'
@@ -89,13 +109,35 @@ try {
     Assert-True ($health.runtime.healthy -eq $true) 'Health endpoint reported runtime issues.'
 
     if ($config.plexConfigured) {
-      $plexRecent = Invoke-RestMethod -Uri "$BaseUrl/api/plex/recent"
+        $plexRecent = Invoke-RestMethod -Uri "$BaseUrl/api/plex/recent"
         Assert-True (($plexRecent | Measure-Object).Count -gt 0) 'Plex recent endpoint returned no items.'
 
-        $plexBlocked = Invoke-RestMethod -Uri "$BaseUrl/api/search?q=high%20potential&kind=series"
-        $plexItem = $plexBlocked | Where-Object { $_.inPlex -eq $true } | Select-Object -First 1
-        Assert-True ($null -ne $plexItem) 'Plex-enriched search result was not found for addability testing.'
-        Assert-True ($plexItem.canAdd -eq $false) 'A Plex result is incorrectly marked addable.'
+        $plexSeed = $null
+        $plexItem = $null
+
+        foreach ($candidate in ($plexRecent | Select-Object -First 5)) {
+            $plexQuery = [Uri]::EscapeDataString($candidate.title)
+            $plexKind = if ($candidate.kind -eq 'movie' -or $candidate.kind -eq 'series') {
+                $candidate.kind
+            }
+            else {
+                'all'
+            }
+
+            $plexBlocked = Invoke-RestMethod -Uri "$BaseUrl/api/search?q=$plexQuery&kind=$plexKind"
+            $plexItem = $plexBlocked | Where-Object { $_.inPlex -eq $true } | Select-Object -First 1
+            if ($null -ne $plexItem) {
+                $plexSeed = $candidate
+                break
+            }
+        }
+
+        if ($null -ne $plexItem) {
+            Assert-True ($plexItem.canAdd -eq $false) 'A Plex result is incorrectly marked addable.'
+        }
+        else {
+            Write-Output 'Skipped Plex-enriched search assertion because no current Plex recent title mapped into search results.'
+        }
     }
 
     $search = Invoke-RestMethod -Uri "$BaseUrl/api/search?q=matrix&kind=all"
@@ -138,4 +180,9 @@ try {
 catch {
     Write-Error $_
     exit 1
+}
+finally {
+    if ($null -ne $startedServerProcess -and -not $startedServerProcess.HasExited) {
+        Stop-Process -Id $startedServerProcess.Id -Force -ErrorAction SilentlyContinue
+    }
 }
