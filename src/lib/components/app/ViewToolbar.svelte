@@ -11,8 +11,8 @@ type ToolbarOption = {
 const toolbarOptions: ToolbarOption[] = [
   { value: 'search', label: 'Search', title: 'Search', icon: 'search' },
   { value: 'queue', label: 'Queue', title: 'Queue', icon: 'queue' },
-  { value: 'dashboard', label: 'Audit', title: 'Audit Queue', icon: 'audit' },
-  { value: 'status', label: 'Status', title: 'Service Status', icon: 'status' },
+  { value: 'dashboard', label: 'Checks', title: 'Download checks', icon: 'audit' },
+  { value: 'status', label: 'System', title: 'System status', icon: 'status' },
   { value: 'settings', label: 'Settings', title: 'Settings', icon: 'settings' },
 ];
 

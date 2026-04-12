@@ -32,6 +32,7 @@ export async function validateMovieAttempt(
         preferredReleaser: null,
         progress: queueItem?.progress ?? null,
         queueStatus: queueItem?.status ?? jobStatusLabel(job.status),
+        reasonCode: null,
         summary: null,
       };
     }
@@ -41,6 +42,7 @@ export async function validateMovieAttempt(
       preferredReleaser: null,
       progress: job.progress,
       queueStatus: job.queueStatus,
+      reasonCode: null,
       summary: null,
     };
   }
@@ -59,6 +61,7 @@ export async function validateMovieAttempt(
       preferredReleaser: job.selectedReleaser,
       progress: 100,
       queueStatus: 'Imported',
+      reasonCode: 'validated',
       summary,
     };
   }
@@ -69,6 +72,7 @@ export async function validateMovieAttempt(
       preferredReleaser: null,
       progress: 100,
       queueStatus: 'Imported',
+      reasonCode: item.auditStatus === 'no-subs' ? 'missing-subs' : 'missing-audio',
       summary,
     };
   }
@@ -82,6 +86,7 @@ export async function validateMovieAttempt(
     queueStatus: queueRecord
       ? (normalizeQueueItem('radarr', queueRecord)?.status ?? job.queueStatus)
       : job.queueStatus,
+    reasonCode: null,
     summary,
   };
 }

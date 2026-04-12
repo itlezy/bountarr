@@ -44,8 +44,8 @@ function uptimeLabel(totalSeconds: number): string {
 
 <section class="panel-shell relative px-3 py-3 sm:px-4">
   <div>
-    <h2 class="text-lg font-800">Service status</h2>
-    <div class="text-sm text-[var(--muted)]">Quick health snapshot for Arr, Plex, database, and server runtime.</div>
+    <h2 class="text-lg font-800">System status</h2>
+    <div class="text-sm text-[var(--muted)]">Operator view for service health, runtime state, and local storage details.</div>
   </div>
 
   <div class="mt-4 grid gap-3 sm:grid-cols-4">

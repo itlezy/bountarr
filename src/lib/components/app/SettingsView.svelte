@@ -10,7 +10,7 @@ let { state }: { state: AppState } = $props();
 <section class="panel-shell relative px-3 py-3 sm:px-4">
   <div>
     <h2 class="text-lg font-800">Settings</h2>
-    <div class="mt-1 text-sm text-[var(--muted)]">Local-only preferences for theme, card chrome, language, subtitles, and notifications.</div>
+    <div class="mt-1 text-sm text-[var(--muted)]">Local-only preferences for the household experience, language checks, and notifications.</div>
   </div>
 
   <div class="mt-4 space-y-4 border-t border-[var(--line)] pt-4">

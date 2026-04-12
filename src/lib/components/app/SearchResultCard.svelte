@@ -5,6 +5,7 @@ import {
   actionLabel,
   deleteActionLabel,
   formatRating,
+  resultMessage,
   resultSummary,
 } from '$lib/client/app-ui';
 import type { MediaItem } from '$lib/shared/types';
@@ -44,14 +45,19 @@ let { feedback, item, state }: {
       </div>
 
       <div class="mt-2 flex flex-wrap gap-2 text-[11px] font-700 uppercase tracking-[0.08em]">
+        {#if item.canAdd}
+          <span class="border border-amber-300 bg-amber-50 px-2 py-1 text-amber-700 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+            Ready to request
+          </span>
+        {/if}
         {#if item.inArr}
           <span class="border border-emerald-300 bg-emerald-50 px-2 py-1 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200">
-            In Arr
+            Already requested
           </span>
         {/if}
         {#if item.inPlex}
           <span class="border border-sky-300 bg-sky-50 px-2 py-1 text-sky-700 dark:border-sky-700 dark:bg-sky-950/40 dark:text-sky-200">
-            In Plex
+            Available in Plex
           </span>
         {/if}
       </div>
@@ -99,27 +105,49 @@ let { feedback, item, state }: {
         {actionLabel(item, state.requesting)}
       </button>
     </div>
-  {:else if item.canDeleteFromArr}
-    <div class="mt-3 space-y-2">
-      <div class="rounded-[14px] border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--muted)]">
-        Already tracked in Arr.
-      </div>
-      <button
-        class="control-shell min-h-11 w-full border-rose-300 px-4 text-sm font-700 text-rose-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-700 dark:text-rose-200"
-        type="button"
-        disabled={state.deletingItemId === item.id}
-        onclick={() => void state.deleteMediaItem(item)}
-      >
-        {deleteActionLabel(item, state.deletingItemId)}
-      </button>
-    </div>
-  {:else if item.inPlex}
-    <div class="mt-3 rounded-[14px] border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--muted)]">
-      Found in Plex. Add is hidden for Plex matches.
-    </div>
   {:else}
     <div class="mt-3 rounded-[14px] border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--muted)]">
-      Already tracked in Arr.
+      {resultMessage(item)}
+    </div>
+  {/if}
+
+  {#if state.hasSearchOperatorActions(item)}
+    <div class="mt-3">
+      <button
+        class="control-shell min-h-10 w-full px-4 text-sm font-700"
+        type="button"
+        onclick={() => state.toggleOperatorReveal('search', item.id)}
+      >
+        {state.operatorRevealOpen('search', item.id) ? 'Hide operator tools' : 'Show operator tools'}
+      </button>
+    </div>
+  {/if}
+
+  {#if state.operatorRevealOpen('search', item.id)}
+    <div class="mt-3 space-y-2 rounded-[14px] border border-[var(--line)] bg-[var(--surface)] p-3">
+      <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Operator tools</div>
+      {#if state.canOperatorRequestFromPlex(item)}
+        <div class="text-sm text-[var(--muted)]">
+          Plex already has this title, but you can still request a managed copy from Arr if you want a different version.
+        </div>
+        <button
+          class="control-primary min-h-10 w-full px-4 text-sm font-700"
+          type="button"
+          onclick={() => state.openAddConfirm(item, { operatorOverride: true })}
+        >
+          Request anyway
+        </button>
+      {/if}
+      {#if item.canDeleteFromArr}
+        <button
+          class="control-shell min-h-10 w-full border-rose-300 px-4 text-sm font-700 text-rose-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-700 dark:text-rose-200"
+          type="button"
+          disabled={state.deletingItemId === item.id}
+          onclick={() => void state.deleteMediaItem(item)}
+        >
+          {deleteActionLabel(item, state.deletingItemId)}
+        </button>
+      {/if}
     </div>
   {/if}
 </article>

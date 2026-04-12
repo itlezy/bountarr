@@ -1,3 +1,5 @@
+﻿#Requires -Version 7.6
+
 <#
 .SYNOPSIS
 Runs a lightweight smoke test against the local Bountarr server.
@@ -12,6 +14,11 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+if ($PSVersionTable.PSEdition -ne 'Core') {
+    throw 'Run this script with pwsh 7.6 or newer.'
+}
+
 $baseUri = [Uri]$BaseUrl
 $repoRoot = Split-Path -Path $PSScriptRoot -Parent
 $buildEntryPoint = Join-Path -Path $repoRoot -ChildPath 'build/index.js'
@@ -140,11 +147,11 @@ try {
         }
     }
 
-    $search = Invoke-RestMethod -Uri "$BaseUrl/api/search?q=matrix&kind=all"
+    $search = Invoke-RestMethod -Uri "$BaseUrl/api/search?q=Andor&kind=series&availability=all"
     Assert-True (($search | Measure-Object).Count -gt 0) 'Search endpoint returned no results.'
 
     $tracked = $search | Where-Object { $_.inArr -eq $true } | Select-Object -First 1
-    Assert-True ($null -ne $tracked) 'Search results did not include any tracked Arr item for duplicate-path testing.'
+    Assert-True ($null -ne $tracked) 'Search results did not include the tracked series duplicate-path candidate.'
 
     $duplicateBody = @{
         item = $tracked

@@ -33,6 +33,42 @@ function matchesByIdentity(left: MediaItem, right: MediaItem): boolean {
   return itemMatchKeys(left).some((key) => rightKeys.has(key));
 }
 
+function hasLookupId(raw: Record<string, unknown>): boolean {
+  const id = asNumber(raw.id);
+  return id !== null && id > 0;
+}
+
+function hasTrackedPath(raw: Record<string, unknown>): boolean {
+  return asString(raw.path) !== null;
+}
+
+function hasNonDefaultAddedTimestamp(raw: Record<string, unknown>): boolean {
+  const added = asString(raw.added);
+  if (!added) {
+    return false;
+  }
+
+  const parsed = Date.parse(added);
+  if (Number.isNaN(parsed)) {
+    return true;
+  }
+
+  return new Date(parsed).getUTCFullYear() > 1900;
+}
+
+function isTrackedMovieLookupResult(raw: Record<string, unknown>): boolean {
+  return (
+    hasLookupId(raw) ||
+    raw.hasFile === true ||
+    hasTrackedPath(raw) ||
+    hasNonDefaultAddedTimestamp(raw)
+  );
+}
+
+function isTrackedSeriesLookupResult(raw: Record<string, unknown>): boolean {
+  return hasLookupId(raw) || hasTrackedPath(raw) || hasNonDefaultAddedTimestamp(raw);
+}
+
 async function findSupplementalPlexItems(
   term: string,
   kind: SearchKind,
@@ -192,12 +228,7 @@ async function lookupArrItems(
                 items.map(async (item) => {
                   const raw = asRecord(item);
                   const id = asNumber(raw.id);
-                  const tracked =
-                    id !== null ||
-                    raw.hasFile === true ||
-                    raw.monitored === true ||
-                    raw.path !== undefined ||
-                    asString(raw.folderName) !== null;
+                  const tracked = isTrackedMovieLookupResult(raw);
 
                   if (tracked && id !== null) {
                     try {
@@ -233,11 +264,7 @@ async function lookupArrItems(
                 items.map(async (item) => {
                   const raw = asRecord(item);
                   const id = asNumber(raw.id);
-                  const tracked =
-                    id !== null ||
-                    raw.monitored === true ||
-                    raw.path !== undefined ||
-                    asString(raw.folder) !== null;
+                  const tracked = isTrackedSeriesLookupResult(raw);
 
                   if (tracked && id !== null) {
                     try {
@@ -252,6 +279,7 @@ async function lookupArrItems(
                     sourceService: 'sonarr',
                     inArr: tracked,
                     canAdd: !tracked,
+                    status: tracked ? undefined : 'Ready to add',
                     requestPayload: raw,
                   });
                 }),

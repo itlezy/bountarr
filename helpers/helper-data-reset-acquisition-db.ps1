@@ -1,3 +1,5 @@
+﻿#Requires -Version 7.6
+
 <#
 .SYNOPSIS
 Resets the local acquisition SQLite database files.
@@ -16,6 +18,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+if ($PSVersionTable.PSEdition -ne 'Core') {
+    throw 'Run this script with pwsh 7.6 or newer.'
+}
 
 $resolvedRepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
 $dataDirectory = Join-Path -Path $resolvedRepoRoot -ChildPath 'data'

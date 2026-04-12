@@ -7,6 +7,235 @@ afterEach(() => {
 });
 
 describe('lookupItems', () => {
+  it('keeps Sonarr lookup placeholders addable when the series is not actually tracked', async () => {
+    const arrFetch = vi
+      .fn()
+      .mockImplementation(
+        async (
+          _service: string,
+          path: string,
+          _init: unknown,
+          query?: Record<string, string | number>,
+        ) => {
+          if (path === '/api/v3/series/lookup' && query?.term === 'Office') {
+            return [
+              {
+                title: 'The Office (US)',
+                year: 2005,
+                tvdbId: 73244,
+                imdbId: 'tt0386676',
+                monitored: true,
+                folder: 'The Office (US)',
+                path: null,
+                added: '0001-01-01T00:00:00Z',
+              },
+            ];
+          }
+
+          return [];
+        },
+      );
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/plex-service', () => ({
+      searchPlex: vi.fn().mockResolvedValue([]),
+    }));
+    vi.doMock('$lib/server/runtime', () => ({
+      getConfiguredServiceFlags: () => ({
+        configured: true,
+        plexConfigured: false,
+        radarrConfigured: false,
+        sonarrConfigured: true,
+      }),
+    }));
+
+    const module = await import('$lib/server/lookup-service');
+    const results = await module.lookupItems('Office', 'series', undefined, {
+      availability: 'all',
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      title: 'The Office (US)',
+      inArr: false,
+      canAdd: true,
+      status: 'Ready to add',
+    });
+  });
+
+  it('hydrates tracked Sonarr series results when lookup returns a real series id', async () => {
+    const arrFetch = vi
+      .fn()
+      .mockImplementation(
+        async (
+          _service: string,
+          path: string,
+          _init: unknown,
+          query?: Record<string, string | number>,
+        ) => {
+          if (path === '/api/v3/series/lookup' && query?.term === 'Andor') {
+            return [
+              {
+                title: 'Andor',
+                year: 2022,
+                id: 80,
+                tvdbId: 393189,
+                monitored: true,
+                path: 'C:\\TV\\Andor',
+                added: '2025-04-22T10:28:21Z',
+              },
+            ];
+          }
+
+          if (path === '/api/v3/series/80') {
+            return {
+              id: 80,
+              title: 'Andor',
+              year: 2022,
+              monitored: true,
+              path: 'C:\\TV\\Andor',
+            };
+          }
+
+          if (path === '/api/v3/episode' && query?.seriesId === 80) {
+            return [];
+          }
+
+          return [];
+        },
+      );
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/plex-service', () => ({
+      searchPlex: vi.fn().mockResolvedValue([]),
+    }));
+    vi.doMock('$lib/server/runtime', () => ({
+      getConfiguredServiceFlags: () => ({
+        configured: true,
+        plexConfigured: false,
+        radarrConfigured: false,
+        sonarrConfigured: true,
+      }),
+    }));
+
+    const module = await import('$lib/server/lookup-service');
+    const results = await module.lookupItems('Andor', 'series', undefined, {
+      availability: 'all',
+    });
+
+    expect(arrFetch).toHaveBeenCalledWith('sonarr', '/api/v3/series/80');
+    expect(results[0]).toMatchObject({
+      id: 'series:80',
+      title: 'Andor',
+      inArr: true,
+      canAdd: false,
+    });
+  });
+
+  it('filters series results by availability after merging Plex ownership', async () => {
+    const arrFetch = vi
+      .fn()
+      .mockImplementation(
+        async (
+          _service: string,
+          path: string,
+          _init: unknown,
+          query?: Record<string, string | number>,
+        ) => {
+          if (path === '/api/v3/series/lookup' && query?.term === 'Office') {
+            return [
+              {
+                title: 'The Office (US)',
+                year: 2005,
+                tvdbId: 73244,
+                imdbId: 'tt0386676',
+                monitored: true,
+                folder: 'The Office (US)',
+                path: null,
+                added: '0001-01-01T00:00:00Z',
+              },
+              {
+                title: 'Office Joe',
+                year: 2024,
+                tvdbId: 454842,
+                imdbId: 'tt30954909',
+                monitored: true,
+                folder: 'Office Joe',
+                path: null,
+                added: '0001-01-01T00:00:00Z',
+              },
+            ];
+          }
+
+          return [];
+        },
+      );
+
+    const searchPlex = vi.fn().mockImplementation(async (term: string): Promise<MediaItem[]> => {
+      if (term === 'Office') {
+        return [
+          {
+            id: 'plex:series:73244',
+            kind: 'series',
+            title: 'The Office (US)',
+            year: 2005,
+            rating: 8.9,
+            poster: null,
+            overview: 'Plex copy',
+            status: 'Already in Plex',
+            isExisting: false,
+            isRequested: false,
+            auditStatus: 'pending',
+            audioLanguages: [],
+            subtitleLanguages: [],
+            sourceService: 'plex',
+            origin: 'plex',
+            inArr: false,
+            inPlex: true,
+            plexLibraries: ['TV'],
+            canAdd: false,
+            detail: null,
+            requestPayload: {
+              Guid: [{ id: 'tvdb://73244' }],
+            },
+          },
+        ];
+      }
+
+      return [];
+    });
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/plex-service', () => ({
+      searchPlex,
+    }));
+    vi.doMock('$lib/server/runtime', () => ({
+      getConfiguredServiceFlags: () => ({
+        configured: true,
+        plexConfigured: true,
+        radarrConfigured: false,
+        sonarrConfigured: true,
+      }),
+    }));
+
+    const module = await import('$lib/server/lookup-service');
+    const availableResults = await module.lookupItems('Office', 'series', undefined, {
+      availability: 'available-only',
+    });
+    const notAvailableResults = await module.lookupItems('Office', 'series', undefined, {
+      availability: 'not-available-only',
+    });
+
+    expect(availableResults.map((item) => item.title)).toEqual(['The Office (US)']);
+    expect(notAvailableResults.map((item) => item.title)).toEqual(['Office Joe']);
+  });
+
   it('supplements broad search terms with exact Arr titles to suppress Plex-owned results', async () => {
     const arrFetch = vi
       .fn()

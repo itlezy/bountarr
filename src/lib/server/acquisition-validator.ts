@@ -42,6 +42,7 @@ export async function waitForAttemptOutcome(
         preferredReleaser: validation.preferredReleaser,
         progress: validation.progress,
         queueStatus: validation.queueStatus,
+        reasonCode: validation.reasonCode ?? 'validated',
         summary: validation.summary ?? 'Imported and validated',
       };
     }
@@ -52,6 +53,7 @@ export async function waitForAttemptOutcome(
         preferredReleaser: null,
         progress: validation.progress,
         queueStatus: validation.queueStatus,
+        reasonCode: validation.reasonCode ?? 'missing-audio',
         summary: validation.summary ?? 'Imported release failed validation',
       };
     }
@@ -64,6 +66,7 @@ export async function waitForAttemptOutcome(
     preferredReleaser: null,
     progress: job.progress,
     queueStatus: job.queueStatus,
+    reasonCode: 'import-timeout',
     summary: `Timed out after ${acquisitionAttemptTimeoutMinutes()} minutes waiting for import`,
   };
 }

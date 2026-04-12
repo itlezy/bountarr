@@ -42,6 +42,7 @@ export async function validateSeriesAttempt(
         preferredReleaser: null,
         progress: queueItem?.progress ?? null,
         queueStatus: queueItem?.status ?? jobStatusLabel(job.status),
+        reasonCode: null,
         summary: null,
       };
     }
@@ -51,6 +52,7 @@ export async function validateSeriesAttempt(
       preferredReleaser: null,
       progress: job.progress,
       queueStatus: job.queueStatus,
+      reasonCode: null,
       summary: null,
     };
   }
@@ -93,6 +95,7 @@ export async function validateSeriesAttempt(
       queueStatus: queueRecord
         ? (normalizeQueueItem('sonarr', queueRecord)?.status ?? job.queueStatus)
         : job.queueStatus,
+      reasonCode: null,
       summary: 'Imported episodes are waiting for media info',
     };
   }
@@ -107,6 +110,7 @@ export async function validateSeriesAttempt(
       preferredReleaser: null,
       progress: 100,
       queueStatus: 'Imported',
+      reasonCode: failed.auditStatus === 'no-subs' ? 'missing-subs' : 'missing-audio',
       summary:
         failed.auditStatus === 'no-subs'
           ? `One or more imported episodes are missing ${job.preferences.subtitleLanguage} subtitles`
@@ -119,6 +123,7 @@ export async function validateSeriesAttempt(
     preferredReleaser: job.selectedReleaser,
     progress: 100,
     queueStatus: 'Imported',
+    reasonCode: 'validated',
     summary: `Validated ${episodeFileIds.length} imported episode${episodeFileIds.length === 1 ? '' : 's'}`,
   };
 }

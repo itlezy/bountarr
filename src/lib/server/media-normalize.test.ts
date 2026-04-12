@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { itemMatchKeys } from '$lib/server/media-identity';
-import { mergeItems, normalizeItem } from '$lib/server/media-normalize';
+import { mergeItems, normalizeItem, sortSearchResults } from '$lib/server/media-normalize';
 import { defaultPreferences } from '$lib/shared/preferences';
 import type { MediaItem } from '$lib/shared/types';
 
@@ -165,5 +165,81 @@ describe('itemMatchKeys', () => {
 
     expect(keys).toContain('movie:rambo iii:1988');
     expect(keys).toContain('movie:rambo 3:1988');
+  });
+});
+
+describe('sortSearchResults', () => {
+  function searchItem(title: string, year: number, popularity = 0): MediaItem {
+    return {
+      id: `series:${title}`,
+      kind: 'series',
+      title,
+      year,
+      rating: null,
+      poster: null,
+      overview: '',
+      status: 'Ready to add',
+      isExisting: false,
+      isRequested: false,
+      auditStatus: 'pending',
+      audioLanguages: [],
+      subtitleLanguages: [],
+      sourceService: 'sonarr',
+      origin: 'arr',
+      inArr: false,
+      inPlex: false,
+      plexLibraries: [],
+      canAdd: true,
+      detail: null,
+      requestPayload: {
+        popularity,
+      },
+    };
+  }
+
+  it('prefers article-stripped exact title matches over newer series variants', () => {
+    const results = sortSearchResults('office', [
+      searchItem('The Office (AU)', 2024, 500),
+      searchItem('Office Joe', 2024, 900),
+      searchItem('The Office', 2001, 50),
+    ]);
+
+    expect(results.map((item) => item.title)).toEqual([
+      'The Office',
+      'Office Joe',
+      'The Office (AU)',
+    ]);
+  });
+
+  it('prefers exact title matches over newer prefix matches', () => {
+    const results = sortSearchResults('matrix', [
+      searchItem('Matrix Dreads', 2025, 1000),
+      searchItem('The Matrix', 1999, 10),
+    ]);
+
+    expect(results.map((item) => item.title)).toEqual(['The Matrix', 'Matrix Dreads']);
+  });
+
+  it('prefers exact tracked series matches over addable fuzzy matches', () => {
+    const exactTracked = {
+      ...searchItem('Andor', 2022, 10),
+      inArr: true,
+      canAdd: false,
+      status: 'Monitored',
+      isExisting: true,
+      isRequested: true,
+    };
+    const fuzzyAddable = searchItem(
+      'Does It Count If You Lose Your Innocence to an Android?',
+      2026,
+      900,
+    );
+
+    const results = sortSearchResults('andor', [fuzzyAddable, exactTracked]);
+
+    expect(results.map((item) => item.title)).toEqual([
+      'Andor',
+      'Does It Count If You Lose Your Innocence to an Android?',
+    ]);
   });
 });

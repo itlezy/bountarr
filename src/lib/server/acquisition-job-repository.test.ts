@@ -37,6 +37,7 @@ describe('AcquisitionJobRepository', () => {
 
     jobs.upsertAttempt(job.id, {
       attempt: 1,
+      reasonCode: 'validated',
       releaseTitle: 'The.Matrix.1999.1080p.WEB-DL-Flux',
       releaser: 'flux',
       startedAt: '2026-04-02T10:00:00.000Z',
@@ -45,8 +46,10 @@ describe('AcquisitionJobRepository', () => {
     jobs.addFailedGuid(job.id, 'guid-1');
     jobs.addFailedGuid(job.id, 'guid-1');
     jobs.updateJob(job.id, {
+      autoRetrying: true,
       progress: 55,
       queueStatus: 'Waiting for download',
+      reasonCode: 'missing-subs',
       status: 'validating',
     });
 
@@ -54,8 +57,11 @@ describe('AcquisitionJobRepository', () => {
 
     expect(loaded).not.toBeNull();
     expect(loaded?.status).toBe('validating');
+    expect(loaded?.autoRetrying).toBe(true);
     expect(loaded?.progress).toBe(55);
+    expect(loaded?.reasonCode).toBe('missing-subs');
     expect(loaded?.attempts).toHaveLength(1);
+    expect(loaded?.attempts[0]?.reasonCode).toBe('validated');
     expect(loaded?.attempts[0]?.releaseTitle).toContain('Flux');
     expect(loaded?.failedGuids).toEqual(['guid-1']);
   });

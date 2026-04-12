@@ -13,6 +13,7 @@
     "lint": "biome lint .",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
+    "test:integration": "pwsh -NoLogo -NoProfile -File .\\helpers\\helper-test-integration.ps1",
     "reset:db": "pwsh -NoLogo -NoProfile -File .\\helpers\\helper-data-reset-acquisition-db.ps1",
     "smoke": "pwsh -NoLogo -NoProfile -File .\\helpers\\helper-smoke-ui.ps1",
     "validate": "npm run format:check && npm run lint && npm run check && npm run test && npm run build"

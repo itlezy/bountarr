@@ -161,7 +161,9 @@ export async function selectManualRelease(
 
   const selection = await findManualReleaseSelection(job, guid, indexerId);
   const resumed = jobs.updateJob(job.id, {
+    autoRetrying: false,
     completedAt: null,
+    reasonCode: null,
     failureReason: null,
     progress: null,
     queueStatus: 'Manual selection queued',

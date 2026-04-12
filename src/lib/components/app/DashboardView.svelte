@@ -7,7 +7,7 @@ let { state }: { state: AppState } = $props();
 
 <section class="panel-shell relative px-3 py-3 sm:px-4">
   <div>
-    <h2 class="text-lg font-800">Recent audit</h2>
+    <h2 class="text-lg font-800">Download checks</h2>
     <div class="text-sm text-[var(--muted)]">
       {state.dashboard?.updatedAt ? `Updated ${new Date(state.dashboard.updatedAt).toLocaleTimeString()}` : 'Waiting for first sync'}
     </div>
@@ -30,12 +30,34 @@ let { state }: { state: AppState } = $props();
       {state.dashboardError}
     </div>
   {:else if state.dashboard && state.dashboard.items.length > 0}
-    <div class="mt-4 space-y-3">
-      {#each state.dashboard.items as item}
-        <AuditItemCard {item} {state} />
-      {/each}
+    <div class="mt-4 space-y-4">
+      {#if state.auditAttentionItems.length > 0}
+        <div>
+          <div class="text-[11px] font-700 uppercase tracking-[0.12em] text-[var(--muted)]">
+            Needs attention
+          </div>
+          <div class="mt-3 space-y-3">
+            {#each state.auditAttentionItems as item}
+              <AuditItemCard {item} {state} />
+            {/each}
+          </div>
+        </div>
+      {/if}
+
+      {#if state.auditVerifiedItems.length > 0}
+        <div>
+          <div class="text-[11px] font-700 uppercase tracking-[0.12em] text-[var(--muted)]">
+            Recently verified
+          </div>
+          <div class="mt-3 space-y-3">
+            {#each state.auditVerifiedItems as item}
+              <AuditItemCard {item} {state} />
+            {/each}
+          </div>
+        </div>
+      {/if}
     </div>
   {:else}
-    <div class="mt-4 text-sm text-[var(--muted)]">No recent queue or history items to show.</div>
+    <div class="mt-4 text-sm text-[var(--muted)]">No recent downloads need checking.</div>
   {/if}
 </section>

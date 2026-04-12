@@ -8,11 +8,17 @@ let { state }: { state: AppState } = $props();
 
 <section class="panel-shell relative px-3 py-3 sm:px-4">
   <div>
-    <h2 class="text-lg font-800">Active queue</h2>
+    <h2 class="text-lg font-800">Request progress</h2>
     <div class="text-sm text-[var(--muted)]">
       {state.queue?.updatedAt ? `Updated ${new Date(state.queue.updatedAt).toLocaleTimeString()}` : 'Waiting for first sync'}
     </div>
   </div>
+
+  {#if state.queueGuidanceMessage}
+    <div class="mt-4 rounded-[14px] border border-sky-300 bg-sky-50 p-3 text-sm text-sky-700 dark:border-sky-700 dark:bg-sky-950/40 dark:text-sky-200">
+      {state.queueGuidanceMessage}
+    </div>
+  {/if}
 
   {#if state.latestActionMessage}
     <div class="mt-4 rounded-[14px] border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200">
@@ -43,6 +49,6 @@ let { state }: { state: AppState } = $props();
       {/each}
     </div>
   {:else}
-    <div class="mt-4 text-sm text-[var(--muted)]">No active Radarr or Sonarr downloads.</div>
+    <div class="mt-4 text-sm text-[var(--muted)]">No active requests or downloads right now.</div>
   {/if}
 </section>

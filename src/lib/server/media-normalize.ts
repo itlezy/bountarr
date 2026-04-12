@@ -239,13 +239,79 @@ export function mergeItems(left: MediaItem, right: MediaItem): MediaItem {
   };
 }
 
+const leadingArticlePattern = /^(the|a|an)\s+/u;
+
+function canonicalizeSearchTitle(value: string): string {
+  return normalizeToken(value).replace(leadingArticlePattern, '').trim();
+}
+
+function hasPhraseMatch(value: string, phrase: string): boolean {
+  if (value.length === 0 || phrase.length === 0) {
+    return false;
+  }
+
+  return (
+    value === phrase ||
+    value.startsWith(`${phrase} `) ||
+    value.endsWith(` ${phrase}`) ||
+    value.includes(` ${phrase} `)
+  );
+}
+
+function titleStrength(term: string, item: MediaItem): number {
+  const normalizedTitle = normalizeToken(item.title);
+  const canonicalTitle = canonicalizeSearchTitle(item.title);
+  const canonicalTerm = canonicalizeSearchTitle(term);
+
+  if (normalizedTitle === term) {
+    return 7;
+  }
+
+  if (canonicalTitle === canonicalTerm) {
+    return 6;
+  }
+
+  if (normalizedTitle.startsWith(`${term} `)) {
+    return 5;
+  }
+
+  if (canonicalTitle.startsWith(`${canonicalTerm} `)) {
+    return 4;
+  }
+
+  if (hasPhraseMatch(normalizedTitle, term)) {
+    return 3;
+  }
+
+  if (hasPhraseMatch(canonicalTitle, canonicalTerm)) {
+    return 2;
+  }
+
+  if (normalizedTitle.includes(term) || canonicalTitle.includes(canonicalTerm)) {
+    return 1;
+  }
+
+  return 0;
+}
+
 export function sortSearchResults(term: string, items: MediaItem[]): MediaItem[] {
   const normalizedTerm = normalizeToken(term);
 
   return [...items].sort((left, right) => {
+    const titleDifference =
+      titleStrength(normalizedTerm, right) - titleStrength(normalizedTerm, left);
+    const seriesOnly = left.kind === 'series' && right.kind === 'series';
+    if (seriesOnly && titleDifference !== 0) {
+      return titleDifference;
+    }
+
     const addableDifference = Number(right.canAdd) - Number(left.canAdd);
     if (addableDifference !== 0) {
       return addableDifference;
+    }
+
+    if (titleDifference !== 0) {
+      return titleDifference;
     }
 
     const yearDifference = (right.year ?? 0) - (left.year ?? 0);
@@ -256,28 +322,6 @@ export function sortSearchResults(term: string, items: MediaItem[]): MediaItem[]
     const popularityDifference = extractPopularity(right) - extractPopularity(left);
     if (popularityDifference !== 0) {
       return popularityDifference;
-    }
-
-    const titleStrength = (item: MediaItem) => {
-      const normalizedTitle = normalizeToken(item.title);
-      if (normalizedTitle === normalizedTerm) {
-        return 3;
-      }
-
-      if (normalizedTitle.startsWith(normalizedTerm)) {
-        return 2;
-      }
-
-      if (normalizedTitle.includes(normalizedTerm)) {
-        return 1;
-      }
-
-      return 0;
-    };
-
-    const titleDifference = titleStrength(right) - titleStrength(left);
-    if (titleDifference !== 0) {
-      return titleDifference;
     }
 
     return left.title.localeCompare(right.title);

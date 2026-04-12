@@ -3,6 +3,7 @@ import { ensureAcquisitionSchema, getAcquisitionDatabase } from '$lib/server/acq
 import { queueCache } from '$lib/server/app-cache';
 import type { PersistedAcquisitionJob } from '$lib/server/acquisition-domain';
 import { sortJobs } from '$lib/server/acquisition-domain';
+import type { AcquisitionReasonCode } from '$lib/shared/types';
 import { sanitizePreferredLanguage } from '$lib/shared/languages';
 import type { AcquisitionAttempt, MediaKind } from '$lib/shared/types';
 
@@ -19,8 +20,10 @@ type JobRow = {
   current_release: string | null;
   selected_releaser: string | null;
   preferred_releaser: string | null;
+  reason_code: AcquisitionReasonCode | null;
   failure_reason: string | null;
   validation_summary: string | null;
+  auto_retrying: number | null;
   progress: number | null;
   queue_status: string | null;
   preferred_language: string;
@@ -34,6 +37,7 @@ type AttemptRow = {
   job_id: string;
   attempt: number;
   status: AcquisitionAttempt['status'];
+  reason_code: AcquisitionReasonCode | null;
   release_title: string | null;
   releaser: string | null;
   reason: string | null;
@@ -78,6 +82,7 @@ export type UpdateAcquisitionJobPatch = Partial<
 export type UpsertAcquisitionAttemptInput = {
   attempt: number;
   finishedAt?: string | null;
+  reasonCode?: AcquisitionReasonCode | null;
   reason?: string | null;
   releaseTitle?: string | null;
   releaser?: string | null;
@@ -135,6 +140,7 @@ export class AcquisitionJobRepository {
       attempts.push({
         attempt: row.attempt,
         status: row.status,
+        reasonCode: row.reason_code,
         releaseTitle: row.release_title,
         releaser: row.releaser,
         reason: row.reason,
@@ -165,8 +171,10 @@ export class AcquisitionJobRepository {
         currentRelease: row.current_release,
         selectedReleaser: row.selected_releaser,
         preferredReleaser: row.preferred_releaser,
+        reasonCode: row.reason_code,
         failureReason: row.failure_reason,
         validationSummary: row.validation_summary,
+        autoRetrying: row.auto_retrying === 1,
         progress: row.progress,
         queueStatus: row.queue_status,
         preferences: {
@@ -264,8 +272,10 @@ export class AcquisitionJobRepository {
       currentRelease: null,
       selectedReleaser: null,
       preferredReleaser: input.preferredReleaser,
+      reasonCode: null,
       failureReason: null,
       validationSummary: null,
+      autoRetrying: false,
       progress: null,
       queueStatus: 'Queued',
       preferences: input.preferences,
@@ -282,9 +292,9 @@ export class AcquisitionJobRepository {
           `INSERT INTO acquisition_jobs (
             id, item_id, arr_item_id, kind, title, source_service, status, attempt,
             max_retries, current_release, selected_releaser, preferred_releaser,
-            failure_reason, validation_summary, progress, queue_status,
+            reason_code, failure_reason, validation_summary, auto_retrying, progress, queue_status,
             preferred_language, subtitle_language, started_at, updated_at, completed_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           job.id,
@@ -299,8 +309,10 @@ export class AcquisitionJobRepository {
           job.currentRelease,
           job.selectedReleaser,
           job.preferredReleaser,
+          job.reasonCode,
           job.failureReason,
           job.validationSummary,
+          job.autoRetrying ? 1 : 0,
           job.progress,
           job.queueStatus,
           job.preferences.preferredLanguage,
@@ -336,8 +348,8 @@ export class AcquisitionJobRepository {
         .prepare(
           `UPDATE acquisition_jobs SET
             status = ?, attempt = ?, current_release = ?, selected_releaser = ?,
-            preferred_releaser = ?, failure_reason = ?, validation_summary = ?,
-            progress = ?, queue_status = ?, preferred_language = ?, subtitle_language = ?,
+            preferred_releaser = ?, reason_code = ?, failure_reason = ?, validation_summary = ?,
+            auto_retrying = ?, progress = ?, queue_status = ?, preferred_language = ?, subtitle_language = ?,
             updated_at = ?, completed_at = ?
            WHERE id = ?`,
         )
@@ -347,8 +359,10 @@ export class AcquisitionJobRepository {
           next.currentRelease,
           next.selectedReleaser,
           next.preferredReleaser,
+          next.reasonCode,
           next.failureReason,
           next.validationSummary,
+          next.autoRetrying ? 1 : 0,
           next.progress,
           next.queueStatus,
           next.preferences.preferredLanguage,
@@ -372,6 +386,7 @@ export class AcquisitionJobRepository {
       job_id: jobId,
       attempt: input.attempt,
       status: input.status,
+      reason_code: input.reasonCode ?? existing?.reason_code ?? null,
       release_title: input.releaseTitle ?? existing?.release_title ?? null,
       releaser: input.releaser ?? existing?.releaser ?? null,
       reason: input.reason ?? existing?.reason ?? null,
@@ -384,10 +399,11 @@ export class AcquisitionJobRepository {
       this.database
         .prepare(
           `INSERT INTO acquisition_attempts (
-            job_id, attempt, status, release_title, releaser, reason, started_at, finished_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            job_id, attempt, status, reason_code, release_title, releaser, reason, started_at, finished_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(job_id, attempt) DO UPDATE SET
             status = excluded.status,
+            reason_code = excluded.reason_code,
             release_title = excluded.release_title,
             releaser = excluded.releaser,
             reason = excluded.reason,
@@ -398,6 +414,7 @@ export class AcquisitionJobRepository {
           row.job_id,
           row.attempt,
           row.status,
+          row.reason_code,
           row.release_title,
           row.releaser,
           row.reason,

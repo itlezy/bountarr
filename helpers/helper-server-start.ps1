@@ -1,3 +1,5 @@
+﻿#Requires -Version 7.6
+
 <#
 .SYNOPSIS
 Starts the built Bountarr server using the repository environment file when present.
@@ -28,6 +30,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+if ($PSVersionTable.PSEdition -ne 'Core') {
+    throw 'Run this script with pwsh 7.6 or newer.'
+}
 
 $resolvedRepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
 $buildEntryPoint = Join-Path -Path $resolvedRepoRoot -ChildPath 'build/index.js'

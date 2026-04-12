@@ -1,4 +1,5 @@
 import type {
+  AcquisitionAttempt,
   AcquisitionJob,
   AppView,
   AuditStatus,
@@ -10,12 +11,13 @@ import type {
   RequestResponse,
   SearchKind,
 } from '$lib/shared/types';
+import { acquisitionNextAction, acquisitionReasonLabel } from '$lib/shared/acquisition-reasons';
 
 export const viewOptions: Array<{ value: AppView; label: string }> = [
   { value: 'search', label: 'Search' },
   { value: 'queue', label: 'Queue' },
-  { value: 'dashboard', label: 'Audit queue' },
-  { value: 'status', label: 'Arr / Plex status' },
+  { value: 'dashboard', label: 'Download checks' },
+  { value: 'status', label: 'System status' },
   { value: 'settings', label: 'Settings' },
 ];
 
@@ -35,33 +37,33 @@ export const statusTone: Record<AuditStatus, string> = {
 export function auditLabel(status: AuditStatus): string {
   switch (status) {
     case 'verified':
-      return 'Verified';
+      return 'Looks good';
     case 'missing-language':
       return 'Missing audio';
     case 'no-subs':
-      return 'Missing subs';
+      return 'Missing subtitles';
     case 'unknown':
       return 'Unknown';
     default:
-      return 'Pending';
+      return 'Checking';
   }
 }
 
 export function actionLabel(item: MediaItem, requestingId: string | null): string {
   if (requestingId === item.id) {
-    return 'Adding...';
+    return 'Requesting...';
   }
 
   if (item.canAdd) {
-    return 'Add to Arr';
+    return 'Request this';
   }
 
   if (item.inArr) {
-    return 'Already in Arr';
+    return 'Already requested';
   }
 
   if (item.inPlex) {
-    return 'Only in Plex';
+    return 'Available now';
   }
 
   return 'Unavailable';
@@ -73,39 +75,63 @@ export function actionDisabled(item: MediaItem, requestingId: string | null): bo
 
 export function deleteActionLabel(item: MediaItem, deletingId: string | null): string {
   if (deletingId === item.id) {
-    return 'Deleting...';
+    return 'Removing...';
   }
 
-  return 'Delete from Arr';
+  return 'Remove from library system';
+}
+
+export function mediaKindLabel(kind: MediaItem['kind']): string {
+  return kind === 'movie' ? 'Movie' : 'Show';
 }
 
 export function resultState(item: MediaItem): string {
   if (item.inArr && item.inPlex) {
-    return 'In Arr + Plex';
+    return 'Already requested and available now';
   }
 
   if (item.inArr) {
-    return 'In Arr';
+    return 'Already requested';
   }
 
   if (item.inPlex) {
-    return 'In Plex only';
+    return 'Available in Plex';
   }
 
-  return 'Addable';
+  return 'Ready to request';
 }
 
 export function resultSummary(item: MediaItem): string {
-  const source =
-    item.kind === 'movie'
-      ? item.sourceService === 'radarr'
-        ? 'Radarr'
-        : 'Plex'
-      : item.sourceService === 'sonarr'
-        ? 'Sonarr'
-        : 'Plex';
+  return `${mediaKindLabel(item.kind)} · ${resultState(item)}`;
+}
 
-  return `${item.kind} · ${resultState(item)} · ${source}`;
+export function resultMessage(item: MediaItem): string {
+  if (item.inArr && item.inPlex) {
+    return 'This title is already in your request system and already available in Plex.';
+  }
+
+  if (item.inArr) {
+    return 'This title is already being tracked in your request system.';
+  }
+
+  if (item.inPlex) {
+    return 'This title is already available in Plex.';
+  }
+
+  return 'This title can be requested now.';
+}
+
+export function canOperatorRequestFromPlex(item: MediaItem): boolean {
+  return item.inPlex && !item.inArr && item.origin === 'merged' && item.requestPayload !== null;
+}
+
+export function operatorOverrideItem(item: MediaItem): MediaItem {
+  return {
+    ...item,
+    canAdd: true,
+    sourceService: item.kind === 'movie' ? 'radarr' : 'sonarr',
+    origin: 'arr',
+  };
 }
 
 export function formatRating(rating: number | null): string | null {
@@ -121,9 +147,9 @@ export function viewLabel(view: AppView): string {
     case 'queue':
       return 'Queue';
     case 'dashboard':
-      return 'Audit queue';
+      return 'Download checks';
     case 'status':
-      return 'Service status';
+      return 'System status';
     case 'settings':
       return 'Settings';
     default:
@@ -169,12 +195,66 @@ export function defaultQualityProfileId(
 export function acquisitionStatusLabel(status: AcquisitionJob['status']): string {
   switch (status) {
     case 'cancelled':
-      return 'Cancelled';
+      return 'Stopped';
+    case 'grabbing':
+      return 'Sending to downloader';
+    case 'retrying':
+      return 'Trying another option';
+    case 'searching':
+      return 'Looking for a release';
+    case 'queued':
+      return 'Getting started';
     case 'validating':
-      return 'Validating';
+      return 'Checking the download';
+    case 'completed':
+      return 'Ready';
+    case 'failed':
+      return 'Needs attention';
     default:
-      return status.replace(/-/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+      return 'Working';
   }
+}
+
+export function acquisitionReasonSummary(job: AcquisitionJob): string | null {
+  return acquisitionReasonLabel(job.reasonCode) ?? job.failureReason ?? job.validationSummary;
+}
+
+export function acquisitionNextStep(job: AcquisitionJob): string | null {
+  return acquisitionNextAction(job);
+}
+
+export function acquisitionAttemptSummary(attempt: AcquisitionAttempt): string {
+  const parts = [acquisitionStatusLabel(attempt.status)];
+  const reason = acquisitionReasonLabel(attempt.reasonCode) ?? attempt.reason;
+  if (reason) {
+    parts.push(reason);
+  }
+
+  return parts.join(' · ');
+}
+
+export function acquisitionJourneySummary(job: AcquisitionJob): string {
+  return `${mediaKindLabel(job.kind)} request · ${acquisitionStatusLabel(job.status)}`;
+}
+
+export function queueItemSummary(item: QueueItem): string {
+  return `${mediaKindLabel(item.kind)} download · ${item.status}`;
+}
+
+export function queueItemNextStep(item: QueueItem): string {
+  if (item.progress !== null && item.progress >= 100) {
+    return 'Waiting for import to finish.';
+  }
+
+  if (item.timeLeft) {
+    return `About ${item.timeLeft} left.`;
+  }
+
+  if (item.estimatedCompletionTime) {
+    return `Expected around ${new Date(item.estimatedCompletionTime).toLocaleTimeString()}.`;
+  }
+
+  return 'Download progress is updating.';
 }
 
 export function manualReleaseStatusLabel(status: ManualReleaseResult['status']): string {
@@ -243,7 +323,31 @@ export function requestFeedbackMessage(result: RequestResponse): string {
     return result.releaseDecision?.reason ?? result.message;
   }
 
-  return `${acquisitionStatusLabel(result.job.status)} · attempt ${result.job.attempt}/${result.job.maxRetries}${result.job.validationSummary ? ` · ${result.job.validationSummary}` : ''}`;
+  const parts = [
+    acquisitionStatusLabel(result.job.status),
+    `attempt ${result.job.attempt}/${result.job.maxRetries}`,
+  ];
+  const summary = acquisitionReasonSummary(result.job);
+  if (summary) {
+    parts.push(summary);
+  }
+
+  return parts.join(' · ');
+}
+
+export function auditDetailSummary(item: MediaItem): string {
+  switch (item.auditStatus) {
+    case 'verified':
+      return 'Audio and subtitle checks match your current preferences.';
+    case 'missing-language':
+      return 'The downloaded media is missing your preferred audio language.';
+    case 'no-subs':
+      return 'The downloaded media is missing the subtitle language you asked for.';
+    case 'unknown':
+      return 'The app could not read enough media details to confirm this item yet.';
+    default:
+      return 'The app is still checking this download.';
+  }
 }
 
 export function downloadedSummary(item: QueueItem): string {

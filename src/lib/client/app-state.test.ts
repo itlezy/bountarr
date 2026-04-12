@@ -239,8 +239,10 @@ describe('app state', () => {
         currentRelease: null,
         selectedReleaser: null,
         preferredReleaser: null,
+        reasonCode: null,
         failureReason: null,
         validationSummary: null,
+        autoRetrying: false,
         progress: null,
         queueStatus: 'Queued',
         preferences: {
@@ -269,11 +271,13 @@ describe('app state', () => {
     await state.submitRequest(movieItem, state.confirmQualityProfileId);
 
     expect(state.activeView).toBe('queue');
-    expect(state.latestActionMessage).toBeNull();
+    expect(state.latestActionMessage).toBe('Request sent. The Matrix is now in Queue.');
     expect(state.addSuccessToastMessage).toBe(requestResponse.message);
-    expect(state.requestFeedback[movieItem.id]).toContain('Queued');
+    expect(state.requestFeedback[movieItem.id]).toContain('Getting started');
     expect(state.searchResults[0]?.inArr).toBe(true);
     expect(state.confirmAddItem).toBeNull();
+    expect(state.guidedQueueJobId).toBe('job-1');
+    expect(state.queueGuidanceMessage).toContain('The Matrix');
     expect(dependencies.api.fetchQueue).toHaveBeenCalledTimes(1);
     expect(dependencies.api.refreshDashboard).toHaveBeenCalledTimes(1);
   });
@@ -318,6 +322,28 @@ describe('app state', () => {
     timer();
 
     expect(state.addSuccessToastMessage).toBeNull();
+  });
+
+  it('opens a Plex operator override as a requestable Arr-backed item', () => {
+    const state = new AppState(pageData, createDependencies());
+    const plexMergedItem: MediaItem = {
+      ...movieItem,
+      sourceService: 'plex',
+      origin: 'merged',
+      inPlex: true,
+      canAdd: false,
+      plexLibraries: ['Movies'],
+      status: 'Available in Plex',
+    };
+
+    state.openAddConfirm(plexMergedItem, { operatorOverride: true });
+
+    expect(state.confirmOperatorOverride).toBe(true);
+    expect(state.confirmAddItem).toMatchObject({
+      canAdd: true,
+      sourceService: 'radarr',
+      origin: 'arr',
+    });
   });
 
   it('clears search results for short queries without hitting the API', async () => {
@@ -433,6 +459,40 @@ describe('app state', () => {
       'Blade Runner',
       'Zulu',
     ]);
+  });
+
+  it('surfaces attention-needed audit items before verified ones', () => {
+    const state = new AppState(
+      {
+        ...pageData,
+        recentPlex: [],
+      },
+      createDependencies(),
+    );
+    state.dashboard = {
+      ...dashboardResponse,
+      items: [
+        {
+          ...movieItem,
+          id: 'movie:1',
+          title: 'Verified Item',
+          auditStatus: 'verified',
+          inArr: true,
+          canAdd: false,
+        },
+        {
+          ...movieItem,
+          id: 'movie:2',
+          title: 'Needs Audio',
+          auditStatus: 'missing-language',
+          inArr: true,
+          canAdd: false,
+        },
+      ],
+    };
+
+    expect(state.auditAttentionItems.map((item) => item.title)).toEqual(['Needs Audio']);
+    expect(state.auditVerifiedItems.map((item) => item.title)).toEqual(['Verified Item']);
   });
 
   it('deletes Arr items after confirmation and refreshes search/dashboard state', async () => {

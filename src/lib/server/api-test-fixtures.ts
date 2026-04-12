@@ -168,8 +168,10 @@ export const queueResponseFixture: QueueResponse = {
       currentRelease: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
       selectedReleaser: 'flux',
       preferredReleaser: 'flux',
+      reasonCode: null,
       failureReason: null,
       validationSummary: null,
+      autoRetrying: false,
       progress: 75,
       queueStatus: 'Downloading',
       preferences: {
@@ -183,6 +185,7 @@ export const queueResponseFixture: QueueResponse = {
         {
           attempt: 1,
           status: 'validating',
+          reasonCode: null,
           releaseTitle: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
           releaser: 'flux',
           reason: null,

@@ -16,7 +16,9 @@ let { state }: { state: AppState } = $props();
     <section class="floating-shell w-full max-w-sm p-4">
       <div class="flex items-start justify-between gap-3">
         <div>
-          <div class="text-lg font-800">Add to Arr</div>
+          <div class="text-lg font-800">
+            {state.confirmOperatorOverride ? 'Request anyway' : 'Request title'}
+          </div>
           <div class="mt-1 text-sm text-[var(--muted)]">
             {state.confirmAddItem.title}{state.confirmAddItem.year ? ` (${state.confirmAddItem.year})` : ''}
           </div>
@@ -75,14 +77,19 @@ let { state }: { state: AppState } = $props();
             </select>
           </label>
         </div>
+        {#if state.confirmOperatorOverride}
+          <div class="mt-3 rounded-[14px] border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+            Plex already has this title. This override will still send a managed request to Arr.
+          </div>
+        {/if}
         <div class="mt-3 text-xs text-[var(--muted)]">
-          Defaults come from Settings. Confirming this add also updates your local defaults to match these choices.
+          Defaults come from Settings. Confirming this request also updates your local defaults to match these choices.
         </div>
         <div class="mt-2 text-xs text-[var(--muted)]">
-          `Any` leaves audio or subtitles unconstrained for this add. Choosing a specific subtitle language makes that subtitle language required.
+          `Any` leaves audio or subtitles unconstrained for this request. Choosing a specific subtitle language makes that subtitle language required.
         </div>
         <div class="mt-2 text-xs text-[var(--muted)]">
-          The env-configured quality profile is used as the default, but you can override it for this add.
+          The env-configured quality profile is used as the default, but you can override it for this request.
         </div>
       </div>
 
@@ -93,7 +100,7 @@ let { state }: { state: AppState } = $props();
           onclick={() => state.closeAddConfirm()}
           disabled={state.requesting === state.confirmAddItem.id}
         >
-          Cancel
+          Not now
         </button>
         <button
           class="control-primary min-h-11 px-4 text-sm font-700 disabled:cursor-not-allowed disabled:opacity-50"
@@ -114,7 +121,7 @@ let { state }: { state: AppState } = $props();
           }}
           disabled={state.requesting === state.confirmAddItem.id}
         >
-          {state.requesting === state.confirmAddItem.id ? 'Adding...' : 'Confirm'}
+          {state.requesting === state.confirmAddItem.id ? 'Requesting...' : 'Request'}
         </button>
       </div>
     </section>

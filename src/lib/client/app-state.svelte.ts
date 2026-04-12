@@ -12,9 +12,11 @@ import {
   submitRequest,
 } from '$lib/client/api';
 import {
+  canOperatorRequestFromPlex,
   defaultQualityProfileId,
   kindLabel,
   mergeSearchItem,
+  operatorOverrideItem,
   qualityProfileOptions,
   requestFeedbackMessage,
 } from '$lib/client/app-ui';
@@ -301,9 +303,13 @@ export class AppState {
   notificationState = $state<NotificationPermission | 'unsupported' | 'idle'>('idle');
   kindMenuOpen = $state(false);
   confirmAddItem = $state<MediaItem | null>(null);
+  confirmOperatorOverride = $state(false);
   confirmQualityProfileId = $state<number | null>(null);
   confirmPreferredLanguage = $state<PreferredLanguage>(defaultPreferences.preferredLanguage);
   confirmSubtitleLanguage = $state<PreferredLanguage>(defaultPreferences.subtitleLanguage);
+  operatorReveals = $state<Record<string, boolean>>({});
+  guidedQueueJobId = $state<string | null>(null);
+  guidedQueueTitle = $state<string | null>(null);
 
   constructor(
     dataSource: PageData | (() => PageData),
@@ -340,6 +346,22 @@ export class AppState {
 
   get visibleSearchResults(): MediaItem[] {
     return sortSearchItems(this.searchResults, this.sortField, this.sortDirection);
+  }
+
+  get auditAttentionItems(): MediaItem[] {
+    return [...(this.dashboard?.items ?? [])]
+      .filter((item) => item.auditStatus !== 'verified')
+      .sort((left, right) =>
+        left.title.localeCompare(right.title, undefined, { sensitivity: 'base' }),
+      );
+  }
+
+  get auditVerifiedItems(): MediaItem[] {
+    return [...(this.dashboard?.items ?? [])]
+      .filter((item) => item.auditStatus === 'verified')
+      .sort((left, right) =>
+        left.title.localeCompare(right.title, undefined, { sensitivity: 'base' }),
+      );
   }
 
   qualityProfileOptions(item: MediaItem | null): QualityProfileOption[] {
@@ -447,13 +469,63 @@ export class AppState {
     this.kindMenuOpen = false;
   }
 
-  openAddConfirm(item: MediaItem): void {
-    if (!item.canAdd) {
+  private operatorRevealKey(scope: 'search' | 'queue' | 'audit' | 'job', id: string): string {
+    return `${scope}:${id}`;
+  }
+
+  operatorRevealOpen(scope: 'search' | 'queue' | 'audit' | 'job', id: string): boolean {
+    return this.operatorReveals[this.operatorRevealKey(scope, id)] === true;
+  }
+
+  toggleOperatorReveal(scope: 'search' | 'queue' | 'audit' | 'job', id: string): void {
+    const key = this.operatorRevealKey(scope, id);
+    this.operatorReveals = {
+      ...this.operatorReveals,
+      [key]: !this.operatorRevealOpen(scope, id),
+    };
+  }
+
+  canOperatorRequestFromPlex(item: MediaItem): boolean {
+    return canOperatorRequestFromPlex(item);
+  }
+
+  hasSearchOperatorActions(item: MediaItem): boolean {
+    return this.canOperatorRequestFromPlex(item) || item.canDeleteFromArr === true;
+  }
+
+  hasQueueOperatorActions(item: QueueItem): boolean {
+    return item.arrItemId !== null || item.queueId !== null;
+  }
+
+  hasAuditOperatorActions(item: MediaItem): boolean {
+    return item.canDeleteFromArr === true;
+  }
+
+  isGuidedQueueJob(jobId: string): boolean {
+    return this.guidedQueueJobId === jobId;
+  }
+
+  get queueGuidanceMessage(): string | null {
+    if (!this.guidedQueueTitle) {
+      return null;
+    }
+
+    return `Tracking ${this.guidedQueueTitle} below so you can see what happens next.`;
+  }
+
+  openAddConfirm(item: MediaItem, options?: { operatorOverride?: boolean }): void {
+    const requestItem =
+      options?.operatorOverride && this.canOperatorRequestFromPlex(item)
+        ? operatorOverrideItem(item)
+        : item;
+
+    if (!requestItem.canAdd) {
       return;
     }
 
-    this.confirmAddItem = item;
-    this.confirmQualityProfileId = this.defaultQualityProfileId(item);
+    this.confirmAddItem = requestItem;
+    this.confirmOperatorOverride = options?.operatorOverride === true;
+    this.confirmQualityProfileId = this.defaultQualityProfileId(requestItem);
     this.confirmPreferredLanguage = this.preferredLanguage;
     this.confirmSubtitleLanguage = this.subtitleLanguage;
     this.requestError = null;
@@ -470,6 +542,7 @@ export class AppState {
 
   resetAddConfirm(): void {
     this.confirmAddItem = null;
+    this.confirmOperatorOverride = false;
     this.confirmQualityProfileId = null;
     this.confirmPreferredLanguage = this.preferredLanguage;
     this.confirmSubtitleLanguage = this.subtitleLanguage;
@@ -764,6 +837,9 @@ export class AppState {
       this.subtitleLanguage = requestPreferences.subtitleLanguage;
       this.dependencies.storage.savePreferences(this.preferences);
       this.showAddSuccessToast(result.message);
+      this.latestActionMessage = result.job
+        ? `Request sent. ${result.item.title} is now in Queue.`
+        : result.message;
       this.requestFeedback = {
         ...this.requestFeedback,
         [item.id]: requestFeedbackMessage(result),
@@ -773,6 +849,8 @@ export class AppState {
         candidate.id === item.id ? mergeSearchItem(candidate, result.item) : candidate,
       );
       this.resetAddConfirm();
+      this.guidedQueueJobId = result.job?.id ?? null;
+      this.guidedQueueTitle = result.item.title;
       this.activeView = 'queue';
       await Promise.all([this.loadDashboard(true), this.loadQueue()]);
     } catch (error) {

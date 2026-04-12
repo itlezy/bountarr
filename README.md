@@ -1,14 +1,14 @@
 # Bountarr
 
-LAN-first request and audit UI for Radarr and Sonarr.
+LAN-first household request concierge for Radarr and Sonarr, with queue follow-through, download checks, and embedded operator tools.
 
 ## Features
 
-- unified movie/show search through Arr lookup endpoints, with optional Plex enrichment
-- add missing titles directly from search, then run an app-owned acquisition job
-- acquisition jobs trigger manual search, score releases, wait for import, validate language/subtitles, and retry when needed
-- dashboard with recent queue/history and audio/subtitle audit badges
-- local browser preferences for theme, preferred language, and subtitle requirement
+- unified movie/show search with optional Plex enrichment and household-friendly availability states
+- guided request flow that sends new requests into Queue and explains what happens next
+- app-owned acquisition jobs that search releases, validate imports, retry automatically, and expose operator-only manual release tools
+- download checks view that surfaces missing audio/subtitle problems before verified items
+- operator support views for queue control, runtime health, and local preferences
 - browser notifications for request results and audit failures
 
 ## Configuration
@@ -51,6 +51,15 @@ npm run format
 npm run lint
 npm run validate
 ```
+
+Destructive live integration tests are available for the local stack:
+
+```powershell
+$env:BOUNTARR_ALLOW_LIVE_INTEGRATION = '1'
+npm run test:integration
+```
+
+The live suite reuses the current `.env`, mutates the configured Radarr stack, and deletes the test-owned movie `Dredd (2012)` during cleanup.
 
 Coding and logging conventions live in [`docs/CODING_STANDARDS.md`](docs/CODING_STANDARDS.md).
 

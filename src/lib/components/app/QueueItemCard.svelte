@@ -1,5 +1,5 @@
 <script lang="ts">
-import { downloadedSummary } from '$lib/client/app-ui';
+import { downloadedSummary, queueItemNextStep, queueItemSummary } from '$lib/client/app-ui';
 import type { AppState } from '$lib/client/app-state.svelte';
 import type { QueueItem } from '$lib/shared/types';
 
@@ -21,7 +21,7 @@ let { item, state }: { item: QueueItem; state: AppState } = $props();
         <div class="min-w-0">
           <div class="text-base font-800">{item.title}</div>
           <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">
-            {item.sourceService} · {item.status}{item.detail ? ` · ${item.detail}` : ''}
+            {queueItemSummary(item)}
           </div>
         </div>
         {#if item.progress !== null}
@@ -38,28 +38,49 @@ let { item, state }: { item: QueueItem; state: AppState } = $props();
 
       <div class="mt-3 grid gap-2 text-sm sm:grid-cols-2">
         <div>
-          <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Time left</div>
-          <div>{item.timeLeft ?? 'Unknown'}</div>
+          <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Next step</div>
+          <div>{queueItemNextStep(item)}</div>
         </div>
         <div>
-          <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">ETA</div>
-          <div>{item.estimatedCompletionTime ? new Date(item.estimatedCompletionTime).toLocaleString() : 'Unknown'}</div>
-        </div>
-        <div>
-          <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Downloaded</div>
+          <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Download progress</div>
           <div>{downloadedSummary(item)}</div>
+        </div>
+        <div class="sm:col-span-2">
+          <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Queue detail</div>
+          <div>
+            {item.status}
+            {#if item.detail}
+              · {item.detail}
+            {/if}
+            {#if item.estimatedCompletionTime}
+              · ETA {new Date(item.estimatedCompletionTime).toLocaleString()}
+            {/if}
+          </div>
         </div>
       </div>
 
-      {#if item.arrItemId !== null || item.queueId !== null}
+      {#if state.hasQueueOperatorActions(item)}
         <div class="mt-3">
           <button
-            class="control-shell min-h-10 w-full border-rose-300 px-4 text-sm font-700 text-rose-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-700 dark:text-rose-200"
+            class="control-shell min-h-10 w-full px-4 text-sm font-700"
+            type="button"
+            onclick={() => state.toggleOperatorReveal('queue', item.id)}
+          >
+            {state.operatorRevealOpen('queue', item.id) ? 'Hide operator tools' : 'Show operator tools'}
+          </button>
+        </div>
+      {/if}
+
+      {#if state.operatorRevealOpen('queue', item.id)}
+        <div class="mt-3 rounded-[14px] border border-[var(--line)] bg-[var(--surface)] p-3">
+          <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Operator tools</div>
+          <button
+            class="control-shell mt-3 min-h-10 w-full border-rose-300 px-4 text-sm font-700 text-rose-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-700 dark:text-rose-200"
             type="button"
             onclick={() => void state.deleteQueueArrItem(item)}
             disabled={state.deletingItemId === item.id}
           >
-            {state.deletingItemId === item.id ? 'Deleting...' : 'Delete from Arr'}
+            {state.deletingItemId === item.id ? 'Removing...' : 'Remove from library system'}
           </button>
         </div>
       {/if}

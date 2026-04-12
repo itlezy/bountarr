@@ -1,6 +1,6 @@
 <script lang="ts">
 import type { AppState } from '$lib/client/app-state.svelte';
-import { auditLabel, deleteActionLabel, statusTone } from '$lib/client/app-ui';
+import { auditDetailSummary, auditLabel, deleteActionLabel, statusTone } from '$lib/client/app-ui';
 import type { MediaItem } from '$lib/shared/types';
 
 let { item, state }: { item: MediaItem; state: AppState } = $props();
@@ -35,6 +35,10 @@ function fileNameOnly(value: string): string {
         </span>
       </div>
 
+      <div class="mt-3 rounded-[14px] border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--muted)]">
+        {auditDetailSummary(item)}
+      </div>
+
       {#if item.detail}
         <div class="mt-3 rounded-[14px] border border-[var(--line)] bg-[var(--surface)] px-3 py-2">
           <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">File name</div>
@@ -53,10 +57,23 @@ function fileNameOnly(value: string): string {
         </div>
       </div>
 
-      {#if item.canDeleteFromArr}
+      {#if state.hasAuditOperatorActions(item)}
         <div class="mt-3">
           <button
-            class="control-shell min-h-11 w-full border-rose-300 px-4 text-sm font-700 text-rose-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-700 dark:text-rose-200"
+            class="control-shell min-h-10 w-full px-4 text-sm font-700"
+            type="button"
+            onclick={() => state.toggleOperatorReveal('audit', item.id)}
+          >
+            {state.operatorRevealOpen('audit', item.id) ? 'Hide operator tools' : 'Show operator tools'}
+          </button>
+        </div>
+      {/if}
+
+      {#if state.operatorRevealOpen('audit', item.id)}
+        <div class="mt-3 rounded-[14px] border border-[var(--line)] bg-[var(--surface)] p-3">
+          <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Operator tools</div>
+          <button
+            class="control-shell mt-3 min-h-11 w-full border-rose-300 px-4 text-sm font-700 text-rose-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-700 dark:text-rose-200"
             type="button"
             disabled={state.deletingItemId === item.id}
             onclick={() => void state.deleteMediaItem(item)}

@@ -18,6 +18,15 @@ export type AcquisitionStatus =
   | 'completed'
   | 'failed'
   | 'cancelled';
+export type AcquisitionReasonCode =
+  | 'validated'
+  | 'missing-audio'
+  | 'missing-subs'
+  | 'import-timeout'
+  | 'no-release-available'
+  | 'no-acceptable-release'
+  | 'cancelled'
+  | 'crashed';
 
 export interface Preferences {
   cardsView: import('$lib/shared/card-views').CardViewMode;
@@ -185,6 +194,7 @@ export interface ManualReleaseListResponse {
 export interface AcquisitionAttempt {
   attempt: number;
   status: AcquisitionStatus;
+  reasonCode: AcquisitionReasonCode | null;
   releaseTitle: string | null;
   releaser: string | null;
   reason: string | null;
@@ -205,8 +215,10 @@ export interface AcquisitionJob {
   currentRelease: string | null;
   selectedReleaser: string | null;
   preferredReleaser: string | null;
+  reasonCode: AcquisitionReasonCode | null;
   failureReason: string | null;
   validationSummary: string | null;
+  autoRetrying: boolean;
   progress: number | null;
   queueStatus: string | null;
   preferences: Pick<Preferences, 'preferredLanguage' | 'subtitleLanguage'>;

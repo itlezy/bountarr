@@ -14,6 +14,7 @@ import {
 } from '$lib/server/acquisition-selection';
 import type { PersistedAcquisitionJob } from '$lib/server/acquisition-domain';
 import type { WaitForAttemptOutcomeResult } from '$lib/server/acquisition-validator-shared';
+import type { AcquisitionReasonCode } from '$lib/shared/types';
 
 const logger = createAreaLogger('acquisition');
 
@@ -21,12 +22,20 @@ function acquisitionLogContext(job: PersistedAcquisitionJob): Record<string, unk
   return {
     arrItemId: job.arrItemId,
     attempt: job.attempt,
+    autoRetrying: job.autoRetrying,
     itemTitle: job.title,
     jobId: job.id,
     kind: job.kind,
     maxRetries: job.maxRetries,
+    reasonCode: job.reasonCode,
     service: job.sourceService,
   };
+}
+
+function selectionFailureReasonCode(
+  releaseSelection: ReleaseSelectionResult,
+): AcquisitionReasonCode {
+  return releaseSelection.mappedReleases === 0 ? 'no-release-available' : 'no-acceptable-release';
 }
 
 export class AcquisitionLifecycle {
@@ -65,6 +74,7 @@ export class AcquisitionLifecycle {
 
   startSearch(job: PersistedAcquisitionJob): PersistedAcquisitionJob {
     const next = this.jobs.updateJob(job.id, {
+      autoRetrying: job.autoRetrying,
       failureReason: null,
       progress: null,
       queueStatus: 'Searching releases',
@@ -91,7 +101,9 @@ export class AcquisitionLifecycle {
     releaseSelection: ReleaseSelectionResult,
   ): PersistedAcquisitionJob {
     const next = this.jobs.updateJob(job.id, {
+      autoRetrying: false,
       completedAt: new Date().toISOString(),
+      reasonCode: selectionFailureReasonCode(releaseSelection),
       failureReason: releaseSelection.selection.decision.reason,
       status: 'failed',
       validationSummary: releaseSelection.selection.decision.reason,
@@ -117,6 +129,7 @@ export class AcquisitionLifecycle {
     const attemptStartedAt = new Date().toISOString();
     const releaser = extractReleaser(selectedRelease.title);
     const next = this.jobs.updateJob(job.id, {
+      autoRetrying: job.autoRetrying,
       completedAt: null,
       currentRelease: selectedRelease.title,
       failureReason: null,
@@ -129,6 +142,7 @@ export class AcquisitionLifecycle {
     this.jobs.upsertAttempt(job.id, {
       attempt: job.attempt,
       finishedAt: null,
+      reasonCode: null,
       reason: null,
       releaseTitle: selectedRelease.title,
       releaser,
@@ -184,12 +198,15 @@ export class AcquisitionLifecycle {
     this.jobs.upsertAttempt(job.id, {
       attempt: job.attempt,
       finishedAt: new Date().toISOString(),
+      reasonCode: waitResult.reasonCode,
       reason: waitResult.summary,
       status: 'completed',
     });
 
     const next = this.jobs.updateJob(job.id, {
+      autoRetrying: false,
       completedAt: new Date().toISOString(),
+      reasonCode: waitResult.reasonCode,
       failureReason: null,
       preferredReleaser: waitResult.preferredReleaser ?? job.selectedReleaser,
       progress: waitResult.progress ?? 100,
@@ -220,13 +237,16 @@ export class AcquisitionLifecycle {
     this.jobs.upsertAttempt(job.id, {
       attempt: job.attempt,
       finishedAt: new Date().toISOString(),
+      reasonCode: waitResult.reasonCode,
       reason: waitResult.summary,
       status: terminal ? 'failed' : 'retrying',
     });
 
     const next = this.jobs.updateJob(job.id, {
       attempt: nextAttempt,
+      autoRetrying: !terminal,
       completedAt: terminal ? new Date().toISOString() : null,
+      reasonCode: waitResult.reasonCode,
       failureReason: waitResult.summary,
       progress: waitResult.progress,
       queueStatus: waitResult.queueStatus,
@@ -245,6 +265,7 @@ export class AcquisitionLifecycle {
         nextAttempt: next.attempt,
         progress: waitResult.progress,
         queueStatus: waitResult.queueStatus,
+        reasonCode: waitResult.reasonCode,
         summary: waitResult.summary,
       },
     );
@@ -259,13 +280,16 @@ export class AcquisitionLifecycle {
       this.jobs.upsertAttempt(job.id, {
         attempt: job.attempt,
         finishedAt: new Date().toISOString(),
+        reasonCode: 'crashed',
         reason: message,
         status: 'failed',
       });
     }
 
     const next = this.jobs.updateJob(job.id, {
+      autoRetrying: false,
       completedAt: new Date().toISOString(),
+      reasonCode: 'crashed',
       failureReason: message,
       status: 'failed',
       validationSummary: message,
@@ -282,12 +306,15 @@ export class AcquisitionLifecycle {
     this.jobs.upsertAttempt(job.id, {
       attempt: job.attempt,
       finishedAt: new Date().toISOString(),
+      reasonCode: 'cancelled',
       reason,
       status: 'cancelled',
     });
 
     const next = this.jobs.updateJob(job.id, {
+      autoRetrying: false,
       completedAt: new Date().toISOString(),
+      reasonCode: 'cancelled',
       failureReason: reason,
       progress: null,
       queueStatus: 'Cancelled',

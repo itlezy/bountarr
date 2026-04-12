@@ -210,7 +210,7 @@ let { state }: { state: AppState } = $props();
 
   {#if !state.config.configured}
     <div class="mt-3 rounded-[14px] border border-rose-300 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-200">
-      Configure Radarr or Sonarr in `.env` before searching.
+      Configure your library services in `.env` before searching.
     </div>
   {:else if state.searchError}
     <div class="mt-3 rounded-[14px] border border-rose-300 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-200">
@@ -221,7 +221,7 @@ let { state }: { state: AppState } = $props();
   {:else if state.searchLoading}
     <div class="mt-3 flex items-center gap-2 text-sm text-[var(--muted)]">
       <span class="spinner h-4 w-4 shrink-0" aria-hidden="true"></span>
-      <span>Searching Arr{state.config.plexConfigured ? ' and Plex' : ''}...</span>
+      <span>Searching your request system{state.config.plexConfigured ? ' and Plex' : ''}...</span>
     </div>
   {:else if state.searchResults.length === 0}
     <div class="mt-3 text-sm text-[var(--muted)]">No results found.</div>

@@ -2,13 +2,14 @@ import { arrFetch } from '$lib/server/arr-client';
 import { normalizeToken } from '$lib/server/media-identity';
 import { asNumber, asRecord, asRecordsArray, asString } from '$lib/server/raw';
 import type { ArrService, PersistedAcquisitionJob } from '$lib/server/acquisition-domain';
-import type { MediaItem } from '$lib/shared/types';
+import type { AcquisitionReasonCode, MediaItem } from '$lib/shared/types';
 
 export type ValidationProbe = {
   outcome: 'pending' | 'success' | 'failure';
   preferredReleaser: string | null;
   progress: number | null;
   queueStatus: string | null;
+  reasonCode: AcquisitionReasonCode | null;
   summary: string | null;
 };
 
@@ -99,6 +100,7 @@ export type WaitForAttemptOutcomeResult = {
   preferredReleaser: string | null;
   progress: number | null;
   queueStatus: string | null;
+  reasonCode: AcquisitionReasonCode;
   summary: string;
 };
 

@@ -53,6 +53,27 @@ function createSelectionResult(guid: string, title: string): ReleaseSelectionRes
   };
 }
 
+function createRejectedSelectionResult(
+  reason = 'No acceptable release passed the local scoring rules',
+): ReleaseSelectionResult {
+  return {
+    manualResults: [],
+    mappedReleases: 1,
+    releasesFound: 1,
+    selectedGuid: null,
+    selectedRelease: null,
+    selection: {
+      decision: {
+        accepted: 0,
+        considered: 1,
+        reason,
+        selected: null,
+      },
+      payload: null,
+    } as ReleaseSelectionResult['selection'],
+  };
+}
+
 function createHarness() {
   const database = createDatabase();
   const jobs = new AcquisitionJobRepository(database);
@@ -99,6 +120,7 @@ describe('AcquisitionRunner', () => {
         preferredReleaser: 'flux',
         progress: 100,
         queueStatus: 'Imported',
+        reasonCode: 'validated',
         summary: 'Imported and validated',
       }),
     });
@@ -153,6 +175,7 @@ describe('AcquisitionRunner', () => {
         preferredReleaser: null,
         progress: 100,
         queueStatus: 'Imported',
+        reasonCode: 'missing-subs',
         summary: 'Imported release failed validation',
       })
       .mockResolvedValueOnce({
@@ -160,6 +183,7 @@ describe('AcquisitionRunner', () => {
         preferredReleaser: 'groupb',
         progress: 100,
         queueStatus: 'Imported',
+        reasonCode: 'validated',
         summary: 'Imported and validated',
       });
 
@@ -181,8 +205,11 @@ describe('AcquisitionRunner', () => {
     expect(waitForAttemptOutcome).toHaveBeenCalledTimes(2);
     expect(completed?.attempt).toBe(2);
     expect(completed?.failedGuids).toContain('guid-1');
+    expect(completed?.reasonCode).toBe('validated');
     expect(completed?.attempts).toHaveLength(2);
+    expect(completed?.attempts[0]?.reasonCode).toBe('missing-subs');
     expect(completed?.attempts[0]?.status).toBe('retrying');
+    expect(completed?.attempts[1]?.reasonCode).toBe('validated');
     expect(completed?.attempts[1]?.status).toBe('completed');
   });
 
@@ -214,6 +241,7 @@ describe('AcquisitionRunner', () => {
         preferredReleaser: 'group',
         progress: 100,
         queueStatus: 'Imported',
+        reasonCode: 'validated',
         summary: 'Imported and validated',
       }),
     });
@@ -226,5 +254,40 @@ describe('AcquisitionRunner', () => {
     });
 
     expect(releaseSelectionCalls).toBe(1);
+  });
+
+  it('stops immediately when no acceptable release remains', async () => {
+    const harness = createHarness();
+    const job = harness.jobs.createJob({
+      arrItemId: 444,
+      itemId: 'movie:444',
+      kind: 'movie',
+      maxRetries: 2,
+      preferredReleaser: null,
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      sourceService: 'radarr',
+      title: 'Unavailable Title',
+    });
+
+    const runner = new AcquisitionRunner(harness.jobs, harness.lifecycle, {
+      findReleaseSelection: vi.fn().mockResolvedValue(createRejectedSelectionResult()),
+      submitSelectedRelease: vi.fn().mockResolvedValue(undefined),
+      waitForAttemptOutcome: vi.fn(),
+    });
+
+    runner.enqueue(job.id);
+
+    await vi.waitFor(() => {
+      expect(harness.jobs.getJob(job.id)?.status).toBe('failed');
+    });
+
+    const failed = harness.jobs.getJob(job.id);
+
+    expect(failed?.reasonCode).toBe('no-acceptable-release');
+    expect(failed?.autoRetrying).toBe(false);
+    expect(failed?.failureReason).toBe('No acceptable release passed the local scoring rules');
   });
 });

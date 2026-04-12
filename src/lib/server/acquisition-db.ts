@@ -16,8 +16,10 @@ const acquisitionSchema = `
     current_release TEXT,
     selected_releaser TEXT,
     preferred_releaser TEXT,
+    reason_code TEXT,
     failure_reason TEXT,
     validation_summary TEXT,
+    auto_retrying INTEGER NOT NULL DEFAULT 0,
     progress REAL,
     queue_status TEXT,
     preferred_language TEXT NOT NULL,
@@ -37,6 +39,7 @@ const acquisitionSchema = `
     job_id TEXT NOT NULL,
     attempt INTEGER NOT NULL,
     status TEXT NOT NULL,
+    reason_code TEXT,
     release_title TEXT,
     releaser TEXT,
     reason TEXT,
@@ -89,9 +92,33 @@ export function ensureAcquisitionSchema(database: DatabaseSync): void {
       throw error;
     }
   }
+  try {
+    database.exec('ALTER TABLE acquisition_jobs ADD COLUMN reason_code TEXT');
+  } catch (error) {
+    if (!(error instanceof Error) || !/duplicate column name/i.test(error.message)) {
+      throw error;
+    }
+  }
+  try {
+    database.exec(
+      'ALTER TABLE acquisition_jobs ADD COLUMN auto_retrying INTEGER NOT NULL DEFAULT 0',
+    );
+  } catch (error) {
+    if (!(error instanceof Error) || !/duplicate column name/i.test(error.message)) {
+      throw error;
+    }
+  }
+  try {
+    database.exec('ALTER TABLE acquisition_attempts ADD COLUMN reason_code TEXT');
+  } catch (error) {
+    if (!(error instanceof Error) || !/duplicate column name/i.test(error.message)) {
+      throw error;
+    }
+  }
   database.exec(
     "UPDATE acquisition_jobs SET subtitle_language = preferred_language WHERE subtitle_language IS NULL OR trim(subtitle_language) = ''",
   );
+  database.exec('UPDATE acquisition_jobs SET auto_retrying = coalesce(auto_retrying, 0)');
 }
 
 export class AcquisitionDatabase {
