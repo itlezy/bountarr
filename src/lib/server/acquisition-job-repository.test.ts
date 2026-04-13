@@ -46,6 +46,12 @@ describe('AcquisitionJobRepository', () => {
     jobs.addFailedGuid(job.id, 'guid-1');
     jobs.addFailedGuid(job.id, 'guid-1');
     jobs.updateJob(job.id, {
+      status: 'searching',
+    });
+    jobs.updateJob(job.id, {
+      status: 'grabbing',
+    });
+    jobs.updateJob(job.id, {
       autoRetrying: true,
       progress: 55,
       queueStatus: 'Waiting for download',
@@ -83,6 +89,9 @@ describe('AcquisitionJobRepository', () => {
       title: 'Alien',
     });
 
+    jobs.updateJob(job.id, { status: 'searching' });
+    jobs.updateJob(job.id, { status: 'grabbing' });
+    jobs.updateJob(job.id, { status: 'validating' });
     jobs.updateJob(job.id, {
       completedAt: '2026-04-02T10:10:00.000Z',
       selectedReleaser: 'framestor',
@@ -184,6 +193,65 @@ describe('AcquisitionJobRepository', () => {
     expect(jobs.findActiveJob(606, 'movie', 'sonarr')?.id).toBe(sonarrJob.id);
     expect(jobs.listActiveJobsByArrItem(606, 'movie', 'radarr')).toHaveLength(1);
     expect(jobs.listActiveJobsByArrItem(606, 'movie', 'sonarr')).toHaveLength(1);
+  });
+
+  it('rejects illegal acquisition status transitions', () => {
+    const database = createDatabase();
+    const jobs = new AcquisitionJobRepository(database);
+    const job = jobs.createJob({
+      arrItemId: 707,
+      itemId: 'movie:707',
+      kind: 'movie',
+      maxRetries: 4,
+      preferredReleaser: null,
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'Any',
+      },
+      sourceService: 'radarr',
+      title: 'Transition Title',
+    });
+
+    jobs.updateJob(job.id, {
+      status: 'searching',
+    });
+
+    expect(() =>
+      jobs.updateJob(job.id, {
+        status: 'completed',
+      }),
+    ).toThrow(/Invalid acquisition job status transition/);
+  });
+
+  it('rejects attempt regressions', () => {
+    const database = createDatabase();
+    const jobs = new AcquisitionJobRepository(database);
+    const job = jobs.createJob({
+      arrItemId: 708,
+      itemId: 'movie:708',
+      kind: 'movie',
+      maxRetries: 4,
+      preferredReleaser: null,
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'Any',
+      },
+      sourceService: 'radarr',
+      title: 'Attempt Regression',
+    });
+
+    jobs.updateJob(job.id, { status: 'searching' });
+    jobs.updateJob(job.id, { status: 'grabbing' });
+    jobs.updateJob(job.id, {
+      attempt: 2,
+      status: 'retrying',
+    });
+
+    expect(() =>
+      jobs.updateJob(job.id, {
+        attempt: 1,
+      }),
+    ).toThrow(/Invalid acquisition attempt regression/);
   });
 
   it('drops and recreates legacy acquisition tables instead of preserving require_subtitles', () => {

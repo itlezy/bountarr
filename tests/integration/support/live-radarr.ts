@@ -3,6 +3,7 @@ import { pollUntil } from './live-http';
 
 type RadarrMovieRecord = {
   id: number;
+  monitored?: boolean;
   title: string;
   year: number | null;
 };
@@ -46,10 +47,32 @@ export async function listMovies(config: LiveIntegrationConfig): Promise<RadarrM
   return records
     .map((record) => ({
       id: typeof record.id === 'number' ? record.id : NaN,
+      monitored: typeof record.monitored === 'boolean' ? record.monitored : undefined,
       title: typeof record.title === 'string' ? record.title : '',
       year: typeof record.year === 'number' ? record.year : null,
     }))
     .filter((record) => Number.isFinite(record.id) && record.title.length > 0);
+}
+
+export async function getMovieById(
+  config: LiveIntegrationConfig,
+  id: number,
+): Promise<RadarrMovieRecord | null> {
+  try {
+    const record = await radarrRequest<Record<string, unknown>>(config, `/api/v3/movie/${id}`);
+    return {
+      id: typeof record.id === 'number' ? record.id : NaN,
+      monitored: typeof record.monitored === 'boolean' ? record.monitored : undefined,
+      title: typeof record.title === 'string' ? record.title : '',
+      year: typeof record.year === 'number' ? record.year : null,
+    };
+  } catch (error) {
+    if (error instanceof Error && /\b404\b/.test(error.message)) {
+      return null;
+    }
+
+    throw error;
+  }
 }
 
 export async function findMovieByTitleYear(

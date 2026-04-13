@@ -7,7 +7,12 @@ import {
 } from './support/live-config';
 import { getJson, pollUntil, postJson } from './support/live-http';
 import { resetBountarrStateFiles, startLiveApp, type RunningLiveApp } from './support/live-app';
-import { ensureMovieMissing, findMovieByTitleYear, listMovies } from './support/live-radarr';
+import {
+  ensureMovieMissing,
+  findMovieByTitleYear,
+  getMovieById,
+  listMovies,
+} from './support/live-radarr';
 
 type DeleteTarget = {
   arrItemId: number;
@@ -239,6 +244,51 @@ describe.sequential('live stack integration', () => {
         ((await findMovieByTitleYear(config, config.untrackedMovie)) === null ? true : null),
       45_000,
     );
+  }, 120_000);
+
+  it('cancels an acquisition job and unmonitors the tracked Radarr item', async () => {
+    const search = await getJson<MediaItem[]>(
+      `${config.baseUrl}/api/search?q=Dredd&kind=movie&availability=all`,
+    );
+    const item = exactMovieMatch(search, config.untrackedMovie.title, config.untrackedMovie.year);
+
+    expect(item).not.toBeNull();
+    if (!item) {
+      throw new Error('Expected Dredd (2012) to be searchable for cancel-path verification.');
+    }
+
+    const request = await postJson<GrabResponse>(`${config.baseUrl}/api/grab`, {
+      item,
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+    });
+
+    expect(request.job).not.toBeNull();
+    expect(request.item.arrItemId).not.toBeNull();
+
+    cleanupTargets.push(asDeleteTarget(request.item));
+    await waitForAcquisitionVisibility(config, request);
+
+    const cancelResponse = await postJson<{ job: { status: string }; message: string }>(
+      `${config.baseUrl}/api/acquisition/${encodeURIComponent(request.job!.id)}/cancel`,
+      {},
+    );
+
+    expect(cancelResponse.job.status).toBe('cancelled');
+    expect(cancelResponse.message).toContain('cancelled and unmonitored');
+
+    await pollUntil(async () => {
+      const queue = await getJson<QueueResponse>(`${config.baseUrl}/api/queue`);
+      const acquisitionJob = matchingAcquisitionJob(queue, request);
+      return acquisitionJob?.status === 'cancelled' ? acquisitionJob : null;
+    }, 45_000);
+
+    await pollUntil(async () => {
+      const movie = await getMovieById(config, request.item.arrItemId!);
+      return movie?.monitored === false ? movie : null;
+    }, 45_000);
   }, 120_000);
 
   it('returns the duplicate path for an already tracked Radarr movie', async () => {

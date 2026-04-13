@@ -54,6 +54,24 @@ export function isTerminalJobStatus(status: AcquisitionJob['status']): boolean {
   return status === 'completed' || status === 'failed' || status === 'cancelled';
 }
 
+const allowedStatusTransitions: Record<AcquisitionJob['status'], AcquisitionJob['status'][]> = {
+  cancelled: [],
+  completed: [],
+  failed: ['queued'],
+  grabbing: ['cancelled', 'completed', 'failed', 'retrying', 'validating'],
+  queued: ['cancelled', 'failed', 'grabbing', 'queued', 'searching'],
+  retrying: ['cancelled', 'failed', 'queued', 'searching'],
+  searching: ['cancelled', 'failed', 'grabbing', 'queued'],
+  validating: ['cancelled', 'completed', 'failed', 'retrying', 'validating'],
+};
+
+export function canTransitionJobStatus(
+  currentStatus: AcquisitionJob['status'],
+  nextStatus: AcquisitionJob['status'],
+): boolean {
+  return currentStatus === nextStatus || allowedStatusTransitions[currentStatus].includes(nextStatus);
+}
+
 export function jobStatusLabel(status: AcquisitionJob['status']): string {
   return status.replace(/-/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 }

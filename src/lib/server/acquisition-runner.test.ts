@@ -348,10 +348,14 @@ describe('AcquisitionRunner', () => {
       title: 'Startup Title',
     });
 
+    harness.jobs.updateJob(job.id, { status: 'searching' });
     harness.jobs.updateJob(job.id, {
       currentRelease: 'Startup.Title.2026.1080p.WEB-DL-FLUX',
-      queueStatus: 'Downloading',
       selectedReleaser: 'flux',
+      status: 'grabbing',
+    });
+    harness.jobs.updateJob(job.id, {
+      queueStatus: 'Downloading',
       status: 'validating',
     });
     harness.jobs.upsertAttempt(job.id, {
@@ -444,10 +448,14 @@ describe('AcquisitionRunner', () => {
       title: 'Deduped Reconciliation',
     });
 
+    harness.jobs.updateJob(job.id, { status: 'searching' });
     harness.jobs.updateJob(job.id, {
       currentRelease: 'Deduped.Reconciliation.2026.1080p.WEB-DL-FLUX',
-      queueStatus: 'Downloading',
       selectedReleaser: 'flux',
+      status: 'grabbing',
+    });
+    harness.jobs.updateJob(job.id, {
+      queueStatus: 'Downloading',
       status: 'validating',
     });
     harness.jobs.upsertAttempt(job.id, {

@@ -2,7 +2,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { ensureAcquisitionSchema, getAcquisitionDatabase } from '$lib/server/acquisition-db';
 import { queueCache } from '$lib/server/app-cache';
 import type { ArrService, PersistedAcquisitionJob } from '$lib/server/acquisition-domain';
-import { sortJobs } from '$lib/server/acquisition-domain';
+import { canTransitionJobStatus, sortJobs } from '$lib/server/acquisition-domain';
 import type { AcquisitionReasonCode } from '$lib/shared/types';
 import { sanitizePreferredLanguage } from '$lib/shared/languages';
 import type { AcquisitionAttempt, MediaKind } from '$lib/shared/types';
@@ -361,6 +361,17 @@ export class AcquisitionJobRepository {
     const current = this.getJob(jobId);
     if (!current) {
       throw new Error(`Acquisition job ${jobId} was not found`);
+    }
+
+    const nextStatus = patch.status ?? current.status;
+    if (!canTransitionJobStatus(current.status, nextStatus)) {
+      throw new Error(`Invalid acquisition job status transition: ${current.status} -> ${nextStatus}`);
+    }
+
+    if (patch.attempt !== undefined && patch.attempt < current.attempt) {
+      throw new Error(
+        `Invalid acquisition attempt regression for ${jobId}: ${patch.attempt} < ${current.attempt}`,
+      );
     }
 
     const next: PersistedAcquisitionJob = {

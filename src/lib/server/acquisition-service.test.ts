@@ -196,4 +196,44 @@ describe('acquisition service', () => {
     expect(deleteJobsByArrItem).toHaveBeenCalledWith(603, 'movie', 'radarr');
     expect(result.message).toContain('already missing from Radarr');
   });
+
+  it('rejects manual selections once a job is already grabbing or validating', async () => {
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        ensureWorkers: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        cancelJob: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        getJob: vi.fn().mockReturnValue({
+          ...job,
+          status: 'validating',
+        }),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      getAcquisitionJobsResponse: vi.fn(),
+      listQueueAcquisitionJobs: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-validator-shared', () => ({
+      fetchQueueRecords: vi.fn().mockResolvedValue([]),
+      findQueueRecordForArrItem: vi.fn().mockReturnValue(null),
+      queueRecordId: vi.fn().mockReturnValue(null),
+    }));
+    vi.doMock('$lib/server/acquisition-selection', () => ({
+      findManualReleaseSelection: vi.fn(),
+      getManualReleaseResults: vi.fn(),
+    }));
+
+    const module = await import('$lib/server/acquisition-service');
+
+    await expect(module.selectManualRelease(job.id, 'guid-1', 11)).rejects.toThrow(
+      'can no longer accept manual release selections',
+    );
+  });
 });

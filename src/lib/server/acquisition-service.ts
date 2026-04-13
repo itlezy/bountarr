@@ -168,7 +168,7 @@ export async function selectManualRelease(
   if (!job) {
     throw new Error(`Acquisition job ${jobId} was not found.`);
   }
-  if (job.status === 'completed' || job.status === 'cancelled') {
+  if (!['failed', 'queued', 'retrying', 'searching'].includes(job.status)) {
     throw new Error(`Acquisition job ${jobId} can no longer accept manual release selections.`);
   }
 
