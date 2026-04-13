@@ -17,7 +17,7 @@ let { feedback, item, state }: {
 } = $props();
 </script>
 
-<article class="card-shell p-3">
+<article class="card-shell p-3" data-testid="search-result-card" data-item-title={item.title}>
   <div class="flex gap-3">
     {#if item.poster}
       <img class="h-28 w-20 shrink-0 rounded-[14px] object-cover" src={item.poster} alt={`${item.title} poster`} />

@@ -60,6 +60,7 @@ test('queue view renders acquisition jobs and active downloads', async ({ page }
   await expect(page.getByRole('button', { name: 'Show operator tools' })).toHaveCount(0);
   await expect(page.getByText('Movie download · Downloading')).toBeVisible();
   await expect(page.getByText('Show grab · Looking for a release')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Cancel download' })).toHaveCount(2);
 });
 
 test('queue view shows explicit ETA for downloads and matched grab jobs', async ({ page }) => {

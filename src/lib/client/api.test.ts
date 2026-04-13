@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  cancelAcquisitionJob,
   cancelQueueItem,
   deleteArrItem,
   fetchQueue,
@@ -237,6 +238,33 @@ describe('client api', () => {
       arrItemId: 603,
       queueId: 1,
       sourceService: 'radarr',
+    });
+  });
+
+  it('posts acquisition-cancel requests to the job cancel route', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          job: {
+            id: 'job-1',
+            status: 'cancelled',
+          },
+          message: 'Cancelled',
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await cancelAcquisitionJob('job-1');
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/acquisition/job-1/cancel', {
+      method: 'POST',
     });
   });
 

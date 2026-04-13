@@ -6,6 +6,8 @@ export type ExactMovieTarget = {
   year: number;
 };
 
+export type ExactSeriesTarget = ExactMovieTarget;
+
 export type LiveIntegrationConfig = {
   allowDestructive: boolean;
   appPort: number;
@@ -13,7 +15,10 @@ export type LiveIntegrationConfig = {
   duplicateMovie: ExactMovieTarget;
   radarrApiKey: string;
   radarrUrl: string;
+  sonarrApiKey: string | null;
+  sonarrUrl: string | null;
   untrackedMovie: ExactMovieTarget;
+  untrackedSeries: ExactSeriesTarget;
 };
 
 function parseEnvFile(envPath: string): Record<string, string> {
@@ -85,14 +90,29 @@ export function loadLiveIntegrationConfig(): LiveIntegrationConfig {
     appPort,
     baseUrl: `http://127.0.0.1:${appPort}`,
     duplicateMovie: {
-      title: 'The Matrix',
-      year: 1999,
+      title: readEnvValue('BOUNTARR_DUPLICATE_MOVIE_TITLE', envFileValues) ?? 'The Matrix',
+      year: Number.parseInt(
+        readEnvValue('BOUNTARR_DUPLICATE_MOVIE_YEAR', envFileValues) ?? '1999',
+        10,
+      ),
     },
     radarrApiKey: requiredEnvValue('RADARR_API_KEY', envFileValues),
     radarrUrl: requiredEnvValue('RADARR_URL', envFileValues).replace(/\/+$/, ''),
+    sonarrApiKey: readEnvValue('SONARR_API_KEY', envFileValues),
+    sonarrUrl: readEnvValue('SONARR_URL', envFileValues)?.replace(/\/+$/, '') ?? null,
     untrackedMovie: {
-      title: 'Dredd',
-      year: 2012,
+      title: readEnvValue('BOUNTARR_LIVE_MOVIE_TITLE', envFileValues) ?? 'Dredd',
+      year: Number.parseInt(
+        readEnvValue('BOUNTARR_LIVE_MOVIE_YEAR', envFileValues) ?? '2012',
+        10,
+      ),
+    },
+    untrackedSeries: {
+      title: readEnvValue('BOUNTARR_LIVE_SERIES_TITLE', envFileValues) ?? 'Andor',
+      year: Number.parseInt(
+        readEnvValue('BOUNTARR_LIVE_SERIES_YEAR', envFileValues) ?? '2022',
+        10,
+      ),
     },
   };
 }

@@ -13,7 +13,7 @@ let { item, state }: { item: QueueItem; state: AppState } = $props();
 const etaLabel = $derived(queueEtaLabel(item));
 </script>
 
-<article class="card-shell p-3">
+<article class="card-shell p-3" data-testid="queue-item-card" data-item-title={item.title}>
   <div class="flex gap-3">
     {#if item.poster}
       <img class="h-24 w-18 shrink-0 rounded-[14px] object-cover" src={item.poster} alt={`${item.title} poster`} />
@@ -69,16 +69,29 @@ const etaLabel = $derived(queueEtaLabel(item));
         </div>
       </div>
 
-      {#if state.hasQueueOperatorActions(item)}
-        <div class="mt-3">
+      {#if item.canCancel || state.hasQueueOperatorActions(item)}
+        <div class="mt-3 space-y-2">
+          {#if item.canCancel && item.queueId !== null}
+            <button
+              class="control-shell min-h-10 w-full border-amber-300 px-4 text-sm font-700 text-amber-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-700 dark:text-amber-200"
+              type="button"
+              onclick={() => void state.cancelQueueItem(item)}
+              disabled={state.cancelingQueueItemId === item.id || state.deletingItemId === item.id}
+            >
+              {state.cancelingQueueItemId === item.id ? 'Cancelling...' : 'Cancel download'}
+            </button>
+          {/if}
+
+          {#if state.hasQueueOperatorActions(item)}
           <button
             class="control-shell min-h-10 w-full border-rose-300 px-4 text-sm font-700 text-rose-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-700 dark:text-rose-200"
             type="button"
             onclick={() => void state.deleteQueueArrItem(item)}
-            disabled={state.deletingItemId === item.id}
+            disabled={state.deletingItemId === item.id || state.cancelingQueueItemId === item.id}
           >
             {state.deletingItemId === item.id ? 'Removing...' : 'Remove from Library'}
           </button>
+          {/if}
         </div>
       {/if}
     </div>

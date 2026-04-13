@@ -20,7 +20,11 @@ const displayQueueStatus = $derived(
 const etaLabel = $derived(matchedQueueItem ? queueEtaLabel(matchedQueueItem) : null);
 </script>
 
-<article class={`card-shell p-3 ${state.isGuidedQueueJob(job.id) ? 'border-sky-400 shadow-[0_0_0_1px_rgba(56,189,248,0.35)]' : ''}`}>
+<article
+  class={`card-shell p-3 ${state.isGuidedQueueJob(job.id) ? 'border-sky-400 shadow-[0_0_0_1px_rgba(56,189,248,0.35)]' : ''}`}
+  data-testid="acquisition-job-card"
+  data-item-title={job.title}
+>
   <div class="flex flex-wrap items-center justify-between gap-2">
     <div class="min-w-0">
       <div class="overflow-safe-text text-base font-800">{job.title}</div>
@@ -104,12 +108,23 @@ const etaLabel = $derived(matchedQueueItem ? queueEtaLabel(matchedQueueItem) : n
       </div>
     </div>
 
+    {#if job.status !== 'completed' && job.status !== 'cancelled'}
+      <button
+        class="control-shell min-h-10 w-full border-amber-300 px-4 text-sm font-700 text-amber-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-700 dark:text-amber-200"
+        type="button"
+        onclick={() => void state.cancelAcquisitionJob(job.id)}
+        disabled={state.cancelingAcquisitionJobId === job.id || state.deletingItemId === job.id}
+      >
+        {state.cancelingAcquisitionJobId === job.id ? 'Cancelling...' : 'Cancel download'}
+      </button>
+    {/if}
+
     {#if job.status !== 'cancelled'}
       <button
         class="control-shell min-h-10 w-full border-rose-300 px-4 text-sm font-700 text-rose-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-700 dark:text-rose-200"
         type="button"
         onclick={() => void state.deleteAcquisitionJob(job)}
-        disabled={state.deletingItemId === job.id}
+        disabled={state.deletingItemId === job.id || state.cancelingAcquisitionJobId === job.id}
       >
         {state.deletingItemId === job.id ? 'Removing...' : 'Remove from Library'}
       </button>
