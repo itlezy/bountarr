@@ -32,4 +32,31 @@ describe('normalizeQueueItem', () => {
       detail: 'Episode source title',
     });
   });
+
+  it('keeps Radarr queue items when the nested movie payload is missing', () => {
+    const item = normalizeQueueItem('radarr', {
+      id: 359204595,
+      movieId: 793,
+      title: 'American.Rickshaw.1989.1080p.BluRay.x265',
+      status: 'downloading',
+      trackedDownloadStatus: 'ok',
+      trackedDownloadState: 'downloading',
+      size: 1_776_895_918,
+      sizeLeft: 808_168_980,
+      timeLeft: '00:04:06',
+      estimatedCompletionTime: '2026-04-13T14:21:27Z',
+    });
+
+    expect(item).toMatchObject({
+      kind: 'movie',
+      arrItemId: 793,
+      title: 'American.Rickshaw.1989.1080p.BluRay.x265',
+      status: 'Downloading',
+      progress: expect.any(Number),
+      timeLeft: '00:04:06',
+      estimatedCompletionTime: '2026-04-13T14:21:27Z',
+      detail: null,
+    });
+    expect(item?.progress).toBeCloseTo(54.52, 1);
+  });
 });

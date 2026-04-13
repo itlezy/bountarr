@@ -17,7 +17,12 @@ function formatQueueStatus(record: Record<string, unknown>): string {
 export function normalizeQueueItem(service: ArrService, rawValue: unknown): QueueItem | null {
   const record = asRecord(rawValue);
   const parent = service === 'radarr' ? asRecord(record.movie) : asRecord(record.series);
-  const title = asString(parent.title);
+  const fallbackTitle =
+    asString(record.movieTitle) ??
+    asString(record.seriesTitle) ??
+    asString(record.title) ??
+    asString(record.sourceTitle);
+  const title = asString(parent.title) ?? fallbackTitle;
   if (!title) {
     return null;
   }
@@ -51,6 +56,9 @@ export function normalizeQueueItem(service: ArrService, rawValue: unknown): Queu
     sizeLeft,
     queueId: asNumber(record.id),
     detail:
-      asString(record.title) ?? asString(record.sourceTitle) ?? asString(episode.title) ?? null,
+      (asString(record.title) ?? asString(record.sourceTitle) ?? asString(episode.title) ?? null) ===
+      title
+        ? null
+        : (asString(record.title) ?? asString(record.sourceTitle) ?? asString(episode.title) ?? null),
   };
 }
