@@ -13,6 +13,10 @@ import type { AcquisitionJob } from '$lib/shared/types';
 let { job, state }: { job: AcquisitionJob; state: AppState } = $props();
 
 const matchedQueueItem = $derived(state.queueItemForAcquisitionJob(job));
+const displayProgress = $derived(matchedQueueItem?.progress ?? job.progress);
+const displayQueueStatus = $derived(
+  matchedQueueItem?.status ?? job.queueStatus ?? job.validationSummary ?? 'Waiting for more progress',
+);
 const etaLabel = $derived(matchedQueueItem ? queueEtaLabel(matchedQueueItem) : null);
 </script>
 
@@ -24,15 +28,15 @@ const etaLabel = $derived(matchedQueueItem ? queueEtaLabel(matchedQueueItem) : n
         {acquisitionJourneySummary(job)} · attempt {Math.min(job.attempt, job.maxRetries)}/{job.maxRetries}
       </div>
     </div>
-    {#if job.progress !== null}
-      <div class="text-sm font-700">{Math.round(job.progress)}%</div>
+    {#if displayProgress !== null}
+      <div class="text-sm font-700">{Math.round(displayProgress)}%</div>
     {/if}
   </div>
 
   <div class="progress-track mt-3 h-2 overflow-hidden">
     <div
       class="progress-fill h-full"
-      style={`width: ${job.progress ?? 0}%`}
+      style={`width: ${displayProgress ?? 0}%`}
     ></div>
   </div>
 
@@ -51,7 +55,7 @@ const etaLabel = $derived(matchedQueueItem ? queueEtaLabel(matchedQueueItem) : n
     </div>
     <div>
       <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Queue check</div>
-      <div>{job.queueStatus ?? job.validationSummary ?? 'Waiting for more progress'}</div>
+      <div>{displayQueueStatus}</div>
     </div>
     {#if etaLabel}
       <div class="sm:col-span-2">

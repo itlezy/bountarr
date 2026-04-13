@@ -95,7 +95,8 @@ test('queue view shows explicit ETA for downloads and matched grab jobs', async 
   await expect(downloadCard.getByText('10m remaining', { exact: true })).toBeVisible();
 
   const card = acquisitionCard(page);
-  await expect(card.getByText('42%', { exact: true })).toBeVisible();
+  await expect(card.getByText('58%', { exact: true })).toBeVisible();
+  await expect(card.getByText('Downloading', { exact: true })).toBeVisible();
   await expect(card.getByText('ETA', { exact: true })).toBeVisible();
   await expect(card.getByText('18m remaining', { exact: true })).toBeVisible();
 });
