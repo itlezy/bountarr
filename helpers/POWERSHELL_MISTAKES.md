@@ -21,3 +21,4 @@
 - Packing `Start-Job`, `Invoke-RestMethod`, and a pipeline into one quoted `pwsh -Command` line produced `An empty pipe element is not allowed` because the nested quoting/pipeline boundaries became ambiguous. For background server verification, use a proper script block or a helper `.ps1` file instead of a dense inline one-liner.
 - Running Playwright `webServer` through `npm run dev` was unreliable on Windows because the batch wrapper could exit early under process supervision. Launch the Vite Node entrypoint from a dedicated PowerShell helper instead.
 - Hash literals are case-insensitive in PowerShell; keys like 'sizeleft' and 'sizeLeft' collide. Use distinct output names when inspecting case-variant API fields.
+- Running two `git commit` commands in parallel in the same repository raced on `.git/index.lock` and mis-associated one commit message with the other batch. Serialize Git writes; do not wrap same-repo commit operations in `multi_tool_use.parallel`.
