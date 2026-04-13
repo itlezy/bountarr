@@ -2,5 +2,6 @@
 - This project is under active development. Breaking API changes, schema changes, and storage resets are acceptable when they improve the design.
 - Do not add legacy compatibility layers, migration wrappers, or backward-compatibility shims unless the user explicitly asks for them.
 - Assume databases and local persisted state can be dropped and recreated during refactors unless the user explicitly requires migration or preservation.
+- If persisted schema or storage format drifts from the current code, prefer dropping and recreating it rather than adding migrations, compatibility reads, fallback columns, or schema-upgrade code.
 - Prefer the cleanest current design over transitional code. When forced to choose, remove or replace old behavior instead of preserving it.
 - Do not spend time on migrations, deprecations, versioned schemas, fallback readers, compatibility adapters, or preserving old data formats unless the user explicitly requests that work.
