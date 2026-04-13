@@ -60,18 +60,6 @@ let { item, state }: { item: QueueItem; state: AppState } = $props();
       </div>
 
       {#if state.hasQueueOperatorActions(item)}
-        <div class="mt-3">
-          <button
-            class="control-shell min-h-10 w-full px-4 text-sm font-700"
-            type="button"
-            onclick={() => state.toggleOperatorReveal('queue', item.id)}
-          >
-            {state.operatorRevealOpen('queue', item.id) ? 'Hide operator tools' : 'Show operator tools'}
-          </button>
-        </div>
-      {/if}
-
-      {#if state.operatorRevealOpen('queue', item.id)}
         <div class="mt-3 rounded-[14px] border border-[var(--line)] bg-[var(--surface)] p-3">
           <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Operator tools</div>
           <button
