@@ -9,6 +9,7 @@ import {
   requestResponseFixture,
   runtimeHealthFixture,
 } from '$lib/server/api-test-fixtures';
+import { AcquisitionRequestError } from '$lib/server/acquisition-domain';
 import { createGetEvent, createPostEvent, loadRouteModule, readJson } from '$lib/server/api-test';
 
 afterEach(() => {
@@ -352,5 +353,27 @@ describe('API routes', () => {
 
     expect(response.status).toBe(500);
     expect(await response.text()).toBe('Arr is unavailable');
+  });
+
+  it('preserves typed request statuses for predictable request failures', async () => {
+    const requestItem = vi
+      .fn()
+      .mockRejectedValue(new AcquisitionRequestError(409, 'The Matrix is already tracked in Arr'));
+    const route = await loadRouteModule<{
+      POST: (event: { request: Request }) => Promise<Response>;
+    }>('../../routes/api/request/+server', {
+      '$lib/server/acquisition-service': () => ({
+        requestItem,
+      }),
+    });
+
+    const response = await route.POST(
+      createPostEvent('http://local.test/api/request', {
+        item: mediaItemFixture,
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.text()).toBe('The Matrix is already tracked in Arr');
   });
 });

@@ -19,6 +19,7 @@ import {
 import { getAcquisitionLifecycle } from '$lib/server/acquisition-lifecycle';
 import { getAcquisitionJobRepository } from '$lib/server/acquisition-job-repository';
 import { arrFetch } from '$lib/server/arr-client';
+import { lookupPageSize } from '$lib/server/acquisition-validator-shared';
 import { asArray, asNumber, asRecord } from '$lib/server/raw';
 import { requestItem as requestItemInternal } from '$lib/server/acquisition-request-service';
 import {
@@ -121,7 +122,7 @@ async function findQueueEntryForJob(
 ): Promise<number | null> {
   const records = (await arrFetch<unknown>(service, '/api/v3/queue', undefined, {
     page: 1,
-    pageSize: 100,
+    pageSize: lookupPageSize(),
     sortDirection: 'ascending',
     sortKey: 'timeleft',
   })) as { records?: unknown[] } | unknown[];
@@ -157,6 +158,9 @@ export async function selectManualRelease(
   const job = jobs.getJob(jobId);
   if (!job) {
     throw new Error(`Acquisition job ${jobId} was not found.`);
+  }
+  if (job.status === 'completed' || job.status === 'cancelled') {
+    throw new Error(`Acquisition job ${jobId} can no longer accept manual release selections.`);
   }
 
   const selection = await findManualReleaseSelection(job, guid, indexerId);
@@ -224,7 +228,11 @@ export async function cancelQueueItem(
 export async function deleteArrItem(item: ArrDeleteTarget): Promise<MediaItemActionResponse> {
   const jobs =
     item.arrItemId !== null
-      ? getAcquisitionJobRepository().listActiveJobsByArrItem(item.arrItemId, item.kind)
+      ? getAcquisitionJobRepository().listActiveJobsByArrItem(
+          item.arrItemId,
+          item.kind,
+          item.sourceService,
+        )
       : [];
   const serviceLabel = item.sourceService === 'radarr' ? 'Radarr' : 'Sonarr';
   const queueId =
@@ -256,7 +264,11 @@ export async function deleteArrItem(item: ArrDeleteTarget): Promise<MediaItemAct
       throw error;
     }
 
-    getAcquisitionJobRepository().deleteJobsByArrItem(item.arrItemId, item.kind);
+    getAcquisitionJobRepository().deleteJobsByArrItem(
+      item.arrItemId,
+      item.kind,
+      item.sourceService,
+    );
 
     return {
       itemId: item.id,
@@ -264,7 +276,7 @@ export async function deleteArrItem(item: ArrDeleteTarget): Promise<MediaItemAct
     };
   }
 
-  getAcquisitionJobRepository().deleteJobsByArrItem(item.arrItemId, item.kind);
+  getAcquisitionJobRepository().deleteJobsByArrItem(item.arrItemId, item.kind, item.sourceService);
 
   return {
     itemId: item.id,

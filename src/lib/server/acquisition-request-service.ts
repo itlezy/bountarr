@@ -2,8 +2,12 @@ import { sanitizePreferences } from '$lib/shared/preferences';
 import type { AcquisitionJob, MediaItem, Preferences, RequestResponse } from '$lib/shared/types';
 import { createAreaLogger } from '$lib/server/logger';
 import { acquisitionMaxRetries, arrFetch } from '$lib/server/arr-client';
-import type { ArrService, RequestItemOptions } from '$lib/server/acquisition-domain';
-import { cloneJob } from '$lib/server/acquisition-domain';
+import {
+  AcquisitionRequestError,
+  cloneJob,
+  type ArrService,
+  type RequestItemOptions,
+} from '$lib/server/acquisition-domain';
 import { fetchServiceDefaults } from '$lib/server/config-service';
 import { getAcquisitionLifecycle } from '$lib/server/acquisition-lifecycle';
 import { getAcquisitionRunner } from '$lib/server/acquisition-runner';
@@ -14,6 +18,7 @@ import { normalizeItem } from '$lib/server/media-normalize';
 import { asArray, asNumber, asPositiveNumber, asRecord, asString } from '$lib/server/raw';
 
 const logger = createAreaLogger('acquisition');
+const inFlightRequests = new Map<string, Promise<RequestResponse>>();
 
 type RequestSpec = {
   service: ArrService;
@@ -30,26 +35,38 @@ type RequestSpec = {
 
 function ensureRootFolder(defaults: Record<string, unknown>, service: ArrService): void {
   if (!asString(defaults.rootFolderPath)) {
-    throw new Error(`No root folder is configured in ${service}`);
+    throw new AcquisitionRequestError(503, `No root folder is configured in ${service}`);
   }
 
   if (!asPositiveNumber(defaults.qualityProfileId)) {
-    throw new Error(`No quality profile is configured in ${service}`);
+    throw new AcquisitionRequestError(503, `No quality profile is configured in ${service}`);
   }
 
   if (service === 'sonarr' && !asPositiveNumber(defaults.languageProfileId)) {
-    throw new Error('No language profile is configured in sonarr');
+    throw new AcquisitionRequestError(503, 'No language profile is configured in sonarr');
   }
 }
 
 function ensureAddable(item: MediaItem): void {
   if (item.inArr) {
-    throw new Error(`${item.title} is already tracked in Arr`);
+    throw new AcquisitionRequestError(409, `${item.title} is already tracked in Arr`);
   }
 
   if (!item.canAdd || !item.requestPayload || item.sourceService === 'plex') {
-    throw new Error(`${item.title} cannot be added from this result`);
+    throw new AcquisitionRequestError(400, `${item.title} cannot be added from this result`);
   }
+}
+
+function requestIdentity(item: MediaItem): string {
+  const payload = asRecord(item.requestPayload);
+  const identity =
+    asNumber(payload.id) ??
+    asNumber(payload.tmdbId) ??
+    asNumber(payload.tvdbId) ??
+    asString(payload.imdbId) ??
+    item.id;
+
+  return `${item.sourceService}:${item.kind}:${identity}`;
 }
 
 function buildMoviePayload(
@@ -80,6 +97,14 @@ function buildSeriesPayload(
   options?: RequestItemOptions,
 ): Record<string, unknown> {
   const raw = asRecord(item.requestPayload);
+  const normalizedSeasonNumbers =
+    options?.seasonNumbers
+      ?.filter((seasonNumber) => Number.isFinite(seasonNumber) && seasonNumber >= 0)
+      .map((seasonNumber) => Math.trunc(seasonNumber)) ?? [];
+  const selectedSeasonNumbers =
+    normalizedSeasonNumbers.length > 0
+      ? new Set(normalizedSeasonNumbers)
+      : null;
 
   return {
     ...raw,
@@ -87,7 +112,9 @@ function buildSeriesPayload(
     seasonFolder: raw.seasonFolder ?? true,
     seasons: asArray(raw.seasons).map((season) => ({
       ...asRecord(season),
-      monitored: false,
+      monitored: selectedSeasonNumbers
+        ? selectedSeasonNumbers.has(asNumber(asRecord(season).seasonNumber) ?? Number.NaN)
+        : false,
     })),
     rootFolderPath: asString(raw.rootFolderPath) ?? asString(defaults.rootFolderPath),
     qualityProfileId:
@@ -161,7 +188,7 @@ function createOrReuseJob(
   preferences: Preferences,
 ): AcquisitionJob {
   const jobs = getAcquisitionJobRepository();
-  const existing = jobs.findActiveJob(arrItemId, item.kind);
+  const existing = jobs.findActiveJob(arrItemId, item.kind, sourceService);
   if (existing) {
     logger.info('Reusing existing acquisition job', {
       arrItemId,
@@ -206,7 +233,7 @@ async function requestTrackedItem(
 
   const sourceId = asNumber(asRecord(item.requestPayload).id);
   if (item.inArr && sourceId) {
-    const activeJob = getAcquisitionJobRepository().findActiveJob(sourceId, item.kind);
+    const activeJob = getAcquisitionJobRepository().findActiveJob(sourceId, item.kind, spec.service);
     return existingResponse(
       item,
       spec.trackedName,
@@ -240,12 +267,31 @@ async function requestTrackedItem(
     }),
   );
   const createdId = asNumber(created.id);
-  const createdItem = createdId
-    ? await spec.fetchExisting(createdId, preferences, item)
-    : spec.buildFallbackItem(created, preferences);
-  const job = createdId
-    ? createOrReuseJob(createdItem, createdId, spec.service, preferences)
-    : null;
+  let createdItem: MediaItem = spec.buildFallbackItem(created, preferences);
+  let job: AcquisitionJob | null = null;
+
+  try {
+    createdItem = createdId
+      ? await spec.fetchExisting(createdId, preferences, item)
+      : spec.buildFallbackItem(created, preferences);
+    job = createdId
+      ? createOrReuseJob(createdItem, createdId, spec.service, preferences)
+      : null;
+  } catch (trackingError) {
+    if (!createdId) {
+      throw trackingError;
+    }
+
+    logger.error('Tracked item was created in Arr but acquisition tracking failed', {
+      arrItemId: createdId,
+      itemTitle: item.title,
+      service: spec.service,
+    });
+    throw new AcquisitionRequestError(
+      500,
+      `${item.title} was added to ${spec.trackedName}, but acquisition tracking could not be started.`,
+    );
+  }
 
   return {
     existing: false,
@@ -265,6 +311,17 @@ export async function requestItem(
 ): Promise<RequestResponse> {
   const normalizedPreferences = sanitizePreferences(preferences);
   const spec = item.kind === 'movie' ? movieRequestSpec() : seriesRequestSpec();
+  const lockKey = requestIdentity(item);
+  const existingRequest = inFlightRequests.get(lockKey);
+  if (existingRequest) {
+    return existingRequest;
+  }
 
-  return requestTrackedItem(spec, item, normalizedPreferences, options);
+  const requestPromise = requestTrackedItem(spec, item, normalizedPreferences, options).finally(() => {
+    if (inFlightRequests.get(lockKey) === requestPromise) {
+      inFlightRequests.delete(lockKey);
+    }
+  });
+  inFlightRequests.set(lockKey, requestPromise);
+  return requestPromise;
 }

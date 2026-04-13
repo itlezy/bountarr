@@ -115,7 +115,7 @@ describe('AcquisitionJobRepository', () => {
     });
     jobs.addFailedGuid(job.id, 'guid-404');
 
-    jobs.deleteJobsByArrItem(404, 'movie');
+    jobs.deleteJobsByArrItem(404, 'movie', 'radarr');
 
     expect(jobs.getJob(job.id)).toBeNull();
     expect(jobs.listJobs()).toEqual([]);
@@ -138,7 +138,7 @@ describe('AcquisitionJobRepository', () => {
       title: 'Deleted Title',
     });
 
-    jobs.deleteJobsByArrItem(405, 'movie');
+    jobs.deleteJobsByArrItem(405, 'movie', 'radarr');
 
     expect(() =>
       jobs.upsertAttempt(job.id, {
@@ -148,6 +148,42 @@ describe('AcquisitionJobRepository', () => {
     ).not.toThrow();
     expect(() => jobs.addFailedGuid(job.id, 'guid-405')).not.toThrow();
     expect(jobs.getJob(job.id)).toBeNull();
+  });
+
+  it('scopes active job lookups by source service', () => {
+    const database = createDatabase();
+    const jobs = new AcquisitionJobRepository(database);
+    const radarrJob = jobs.createJob({
+      arrItemId: 606,
+      itemId: 'movie:606',
+      kind: 'movie',
+      maxRetries: 4,
+      preferredReleaser: null,
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'Any',
+      },
+      sourceService: 'radarr',
+      title: 'Collision Title',
+    });
+    const sonarrJob = jobs.createJob({
+      arrItemId: 606,
+      itemId: 'series:606',
+      kind: 'movie',
+      maxRetries: 4,
+      preferredReleaser: null,
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'Any',
+      },
+      sourceService: 'sonarr',
+      title: 'Collision Title',
+    });
+
+    expect(jobs.findActiveJob(606, 'movie', 'radarr')?.id).toBe(radarrJob.id);
+    expect(jobs.findActiveJob(606, 'movie', 'sonarr')?.id).toBe(sonarrJob.id);
+    expect(jobs.listActiveJobsByArrItem(606, 'movie', 'radarr')).toHaveLength(1);
+    expect(jobs.listActiveJobsByArrItem(606, 'movie', 'sonarr')).toHaveLength(1);
   });
 
   it('drops and recreates legacy acquisition tables instead of preserving require_subtitles', () => {

@@ -1,7 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { ensureAcquisitionSchema, getAcquisitionDatabase } from '$lib/server/acquisition-db';
 import { queueCache } from '$lib/server/app-cache';
-import type { PersistedAcquisitionJob } from '$lib/server/acquisition-domain';
+import type { ArrService, PersistedAcquisitionJob } from '$lib/server/acquisition-domain';
 import { sortJobs } from '$lib/server/acquisition-domain';
 import type { AcquisitionReasonCode } from '$lib/shared/types';
 import { sanitizePreferredLanguage } from '$lib/shared/languages';
@@ -210,6 +210,18 @@ export class AcquisitionJobRepository {
     return rows.map((row) => row.id);
   }
 
+  listRunnableJobs(): PersistedAcquisitionJob[] {
+    const rows = this.database
+      .prepare(
+        `SELECT * FROM acquisition_jobs
+         WHERE status NOT IN ('completed', 'failed', 'cancelled')
+         ORDER BY updated_at DESC`,
+      )
+      .all() as JobRow[];
+
+    return this.hydrateJobs(rows);
+  }
+
   getJob(jobId: string): PersistedAcquisitionJob | null {
     const row = this.database.prepare('SELECT * FROM acquisition_jobs WHERE id = ?').get(jobId) as
       | JobRow
@@ -226,27 +238,37 @@ export class AcquisitionJobRepository {
     return row !== undefined;
   }
 
-  findActiveJob(arrItemId: number, kind: MediaKind): PersistedAcquisitionJob | null {
+  findActiveJob(
+    arrItemId: number,
+    kind: MediaKind,
+    sourceService: ArrService,
+  ): PersistedAcquisitionJob | null {
     const row = this.database
       .prepare(
         `SELECT * FROM acquisition_jobs
-         WHERE arr_item_id = ? AND kind = ? AND status NOT IN ('completed', 'failed', 'cancelled')
+         WHERE arr_item_id = ? AND kind = ? AND source_service = ?
+           AND status NOT IN ('completed', 'failed', 'cancelled')
          ORDER BY updated_at DESC
          LIMIT 1`,
       )
-      .get(arrItemId, kind) as JobRow | undefined;
+      .get(arrItemId, kind, sourceService) as JobRow | undefined;
 
     return row ? (this.hydrateJobs([row])[0] ?? null) : null;
   }
 
-  listActiveJobsByArrItem(arrItemId: number, kind: MediaKind): PersistedAcquisitionJob[] {
+  listActiveJobsByArrItem(
+    arrItemId: number,
+    kind: MediaKind,
+    sourceService: ArrService,
+  ): PersistedAcquisitionJob[] {
     const rows = this.database
       .prepare(
         `SELECT * FROM acquisition_jobs
-         WHERE arr_item_id = ? AND kind = ? AND status NOT IN ('completed', 'failed', 'cancelled')
+         WHERE arr_item_id = ? AND kind = ? AND source_service = ?
+           AND status NOT IN ('completed', 'failed', 'cancelled')
          ORDER BY updated_at DESC`,
       )
-      .all(arrItemId, kind) as JobRow[];
+      .all(arrItemId, kind, sourceService) as JobRow[];
 
     return this.hydrateJobs(rows);
   }
@@ -452,11 +474,13 @@ export class AcquisitionJobRepository {
     this.invalidateQueueCache();
   }
 
-  deleteJobsByArrItem(arrItemId: number, kind: MediaKind): void {
+  deleteJobsByArrItem(arrItemId: number, kind: MediaKind, sourceService: ArrService): void {
     this.withTransaction(() => {
       this.database
-        .prepare('DELETE FROM acquisition_jobs WHERE arr_item_id = ? AND kind = ?')
-        .run(arrItemId, kind);
+        .prepare(
+          'DELETE FROM acquisition_jobs WHERE arr_item_id = ? AND kind = ? AND source_service = ?',
+        )
+        .run(arrItemId, kind, sourceService);
     });
 
     this.invalidateQueueCache();

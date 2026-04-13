@@ -8,7 +8,32 @@ export type PersistedAcquisitionJob = AcquisitionJob & {
 
 export type RequestItemOptions = {
   qualityProfileId?: number | null;
+  seasonNumbers?: number[];
 };
+
+export class AcquisitionRequestError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'AcquisitionRequestError';
+    this.status = status;
+  }
+}
+
+export function isAcquisitionRequestError(error: unknown): error is AcquisitionRequestError {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const status = (error as { status?: unknown }).status;
+  return (
+    error instanceof AcquisitionRequestError ||
+    (error.name === 'AcquisitionRequestError' &&
+      typeof status === 'number' &&
+      Number.isFinite(status))
+  );
+}
 
 export function cloneJob(job: PersistedAcquisitionJob): AcquisitionJob {
   const { failedGuids: _failedGuids, ...publicJob } = job;
