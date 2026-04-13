@@ -162,7 +162,7 @@ test('movie request submits through the add dialog and moves to queue view', asy
   });
   await matrixCard.getByRole('button', { name: 'Grab' }).click();
 
-  const dialog = page.getByRole('dialog', { name: 'Request title' });
+  const dialog = page.getByRole('dialog', { name: 'Grab title' });
   await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: 'Grab' }).click();
 
@@ -176,7 +176,7 @@ test('movie request submits through the add dialog and moves to queue view', asy
     })
     .toBe(1);
 
-  await expect(page.getByRole('dialog', { name: 'Request title' })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Grab title' })).toHaveCount(0);
   const confirmation = page.getByRole('status');
   await expect(confirmation).toContainText('The Matrix was added to Radarr.');
   if (mobileProject(testInfo)) {
@@ -186,7 +186,7 @@ test('movie request submits through the add dialog and moves to queue view', asy
     expect(Math.round(box?.width ?? 0)).toBe(page.viewportSize()?.width ?? 0);
   }
   expect(api.requestBodies[0]?.seasonNumbers).toBeUndefined();
-  await expect(page.getByRole('heading', { name: 'Request progress' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Grab Progress' })).toBeVisible();
   await expect(page.getByText('Tracking The Matrix below so you can see what happens next.')).toBeVisible();
   await page.waitForTimeout(3_200);
   await expect(confirmation).toHaveCount(0);
@@ -201,7 +201,7 @@ test('series request defaults to season 1 and allows changing seasons', async ({
   });
   await andorCard.getByRole('button', { name: 'Grab' }).click();
 
-  const dialog = page.getByRole('dialog', { name: 'Request title' });
+  const dialog = page.getByRole('dialog', { name: 'Grab title' });
   await expect(dialog).toBeVisible();
 
   const season1 = dialog.getByRole('button', { name: 'Season 1' });
@@ -221,7 +221,7 @@ test('series request defaults to season 1 and allows changing seasons', async ({
     })
     .toBe(1);
 
-  await expect(page.getByRole('dialog', { name: 'Request title' })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Grab title' })).toHaveCount(0);
   await expect(page.getByRole('status')).toContainText('Andor was added to Sonarr.');
   expect(api.requestBodies[0]?.seasonNumbers).toEqual([1, 2]);
   await expect(page.getByText('Tracking Andor below so you can see what happens next.')).toBeVisible();

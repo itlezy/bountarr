@@ -1,129 +1,152 @@
 <script lang="ts">
 import type { AppState } from '$lib/client/app-state.svelte';
+import OverlayDialog from '$lib/components/app/OverlayDialog.svelte';
 import { preferredAudioOptions, subtitleLanguageOptions } from '$lib/shared/languages';
 
 let { state }: { state: AppState } = $props();
+
+const confirmItem = $derived(state.confirmAddItem);
+const confirmSeasonOptions = $derived(state.confirmSeasonOptions);
+const isSubmitting = $derived(confirmItem ? state.requesting === confirmItem.id : false);
+
+function seasonLabel(seasonNumber: number): string {
+  return seasonNumber === 0 ? 'Specials' : `Season ${seasonNumber}`;
+}
 </script>
 
-{#if state.confirmAddItem}
-  <button
-    class="fixed inset-0 z-40 bg-black/45"
-    type="button"
-    aria-label="Close add confirmation"
-    onclick={() => state.closeAddConfirm()}
-  ></button>
-  <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
-    <section class="floating-shell w-full max-w-sm p-4">
-      <div class="flex items-start justify-between gap-3">
-        <div>
-          <div class="text-lg font-800">
-            {state.confirmOperatorOverride ? 'Request anyway' : 'Request title'}
+{#if confirmItem}
+  <OverlayDialog
+    closeLabel="Close add confirmation"
+    closeDisabled={isSubmitting}
+    onClose={() => state.closeAddConfirm()}
+    size={confirmItem.kind === 'series' ? 'wide' : 'narrow'}
+    title={state.confirmOperatorOverride ? 'Grab anyway' : 'Grab title'}
+    subtitle={`${confirmItem.title}${confirmItem.year ? ` (${confirmItem.year})` : ''}`}
+  >
+    {#snippet children()}
+      <div class="space-y-4">
+        <label class="block">
+          <div class="mb-2 text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">
+            Quality profile
           </div>
-          <div class="mt-1 text-sm text-[var(--muted)]">
-            {state.confirmAddItem.title}{state.confirmAddItem.year ? ` (${state.confirmAddItem.year})` : ''}
-          </div>
-        </div>
-        <button
-          class="control-shell flex h-8 w-8 items-center justify-center text-sm font-700"
-          type="button"
-          aria-label="Close add confirmation"
-          onclick={() => state.closeAddConfirm()}
-        >
-          X
-        </button>
-      </div>
+          <select
+            class="control-shell min-h-11 w-full px-3 text-sm"
+            bind:value={state.confirmQualityProfileId}
+            disabled={isSubmitting}
+          >
+            {#each state.qualityProfileOptions(confirmItem) as profile}
+              <option value={profile.id}>
+                {profile.name}{profile.isDefault ? ' (default)' : ''}
+              </option>
+            {/each}
+          </select>
+        </label>
 
-      <div class="mt-4">
-        <div class="space-y-4">
-          <label class="block">
+        {#if confirmItem.kind === 'series' && confirmSeasonOptions.length > 0}
+          <div>
             <div class="mb-2 text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">
-              Quality profile
+              Seasons to monitor
             </div>
-            <select
-              class="control-shell min-h-11 w-full px-3 text-sm"
-              bind:value={state.confirmQualityProfileId}
-            >
-              {#each state.qualityProfileOptions(state.confirmAddItem) as profile}
-                <option value={profile.id}>
-                  {profile.name}{profile.isDefault ? ' (default)' : ''}
-                </option>
+            <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {#each confirmSeasonOptions as seasonNumber}
+                <button
+                  class={`${state.confirmSeasonSelected(seasonNumber) ? 'control-primary' : 'control-shell'} min-h-10 px-3 text-sm font-700`}
+                  type="button"
+                  aria-pressed={state.confirmSeasonSelected(seasonNumber)}
+                  disabled={isSubmitting}
+                  onclick={() => state.toggleConfirmSeason(seasonNumber)}
+                >
+                  {seasonLabel(seasonNumber)}
+                </button>
               {/each}
-            </select>
-          </label>
-          <label class="block">
-            <div class="mb-2 text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">
-              Preferred audio
             </div>
-            <select
-              class="control-shell min-h-11 w-full px-3 text-sm"
-              bind:value={state.confirmPreferredLanguage}
-            >
-              {#each preferredAudioOptions as language}
-                <option value={language}>{language}</option>
-              {/each}
-            </select>
-          </label>
-          <label class="block">
-            <div class="mb-2 text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">
-              Subtitle language
+            <div class="mt-2 text-xs text-[var(--muted)]">
+              Only the selected seasons will be monitored when this show is added. The default is first season only.
             </div>
-            <select
-              class="control-shell min-h-11 w-full px-3 text-sm"
-              bind:value={state.confirmSubtitleLanguage}
-            >
-              {#each subtitleLanguageOptions as language}
-                <option value={language}>{language}</option>
-              {/each}
-            </select>
-          </label>
-        </div>
-        {#if state.confirmOperatorOverride}
-          <div class="mt-3 rounded-[14px] border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
-            Plex already has this title. This override will still send a managed request to Arr.
+            {#if !state.confirmCanSubmit}
+              <div class="mt-2 text-xs text-rose-700 dark:text-rose-200">
+                Select at least one season to grab this show.
+              </div>
+            {/if}
           </div>
         {/if}
-        <div class="mt-3 text-xs text-[var(--muted)]">
-          Defaults come from Settings. Confirming this request also updates your local defaults to match these choices.
+
+        <label class="block">
+          <div class="mb-2 text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">
+            Preferred audio
+          </div>
+          <select
+            class="control-shell min-h-11 w-full px-3 text-sm"
+            bind:value={state.confirmPreferredLanguage}
+            disabled={isSubmitting}
+          >
+            {#each preferredAudioOptions as language}
+              <option value={language}>{language}</option>
+            {/each}
+          </select>
+        </label>
+
+        <label class="block">
+          <div class="mb-2 text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">
+            Subtitle language
+          </div>
+          <select
+            class="control-shell min-h-11 w-full px-3 text-sm"
+            bind:value={state.confirmSubtitleLanguage}
+            disabled={isSubmitting}
+          >
+            {#each subtitleLanguageOptions as language}
+              <option value={language}>{language}</option>
+            {/each}
+          </select>
+        </label>
+
+        {#if state.confirmOperatorOverride}
+          <div class="rounded-[14px] border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+            Plex already has this title. This override will still send a managed grab to Arr.
+          </div>
+        {/if}
+
+        <div class="text-xs text-[var(--muted)]">
+          Defaults come from Settings. Confirming this grab also updates your local defaults to match these choices.
         </div>
-        <div class="mt-2 text-xs text-[var(--muted)]">
-          `Any` leaves audio or subtitles unconstrained for this request. Choosing a specific subtitle language makes that subtitle language required.
+        <div class="text-xs text-[var(--muted)]">
+          `Any` leaves audio or subtitles unconstrained for this grab. Choosing a specific subtitle language makes that subtitle language required.
         </div>
-        <div class="mt-2 text-xs text-[var(--muted)]">
-          The env-configured quality profile is used as the default, but you can override it for this request.
+        <div class="text-xs text-[var(--muted)]">
+          The env-configured quality profile is used as the default, but you can override it for this grab.
         </div>
       </div>
+    {/snippet}
 
-      <div class="mt-4 grid grid-cols-2 gap-2">
+    {#snippet footer()}
+      <div>
         <button
-          class="control-shell min-h-11 px-4 text-sm font-700"
-          type="button"
-          onclick={() => state.closeAddConfirm()}
-          disabled={state.requesting === state.confirmAddItem.id}
-        >
-          Not now
-        </button>
-        <button
-          class="control-primary min-h-11 px-4 text-sm font-700 disabled:cursor-not-allowed disabled:opacity-50"
+          class="control-primary min-h-11 w-full px-4 text-sm font-700 disabled:cursor-not-allowed disabled:opacity-50"
           type="button"
           onclick={() => {
-            if (state.confirmAddItem) {
-              void state.submitRequest(
-                state.confirmAddItem,
-                state.confirmQualityProfileId,
-                {
-                  cardsView: state.cardsView,
-                  preferredLanguage: state.confirmPreferredLanguage,
-                  subtitleLanguage: state.confirmSubtitleLanguage,
-                  theme: state.theme,
-                },
-              );
-            }
+            void state.submitRequest(
+              confirmItem,
+              state.confirmQualityProfileId,
+              {
+                cardsView: state.cardsView,
+                preferredLanguage: state.confirmPreferredLanguage,
+                subtitleLanguage: state.confirmSubtitleLanguage,
+                theme: state.theme,
+              },
+              confirmItem.kind === 'series' ? state.confirmSeasonNumbers : undefined,
+            );
           }}
-          disabled={state.requesting === state.confirmAddItem.id}
+          disabled={isSubmitting || !state.confirmCanSubmit}
         >
-          {state.requesting === state.confirmAddItem.id ? 'Requesting...' : 'Request'}
+          <span class="flex items-center justify-center gap-2">
+            {#if isSubmitting}
+              <span class="spinner h-4 w-4 shrink-0" aria-hidden="true"></span>
+            {/if}
+            <span>{isSubmitting ? 'Grabbing...' : 'Grab'}</span>
+          </span>
         </button>
       </div>
-    </section>
-  </div>
+    {/snippet}
+  </OverlayDialog>
 {/if}

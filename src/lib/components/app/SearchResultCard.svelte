@@ -47,12 +47,12 @@ let { feedback, item, state }: {
       <div class="mt-2 flex flex-wrap gap-2 text-[11px] font-700 uppercase tracking-[0.08em]">
         {#if item.canAdd}
           <span class="border border-amber-300 bg-amber-50 px-2 py-1 text-amber-700 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
-            Ready to request
+            Ready to Grab
           </span>
         {/if}
         {#if item.inArr}
           <span class="border border-emerald-300 bg-emerald-50 px-2 py-1 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200">
-            Already requested
+            Already Grabbed
           </span>
         {/if}
         {#if item.inPlex}
@@ -115,14 +115,14 @@ let { feedback, item, state }: {
     <div class="mt-3 space-y-2">
       {#if state.canOperatorRequestFromPlex(item)}
         <div class="text-sm text-[var(--muted)]">
-          Plex already has this title, but you can still request a managed copy from Arr if you want a different version.
+          Plex already has this title, but you can still grab a managed copy from Arr if you want a different version.
         </div>
         <button
           class="control-primary min-h-10 w-full px-4 text-sm font-700"
           type="button"
           onclick={() => state.openAddConfirm(item, { operatorOverride: true })}
         >
-          Request anyway
+          Grab anyway
         </button>
       {/if}
       {#if item.canDeleteFromArr}

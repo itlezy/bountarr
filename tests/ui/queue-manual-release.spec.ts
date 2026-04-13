@@ -31,7 +31,7 @@ async function openQueue(page: Page, api: MockApiController) {
     })
     .toBeGreaterThan(0);
   await page.getByRole('button', { name: 'Queue' }).click();
-  await expect(page.getByRole('heading', { name: 'Request progress' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Grab Progress' })).toBeVisible();
 }
 
 function acquisitionCard(page: Page) {
@@ -59,7 +59,7 @@ test('queue view renders acquisition jobs and active downloads', async ({ page }
   await expect(page.getByText(queueItemFixture.title, { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Show operator tools' })).toHaveCount(0);
   await expect(page.getByText('Movie download · Downloading')).toBeVisible();
-  await expect(page.getByText('Show request · Looking for a release')).toBeVisible();
+  await expect(page.getByText('Show grab · Looking for a release')).toBeVisible();
 });
 
 test('manual release dialog uses responsive modal layout', async ({ page }, testInfo) => {

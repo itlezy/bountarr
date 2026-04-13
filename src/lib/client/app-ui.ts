@@ -51,15 +51,15 @@ export function auditLabel(status: AuditStatus): string {
 
 export function actionLabel(item: MediaItem, requestingId: string | null): string {
   if (requestingId === item.id) {
-    return 'Requesting...';
+    return 'Grabbing...';
   }
 
   if (item.canAdd) {
-    return 'Request this';
+    return 'Grab';
   }
 
   if (item.inArr) {
-    return 'Already requested';
+    return 'Already Grabbed';
   }
 
   if (item.inPlex) {
@@ -87,18 +87,18 @@ export function mediaKindLabel(kind: MediaItem['kind']): string {
 
 export function resultState(item: MediaItem): string {
   if (item.inArr && item.inPlex) {
-    return 'Already requested and available now';
+    return 'Already Grabbed and available now';
   }
 
   if (item.inArr) {
-    return 'Already requested';
+    return 'Already Grabbed';
   }
 
   if (item.inPlex) {
     return 'Available in Plex';
   }
 
-  return 'Ready to request';
+  return 'Ready to Grab';
 }
 
 export function resultSummary(item: MediaItem): string {
@@ -107,18 +107,18 @@ export function resultSummary(item: MediaItem): string {
 
 export function resultMessage(item: MediaItem): string {
   if (item.inArr && item.inPlex) {
-    return 'This title is already in your request system and already available in Plex.';
+    return 'This title is already in your grab system and already available in Plex.';
   }
 
   if (item.inArr) {
-    return 'This title is already being tracked in your request system.';
+    return 'This title is already being tracked in your grab system.';
   }
 
   if (item.inPlex) {
     return 'This title is already available in Plex.';
   }
 
-  return 'This title can be requested now.';
+  return 'This title can be grabbed now.';
 }
 
 export function canOperatorRequestFromPlex(item: MediaItem): boolean {
@@ -234,7 +234,7 @@ export function acquisitionAttemptSummary(attempt: AcquisitionAttempt): string {
 }
 
 export function acquisitionJourneySummary(job: AcquisitionJob): string {
-  return `${mediaKindLabel(job.kind)} request · ${acquisitionStatusLabel(job.status)}`;
+  return `${mediaKindLabel(job.kind)} grab · ${acquisitionStatusLabel(job.status)}`;
 }
 
 export function queueItemSummary(item: QueueItem): string {
