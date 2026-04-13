@@ -13,6 +13,7 @@
     "lint": "biome lint .",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
+    "test:ui": "playwright test",
     "test:integration": "pwsh -NoLogo -NoProfile -File .\\helpers\\helper-test-integration.ps1",
     "reset:db": "pwsh -NoLogo -NoProfile -File .\\helpers\\helper-data-reset-acquisition-db.ps1",
     "smoke": "pwsh -NoLogo -NoProfile -File .\\helpers\\helper-smoke-ui.ps1",
@@ -26,6 +27,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.10",
+    "@playwright/test": "^1.59.1",
     "@sveltejs/vite-plugin-svelte": "^7.0.0",
     "@types/node": "^25.5.0",
     "@unocss/svelte-scoped": "^66.6.7",
