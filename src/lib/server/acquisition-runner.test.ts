@@ -290,4 +290,39 @@ describe('AcquisitionRunner', () => {
     expect(failed?.autoRetrying).toBe(false);
     expect(failed?.failureReason).toBe('No acceptable release passed the local scoring rules');
   });
+
+  it('stops cleanly when the job disappears during processing', async () => {
+    const harness = createHarness();
+    const job = harness.jobs.createJob({
+      arrItemId: 555,
+      itemId: 'movie:555',
+      kind: 'movie',
+      maxRetries: 2,
+      preferredReleaser: null,
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      sourceService: 'radarr',
+      title: 'Vanishing Title',
+    });
+
+    const runner = new AcquisitionRunner(harness.jobs, harness.lifecycle, {
+      findReleaseSelection: vi.fn().mockImplementation(async () => {
+        harness.jobs.deleteJobsByArrItem(job.arrItemId, job.kind);
+        throw new Error('selection exploded after reset');
+      }),
+      submitSelectedRelease: vi.fn().mockResolvedValue(undefined),
+      waitForAttemptOutcome: vi.fn(),
+    });
+
+    runner.enqueue(job.id);
+
+    await vi.waitFor(() => {
+      expect(runner.running.size).toBe(0);
+    });
+
+    expect(harness.jobs.getJob(job.id)).toBeNull();
+    expect(harness.events.listByJob(job.id)).toEqual([]);
+  });
 });

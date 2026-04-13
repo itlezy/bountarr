@@ -218,6 +218,14 @@ export class AcquisitionJobRepository {
     return row ? (this.hydrateJobs([row])[0] ?? null) : null;
   }
 
+  hasJob(jobId: string): boolean {
+    const row = this.database
+      .prepare('SELECT 1 FROM acquisition_jobs WHERE id = ? LIMIT 1')
+      .get(jobId) as { 1?: number } | undefined;
+
+    return row !== undefined;
+  }
+
   findActiveJob(arrItemId: number, kind: MediaKind): PersistedAcquisitionJob | null {
     const row = this.database
       .prepare(
@@ -378,6 +386,10 @@ export class AcquisitionJobRepository {
   }
 
   upsertAttempt(jobId: string, input: UpsertAcquisitionAttemptInput): void {
+    if (!this.hasJob(jobId)) {
+      return;
+    }
+
     const existing = this.database
       .prepare('SELECT * FROM acquisition_attempts WHERE job_id = ? AND attempt = ?')
       .get(jobId, input.attempt) as AttemptRow | undefined;
@@ -427,6 +439,10 @@ export class AcquisitionJobRepository {
   }
 
   addFailedGuid(jobId: string, guid: string): void {
+    if (!this.hasJob(jobId)) {
+      return;
+    }
+
     this.withTransaction(() => {
       this.database
         .prepare('INSERT OR IGNORE INTO acquisition_failed_guids (job_id, guid) VALUES (?, ?)')

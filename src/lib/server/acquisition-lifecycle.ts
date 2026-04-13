@@ -50,6 +50,10 @@ export class AcquisitionLifecycle {
     this.events = events;
   }
 
+  private getCurrentJob(jobId: string): PersistedAcquisitionJob | null {
+    return this.jobs.getJob(jobId);
+  }
+
   private log(
     job: PersistedAcquisitionJob,
     kind: string,
@@ -274,11 +278,16 @@ export class AcquisitionLifecycle {
   }
 
   handleCrash(job: PersistedAcquisitionJob, error: unknown): PersistedAcquisitionJob {
+    const current = this.getCurrentJob(job.id);
+    if (!current) {
+      return job;
+    }
+
     const message = getErrorMessage(error, 'Acquisition failed');
 
-    if (job.attempts.some((attempt) => attempt.attempt === job.attempt)) {
-      this.jobs.upsertAttempt(job.id, {
-        attempt: job.attempt,
+    if (current.attempts.some((attempt) => attempt.attempt === current.attempt)) {
+      this.jobs.upsertAttempt(current.id, {
+        attempt: current.attempt,
         finishedAt: new Date().toISOString(),
         reasonCode: 'crashed',
         reason: message,
@@ -286,7 +295,7 @@ export class AcquisitionLifecycle {
       });
     }
 
-    const next = this.jobs.updateJob(job.id, {
+    const next = this.jobs.updateJob(current.id, {
       autoRetrying: false,
       completedAt: new Date().toISOString(),
       reasonCode: 'crashed',

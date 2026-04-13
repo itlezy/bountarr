@@ -120,6 +120,109 @@ describe('AcquisitionJobRepository', () => {
     expect(jobs.getJob(job.id)).toBeNull();
     expect(jobs.listJobs()).toEqual([]);
   });
+
+  it('treats attempt and failed-guid writes as no-ops when the parent job is gone', () => {
+    const database = createDatabase();
+    const jobs = new AcquisitionJobRepository(database);
+    const job = jobs.createJob({
+      arrItemId: 405,
+      itemId: 'movie:405',
+      kind: 'movie',
+      maxRetries: 4,
+      preferredReleaser: null,
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      sourceService: 'radarr',
+      title: 'Deleted Title',
+    });
+
+    jobs.deleteJobsByArrItem(405, 'movie');
+
+    expect(() =>
+      jobs.upsertAttempt(job.id, {
+        attempt: 1,
+        status: 'failed',
+      }),
+    ).not.toThrow();
+    expect(() => jobs.addFailedGuid(job.id, 'guid-405')).not.toThrow();
+    expect(jobs.getJob(job.id)).toBeNull();
+  });
+
+  it('drops and recreates legacy acquisition tables instead of preserving require_subtitles', () => {
+    const database = createDatabase();
+    database.exec(`
+      CREATE TABLE acquisition_jobs (
+        id TEXT PRIMARY KEY,
+        item_id TEXT NOT NULL,
+        arr_item_id INTEGER NOT NULL,
+        kind TEXT NOT NULL,
+        title TEXT NOT NULL,
+        source_service TEXT NOT NULL,
+        status TEXT NOT NULL,
+        attempt INTEGER NOT NULL,
+        max_retries INTEGER NOT NULL,
+        current_release TEXT,
+        selected_releaser TEXT,
+        preferred_releaser TEXT,
+        failure_reason TEXT,
+        validation_summary TEXT,
+        progress REAL,
+        queue_status TEXT,
+        preferred_language TEXT NOT NULL,
+        require_subtitles INTEGER NOT NULL,
+        started_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        completed_at TEXT
+      );
+    `);
+    database
+      .prepare(
+        `INSERT INTO acquisition_jobs (
+          id, item_id, arr_item_id, kind, title, source_service, status, attempt,
+          max_retries, preferred_language, require_subtitles, started_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        'legacy-job',
+        'movie:1',
+        1,
+        'movie',
+        'Legacy Item',
+        'radarr',
+        'queued',
+        1,
+        4,
+        'English',
+        1,
+        '2026-04-13T12:00:00.000Z',
+        '2026-04-13T12:00:00.000Z',
+      );
+
+    const jobs = new AcquisitionJobRepository(database);
+    const columns = database
+      .prepare('PRAGMA table_info(acquisition_jobs)')
+      .all() as Array<{ name: string }>;
+    const job = jobs.createJob({
+      arrItemId: 505,
+      itemId: 'movie:505',
+      kind: 'movie',
+      maxRetries: 4,
+      preferredReleaser: null,
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'Any',
+      },
+      sourceService: 'radarr',
+      title: 'Legacy Title',
+    });
+    const loaded = jobs.getJob(job.id);
+
+    expect(columns.some((column) => column.name === 'require_subtitles')).toBe(false);
+    expect(jobs.getJob('legacy-job')).toBeNull();
+    expect(loaded?.preferences.subtitleLanguage).toBe('Any');
+  });
 });
 
 describe('AcquisitionEventRepository', () => {
