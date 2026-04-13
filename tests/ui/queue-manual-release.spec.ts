@@ -1,0 +1,179 @@
+import { expect, test } from '@playwright/test';
+import type { Page, Request, TestInfo } from '@playwright/test';
+import {
+  acquisitionJobFixture,
+  buildManualReleaseSelectionResponse,
+  buildQueueResponse,
+  buildSelectedJob,
+  buildSelectedManualReleaseList,
+  emptyDashboardResponse,
+  emptyManualReleaseListFixture,
+  manualReleaseFixture,
+  manualReleaseListFixture,
+  queueItemFixture,
+} from './support/fixtures';
+import { mockAppApi, mockJson, mockTextError, type MockApiController } from './support/mock-api';
+
+function mobileProject(testInfo: TestInfo): boolean {
+  return testInfo.project.name.includes('mobile');
+}
+
+async function openQueue(page: Page, api: MockApiController) {
+  await page.goto('/');
+  await expect
+    .poll(() => api.dashboardRequests.length, {
+      message: 'app should hydrate and request the dashboard before UI interaction',
+    })
+    .toBeGreaterThan(0);
+  await expect
+    .poll(() => api.queueRequests.length, {
+      message: 'app should hydrate and request the queue before UI interaction',
+    })
+    .toBeGreaterThan(0);
+  await page.getByRole('button', { name: 'Queue' }).click();
+  await expect(page.getByRole('heading', { name: 'Request progress' })).toBeVisible();
+}
+
+function acquisitionCard(page: Page) {
+  return page.locator('article').filter({
+    has: page.getByText(acquisitionJobFixture.title, { exact: true }),
+  });
+}
+
+async function openManualReleaseModal(page: Page) {
+  const card = acquisitionCard(page);
+  await card.getByRole('button', { name: 'Show manual release options' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Manual release options' });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+test('queue view renders acquisition jobs and active downloads', async ({ page }) => {
+  const api = await mockAppApi(page, {
+    queue: buildQueueResponse(),
+  });
+
+  await openQueue(page, api);
+
+  await expect(page.getByText(acquisitionJobFixture.title, { exact: true })).toBeVisible();
+  await expect(page.getByText(queueItemFixture.title, { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Show operator tools' })).toHaveCount(0);
+  await expect(page.getByText('Movie download · Downloading')).toBeVisible();
+  await expect(page.getByText('Show request · Looking for a release')).toBeVisible();
+});
+
+test('manual release dialog uses responsive modal layout', async ({ page }, testInfo) => {
+  const api = await mockAppApi(page, {
+    queue: buildQueueResponse(),
+    manualReleaseResponse: () => mockJson(manualReleaseListFixture, 250),
+  });
+
+  await openQueue(page, api);
+  const dialog = await openManualReleaseModal(page);
+
+  await expect(dialog.getByText('Loading manual-search releases...')).toBeVisible();
+  await expect(dialog.getByText(manualReleaseFixture.title)).toBeVisible();
+
+  const box = await dialog.boundingBox();
+  expect(box).not.toBeNull();
+
+  if (mobileProject(testInfo)) {
+    expect(Math.round(box?.x ?? -1)).toBe(0);
+    expect(Math.round(box?.width ?? 0)).toBe(page.viewportSize()?.width ?? 0);
+  } else {
+    expect(Math.round(box?.x ?? 0)).toBeGreaterThan(0);
+    expect(Math.round(box?.width ?? 0)).toBeLessThan(page.viewportSize()?.width ?? 0);
+  }
+});
+
+test('manual release dialog shows empty results and closes cleanly', async ({ page }) => {
+  const api = await mockAppApi(page, {
+    queue: buildQueueResponse(),
+    manualReleaseResponse: () => emptyManualReleaseListFixture,
+  });
+
+  await openQueue(page, api);
+  const dialog = await openManualReleaseModal(page);
+
+  await expect(dialog.getByText('No manual-search releases are currently available.')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Close manual release options' }).click();
+  await expect(page.getByRole('dialog', { name: 'Manual release options' })).toHaveCount(0);
+});
+
+test('manual release selection refreshes queue and release state', async ({ page }) => {
+  let queueCall = 0;
+  let releaseCall = 0;
+  const refreshedJob = buildSelectedJob();
+  const refreshedQueue = buildQueueResponse([refreshedJob], [queueItemFixture]);
+  const refreshedReleases = buildSelectedManualReleaseList();
+  const api = await mockAppApi(page, {
+    dashboard: (_request: Request, url: URL) =>
+      url.pathname === '/api/dashboard/refresh'
+        ? mockJson(emptyDashboardResponse)
+        : emptyDashboardResponse,
+    queue: () => {
+      queueCall += 1;
+      return queueCall > 1 ? refreshedQueue : buildQueueResponse();
+    },
+    manualReleaseResponse: () => {
+      releaseCall += 1;
+      return releaseCall > 1 ? refreshedReleases : manualReleaseListFixture;
+    },
+    selectManualReleaseResponse: () => buildManualReleaseSelectionResponse(),
+  });
+
+  await openQueue(page, api);
+  const dialog = await openManualReleaseModal(page);
+
+  await dialog.getByRole('button', { name: 'Select release' }).first().click();
+
+  await expect
+    .poll(() => api.selectManualReleaseBodies.length, {
+      message: 'manual release selection should submit a request body',
+    })
+    .toBe(1);
+  expect(api.selectManualReleaseBodies[0]).toEqual({
+    body: {
+      guid: manualReleaseFixture.guid,
+      indexerId: manualReleaseFixture.indexerId,
+    },
+    jobId: acquisitionJobFixture.id,
+  });
+
+  await expect(dialog.getByText('One manual-search release was selected.')).toBeVisible();
+  await expect(dialog.getByText('Selected', { exact: true })).toBeVisible();
+  await expect(page.getByText('Manual release selected. Sending Andor to the downloader.')).toBeVisible();
+  await expect(
+    acquisitionCard(page)
+      .getByText('Manual release selected and sent to the downloader.', { exact: true })
+      .first(),
+  ).toBeVisible();
+  await expect
+    .poll(() => api.queueRequests.length, {
+      message: 'queue should refresh after selecting a manual release',
+    })
+    .toBeGreaterThan(1);
+  await expect
+    .poll(() => api.manualReleaseRequests.length, {
+      message: 'manual release list should refresh after selecting a release',
+    })
+    .toBeGreaterThan(1);
+});
+
+test('manual release selection errors stay inline and keep the dialog open', async ({ page }) => {
+  const api = await mockAppApi(page, {
+    queue: buildQueueResponse(),
+    manualReleaseResponse: () => manualReleaseListFixture,
+    selectManualReleaseResponse: () =>
+      mockTextError('Unable to select the requested release.', 500, 150),
+  });
+
+  await openQueue(page, api);
+  const dialog = await openManualReleaseModal(page);
+
+  await dialog.getByRole('button', { name: 'Select release' }).first().click();
+
+  await expect(dialog.getByText('Unable to select the requested release.')).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Manual release options' })).toBeVisible();
+  await expect(page.getByText(manualReleaseFixture.title)).toBeVisible();
+});
