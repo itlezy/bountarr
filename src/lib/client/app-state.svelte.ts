@@ -409,7 +409,15 @@ export class AppState {
 
   get auditAttentionItems(): MediaItem[] {
     return [...(this.dashboard?.items ?? [])]
-      .filter((item) => item.auditStatus !== 'verified')
+      .filter((item) => item.auditStatus === 'missing-language' || item.auditStatus === 'no-subs')
+      .sort((left, right) =>
+        left.title.localeCompare(right.title, undefined, { sensitivity: 'base' }),
+      );
+  }
+
+  get auditPendingItems(): MediaItem[] {
+    return [...(this.dashboard?.items ?? [])]
+      .filter((item) => item.auditStatus === 'pending' || item.auditStatus === 'unknown')
       .sort((left, right) =>
         left.title.localeCompare(right.title, undefined, { sensitivity: 'base' }),
       );

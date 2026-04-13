@@ -97,6 +97,13 @@ export type UpsertAcquisitionAttemptInput = {
 };
 
 export type ClaimAttemptReleaseSubmissionResult = 'claimed' | 'already-claimed' | 'missing';
+export type ClaimAttemptSearchResult = 'claimed' | 'already-claimed' | 'missing';
+export type ConditionalJobUpdateResult = {
+  job: PersistedAcquisitionJob | null;
+  updated: boolean;
+};
+
+const attemptSearchClaimTtlMs = 120_000;
 
 function placeholders(count: number): string {
   return new Array(count).fill('?').join(', ');
@@ -429,6 +436,90 @@ export class AcquisitionJobRepository {
     return this.getJob(jobId) ?? next;
   }
 
+  updateJobIfStatus(
+    jobId: string,
+    allowedStatuses: PersistedAcquisitionJob['status'][],
+    patch: UpdateAcquisitionJobPatch,
+  ): ConditionalJobUpdateResult {
+    const result = this.withTransaction<ConditionalJobUpdateResult>(() => {
+      const currentRow = this.database
+        .prepare('SELECT * FROM acquisition_jobs WHERE id = ?')
+        .get(jobId) as JobRow | undefined;
+
+      if (!currentRow) {
+        return { job: null, updated: false };
+      }
+
+      const current = this.hydrateJobs([currentRow])[0];
+      if (!current) {
+        return { job: null, updated: false };
+      }
+
+      if (!allowedStatuses.includes(current.status)) {
+        return { job: current, updated: false };
+      }
+
+      const nextStatus = patch.status ?? current.status;
+      if (!canTransitionJobStatus(current.status, nextStatus)) {
+        throw new Error(
+          `Invalid acquisition job status transition: ${current.status} -> ${nextStatus}`,
+        );
+      }
+
+      if (patch.attempt !== undefined && patch.attempt < current.attempt) {
+        throw new Error(
+          `Invalid acquisition attempt regression for ${jobId}: ${patch.attempt} < ${current.attempt}`,
+        );
+      }
+
+      const next: PersistedAcquisitionJob = {
+        ...current,
+        ...patch,
+        preferences: {
+          ...current.preferences,
+          ...(patch.preferences ?? {}),
+        },
+        updatedAt: patch.updatedAt ?? new Date().toISOString(),
+      };
+
+      this.database
+        .prepare(
+          `UPDATE acquisition_jobs SET
+            status = ?, attempt = ?, current_release = ?, selected_releaser = ?,
+            preferred_releaser = ?, reason_code = ?, failure_reason = ?, validation_summary = ?,
+            auto_retrying = ?, progress = ?, queue_status = ?, preferred_language = ?, subtitle_language = ?,
+            updated_at = ?, completed_at = ?
+           WHERE id = ?`,
+        )
+        .run(
+          next.status,
+          next.attempt,
+          next.currentRelease,
+          next.selectedReleaser,
+          next.preferredReleaser,
+          next.reasonCode,
+          next.failureReason,
+          next.validationSummary,
+          next.autoRetrying ? 1 : 0,
+          next.progress,
+          next.queueStatus,
+          next.preferences.preferredLanguage,
+          next.preferences.subtitleLanguage,
+          next.updatedAt,
+          next.completedAt,
+          jobId,
+        );
+
+      return {
+        job: this.getJob(jobId) ?? next,
+        updated: true,
+      };
+    });
+
+    this.invalidateQueueCache();
+    return result;
+  }
+
   upsertAttempt(jobId: string, input: UpsertAcquisitionAttemptInput): void {
     if (!this.hasJob(jobId)) {
       return;
@@ -531,6 +622,74 @@ export class AcquisitionJobRepository {
            WHERE job_id = ? AND attempt = ?`,
         )
         .run(guid, indexerId, new Date().toISOString(), jobId, attempt);
+
+      return 'claimed';
+    });
+
+    this.invalidateQueueCache();
+    return result;
+  }
+
+  claimAttemptSearch(jobId: string, attempt: number): ClaimAttemptSearchResult {
+    const result = this.withTransaction<ClaimAttemptSearchResult>(() => {
+      const jobRow = this.database
+        .prepare('SELECT 1 FROM acquisition_jobs WHERE id = ? LIMIT 1')
+        .get(jobId) as { 1?: number } | undefined;
+      if (!jobRow) {
+        return 'missing';
+      }
+
+      const existing = this.database
+        .prepare('SELECT * FROM acquisition_attempts WHERE job_id = ? AND attempt = ?')
+        .get(jobId, attempt) as AttemptRow | undefined;
+      const claimedAt = new Date().toISOString();
+
+      if (!existing) {
+        this.database
+          .prepare(
+            `INSERT INTO acquisition_attempts (
+              job_id, attempt, status, reason_code, release_title, releaser, reason,
+              submitted_guid, submitted_indexer_id, submission_claimed_at, started_at, finished_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            jobId,
+            attempt,
+            'searching',
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            claimedAt,
+            null,
+          );
+
+        return 'claimed';
+      }
+
+      if (existing.status !== 'searching' || existing.finished_at !== null) {
+        return 'already-claimed';
+      }
+
+      if (existing.status === 'searching' && existing.finished_at === null) {
+        const startedAtMs = Date.parse(existing.started_at);
+        if (Number.isFinite(startedAtMs) && Date.now() - startedAtMs < attemptSearchClaimTtlMs) {
+          return 'already-claimed';
+        }
+      }
+
+      this.database
+        .prepare(
+          `UPDATE acquisition_attempts
+           SET status = ?, reason_code = NULL, release_title = NULL, releaser = NULL, reason = NULL,
+               submitted_guid = NULL, submitted_indexer_id = NULL, submission_claimed_at = NULL,
+               started_at = ?, finished_at = NULL
+           WHERE job_id = ? AND attempt = ?`,
+        )
+        .run('searching', claimedAt, jobId, attempt);
 
       return 'claimed';
     });

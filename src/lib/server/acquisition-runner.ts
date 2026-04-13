@@ -154,7 +154,11 @@ export class AcquisitionRunner {
         if (manualSelection) {
           releaseSelection = manualSelection;
         } else {
-          job = this.lifecycle.startSearch(job);
+          const searchingJob = this.lifecycle.startSearch(job);
+          if (!searchingJob) {
+            return;
+          }
+          job = searchingJob;
           releaseSelection = await this.dependencies.findReleaseSelection(job);
           this.lifecycle.recordSearchCompleted(job, releaseSelection);
           const refreshedAfterSearch = this.jobs.getJob(job.id);
@@ -184,6 +188,9 @@ export class AcquisitionRunner {
         }
 
         const chosen = this.lifecycle.chooseRelease(job, releaseSelection);
+        if (!chosen) {
+          return;
+        }
         job = chosen.job;
 
         // Claim the Arr handoff in durable attempt state before the network call so a re-entered

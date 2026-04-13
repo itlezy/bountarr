@@ -110,6 +110,32 @@ describe('AcquisitionJobRepository', () => {
     expect(loaded?.attempts[0]?.submissionClaimedAt).toBeTruthy();
   });
 
+  it('claims search only once per attempt while a search is already active', () => {
+    const database = createDatabase();
+    const jobs = new AcquisitionJobRepository(database);
+    const job = jobs.createJob({
+      arrItemId: 103,
+      itemId: 'movie:103',
+      kind: 'movie',
+      maxRetries: 4,
+      preferredReleaser: null,
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      sourceService: 'radarr',
+      title: 'Search Claim',
+    });
+
+    expect(jobs.claimAttemptSearch(job.id, 1)).toBe('claimed');
+    expect(jobs.claimAttemptSearch(job.id, 1)).toBe('already-claimed');
+
+    const loaded = jobs.getJob(job.id);
+    expect(loaded?.attempts[0]?.status).toBe('searching');
+    expect(loaded?.attempts[0]?.startedAt).toBeTruthy();
+    expect(loaded?.attempts[0]?.finishedAt).toBeNull();
+  });
+
   it('returns the most recent completed releaser for a matching title', () => {
     const database = createDatabase();
     const jobs = new AcquisitionJobRepository(database);

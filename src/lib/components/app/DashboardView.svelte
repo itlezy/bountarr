@@ -44,6 +44,19 @@ let { state }: { state: AppState } = $props();
         </div>
       {/if}
 
+      {#if state.auditPendingItems.length > 0}
+        <div>
+          <div class="text-[11px] font-700 uppercase tracking-[0.12em] text-[var(--muted)]">
+            Waiting for check
+          </div>
+          <div class="mt-3 space-y-3">
+            {#each state.auditPendingItems as item}
+              <AuditItemCard {item} {state} />
+            {/each}
+          </div>
+        </div>
+      {/if}
+
       {#if state.auditVerifiedItems.length > 0}
         <div>
           <div class="text-[11px] font-700 uppercase tracking-[0.12em] text-[var(--muted)]">

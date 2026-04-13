@@ -214,23 +214,23 @@ export function defaultQualityProfileId(
 export function acquisitionStatusLabel(status: AcquisitionJob['status']): string {
   switch (status) {
     case 'cancelled':
-      return 'Stopped';
+      return '🛑 Stopped';
     case 'grabbing':
-      return 'Sending to downloader';
+      return '📤 Sending to downloader';
     case 'retrying':
-      return 'Trying another option';
+      return '🔁 Trying another option';
     case 'searching':
-      return 'Looking for a release';
+      return '🔎 Looking for a release';
     case 'queued':
-      return 'Getting started';
+      return '⏳ Getting started';
     case 'validating':
-      return 'Checking the download';
+      return '🧪 Checking the download';
     case 'completed':
-      return 'Ready';
+      return '✅ Ready';
     case 'failed':
-      return 'Needs attention';
+      return '⚠️ Needs attention';
     default:
-      return 'Working';
+      return '⚙️ Working';
   }
 }
 

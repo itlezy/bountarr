@@ -1009,7 +1009,7 @@ describe('app state', () => {
     ]);
   });
 
-  it('surfaces attention-needed audit items before verified ones', () => {
+  it('separates attention-needed downloads from pending checks', () => {
     const state = new AppState(
       {
         ...pageData,
@@ -1036,10 +1036,19 @@ describe('app state', () => {
           inArr: true,
           canAdd: false,
         },
+        {
+          ...movieItem,
+          id: 'movie:3',
+          title: 'Still Downloading',
+          auditStatus: 'pending',
+          inArr: true,
+          canAdd: false,
+        },
       ],
     };
 
     expect(state.auditAttentionItems.map((item) => item.title)).toEqual(['Needs Audio']);
+    expect(state.auditPendingItems.map((item) => item.title)).toEqual(['Still Downloading']);
     expect(state.auditVerifiedItems.map((item) => item.title)).toEqual(['Verified Item']);
   });
 

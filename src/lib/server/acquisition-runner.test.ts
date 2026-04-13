@@ -260,6 +260,72 @@ describe('AcquisitionRunner', () => {
     expect(releaseSelectionCalls).toBe(1);
   });
 
+  it('prevents a second runner from re-searching the same attempt while the first search is active', async () => {
+    const harness = createHarness();
+    const job = harness.jobs.createJob({
+      arrItemId: 334,
+      itemId: 'movie:334',
+      kind: 'movie',
+      maxRetries: 1,
+      preferredReleaser: null,
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      sourceService: 'radarr',
+      title: 'Search Lock',
+    });
+
+    let resolveSelection!: (value: ReleaseSelectionResult) => void;
+    const selectionPromise = new Promise<ReleaseSelectionResult>((resolve) => {
+      resolveSelection = resolve;
+    });
+    const findReleaseSelection = vi.fn().mockImplementation(() => selectionPromise);
+    const submitSelectedRelease = vi.fn().mockResolvedValue(undefined);
+    const waitForAttemptOutcome = vi.fn().mockResolvedValue({
+      outcome: 'success',
+      preferredReleaser: 'group',
+      progress: 100,
+      queueStatus: 'Imported',
+      reasonCode: 'validated',
+      summary: 'Imported and validated',
+    });
+
+    const runnerA = new AcquisitionRunner(harness.jobs, harness.lifecycle, {
+      findReleaseSelection,
+      probeAttempt: vi.fn(),
+      submitSelectedRelease,
+      waitForAttemptOutcome,
+    });
+    const runnerB = new AcquisitionRunner(harness.jobs, harness.lifecycle, {
+      findReleaseSelection,
+      probeAttempt: vi.fn(),
+      submitSelectedRelease,
+      waitForAttemptOutcome,
+    });
+
+    runnerA.enqueue(job.id);
+
+    await vi.waitFor(() => {
+      expect(findReleaseSelection).toHaveBeenCalledTimes(1);
+    });
+
+    runnerB.enqueue(job.id);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(findReleaseSelection).toHaveBeenCalledTimes(1);
+
+    resolveSelection(createSelectionResult('guid-1', 'Search.Lock.2026.1080p.WEB-DL-GROUP'));
+
+    await vi.waitFor(() => {
+      expect(harness.jobs.getJob(job.id)?.status).toBe('completed');
+    });
+
+    expect(findReleaseSelection).toHaveBeenCalledTimes(1);
+    expect(submitSelectedRelease).toHaveBeenCalledTimes(1);
+  });
+
   it('stops immediately when no acceptable release remains', async () => {
     const harness = createHarness();
     const job = harness.jobs.createJob({
@@ -626,7 +692,7 @@ describe('AcquisitionRunner', () => {
     );
   });
 
-  it('does not post the same release twice when an attempt re-enters after submission was already claimed', async () => {
+  it('does not post the same release twice when a claimed attempt is reconciled after restart', async () => {
     const harness = createHarness();
     const job = harness.jobs.createJob({
       arrItemId: 892,
@@ -642,6 +708,16 @@ describe('AcquisitionRunner', () => {
       title: 'Duplicate Submit Guard',
     });
 
+    harness.jobs.updateJob(job.id, { status: 'searching' });
+    harness.jobs.updateJob(job.id, {
+      currentRelease: 'Duplicate.Submit.Guard.2026.1080p.WEB-DL-FLUX',
+      selectedReleaser: 'flux',
+      status: 'grabbing',
+    });
+    harness.jobs.updateJob(job.id, {
+      queueStatus: 'Downloading',
+      status: 'validating',
+    });
     harness.jobs.upsertAttempt(job.id, {
       attempt: 1,
       releaseTitle: 'Duplicate.Submit.Guard.2026.1080p.WEB-DL-FLUX',
@@ -654,15 +730,10 @@ describe('AcquisitionRunner', () => {
     });
 
     const submitSelectedRelease = vi.fn().mockResolvedValue(undefined);
+    const findReleaseSelection = vi.fn();
     const runner = new AcquisitionRunner(harness.jobs, harness.lifecycle, {
-      findReleaseSelection: vi
-        .fn()
-        .mockResolvedValue(
-          createSelectionResult('guid-1', 'Duplicate.Submit.Guard.2026.1080p.WEB-DL-FLUX'),
-        ),
-      probeAttempt: vi.fn(),
-      submitSelectedRelease,
-      waitForAttemptOutcome: vi.fn().mockResolvedValue({
+      findReleaseSelection,
+      probeAttempt: vi.fn().mockResolvedValue({
         outcome: 'success',
         preferredReleaser: 'flux',
         progress: 100,
@@ -670,17 +741,18 @@ describe('AcquisitionRunner', () => {
         reasonCode: 'validated',
         summary: 'Imported and validated',
       }),
+      submitSelectedRelease,
+      waitForAttemptOutcome: vi.fn(),
     });
 
-    runner.enqueue(job.id);
+    runner.ensureWorkers();
 
     await vi.waitFor(() => {
       expect(harness.jobs.getJob(job.id)?.status).toBe('completed');
     });
 
     expect(submitSelectedRelease).not.toHaveBeenCalled();
-    expect(
-      harness.events.listByJob(job.id).some((event) => event.kind === 'grab.submit_skipped'),
-    ).toBe(true);
+    expect(findReleaseSelection).not.toHaveBeenCalled();
+    runner.dispose();
   });
 });

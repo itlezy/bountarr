@@ -13,7 +13,11 @@ import {
   selectionLogContext,
   type ReleaseSelectionResult,
 } from '$lib/server/acquisition-selection';
-import { isTerminalJobStatus, type PersistedAcquisitionJob } from '$lib/server/acquisition-domain';
+import {
+  isTerminalJobStatus,
+  manualSelectionQueuedStatus,
+  type PersistedAcquisitionJob,
+} from '$lib/server/acquisition-domain';
 import type { WaitForAttemptOutcomeResult } from '$lib/server/acquisition-validator-shared';
 import type { AcquisitionReasonCode } from '$lib/shared/types';
 
@@ -86,19 +90,31 @@ export class AcquisitionLifecycle {
     });
   }
 
-  startSearch(job: PersistedAcquisitionJob): PersistedAcquisitionJob {
-    const current = this.getMutableJob(job.id);
-    if (!current) {
-      return job;
+  startSearch(job: PersistedAcquisitionJob): PersistedAcquisitionJob | null {
+    const current = this.getCurrentJob(job.id);
+    if (
+      !current ||
+      (current.status !== 'queued' && current.status !== 'retrying' && current.status !== 'searching')
+    ) {
+      return null;
     }
 
-    const next = this.jobs.updateJob(current.id, {
+    const claimResult = this.jobs.claimAttemptSearch(current.id, current.attempt);
+    if (claimResult !== 'claimed') {
+      return null;
+    }
+
+    const result = this.jobs.updateJobIfStatus(job.id, ['queued', 'retrying', 'searching'], {
       autoRetrying: current.autoRetrying,
       failureReason: null,
       progress: null,
       queueStatus: 'Searching releases',
       status: 'searching',
     });
+    const next = result.job;
+    if (!next || !result.updated) {
+      return null;
+    }
 
     this.log(next, 'search.started', 'info', 'Searching manual releases for acquisition attempt');
     return next;
@@ -119,7 +135,18 @@ export class AcquisitionLifecycle {
     job: PersistedAcquisitionJob,
     releaseSelection: ReleaseSelectionResult,
   ): PersistedAcquisitionJob {
-    const next = this.jobs.updateJob(job.id, {
+    const current = this.getCurrentJob(job.id);
+    if (
+      !current ||
+      !(
+        current.status === 'searching' ||
+        (current.status === 'queued' && current.queueStatus === manualSelectionQueuedStatus)
+      )
+    ) {
+      return current ?? job;
+    }
+
+    const next = this.jobs.updateJob(current.id, {
       autoRetrying: false,
       completedAt: new Date().toISOString(),
       reasonCode: selectionFailureReasonCode(releaseSelection),
@@ -139,16 +166,27 @@ export class AcquisitionLifecycle {
   chooseRelease(
     job: PersistedAcquisitionJob,
     releaseSelection: ReleaseSelectionResult,
-  ): { attemptStartedAt: string; job: PersistedAcquisitionJob } {
+  ): { attemptStartedAt: string; job: PersistedAcquisitionJob } | null {
     const selectedRelease = releaseSelection.selectedRelease;
     if (!selectedRelease || !releaseSelection.selectedGuid) {
       throw new Error('A selected release is required before choosing it');
     }
 
+    const current = this.getCurrentJob(job.id);
+    if (
+      !current ||
+      !(
+        current.status === 'searching' ||
+        (current.status === 'queued' && current.queueStatus === manualSelectionQueuedStatus)
+      )
+    ) {
+      return null;
+    }
+
     const attemptStartedAt = new Date().toISOString();
     const releaser = extractReleaser(selectedRelease.title);
-    const next = this.jobs.updateJob(job.id, {
-      autoRetrying: job.autoRetrying,
+    const result = this.jobs.updateJobIfStatus(job.id, ['searching', 'queued'], {
+      autoRetrying: current.autoRetrying,
       completedAt: null,
       currentRelease: selectedRelease.title,
       failureReason: null,
@@ -157,9 +195,13 @@ export class AcquisitionLifecycle {
       status: 'grabbing',
       validationSummary: releaseSelection.selection.decision.reason,
     });
+    const next = result.job;
+    if (!next || !result.updated) {
+      return null;
+    }
 
     this.jobs.upsertAttempt(job.id, {
-      attempt: job.attempt,
+      attempt: current.attempt,
       finishedAt: null,
       reasonCode: null,
       reason: null,
@@ -222,15 +264,11 @@ export class AcquisitionLifecycle {
   }
 
   startValidation(job: PersistedAcquisitionJob): PersistedAcquisitionJob {
-    const current = this.getMutableJob(job.id);
-    if (!current) {
-      return job;
-    }
-
-    return this.jobs.updateJob(current.id, {
+    const result = this.jobs.updateJobIfStatus(job.id, ['grabbing'], {
       queueStatus: 'Waiting for download',
       status: 'validating',
     });
+    return result.job ?? job;
   }
 
   updateValidationProgress(
