@@ -1,12 +1,12 @@
 import type {
   AcquisitionJob,
   AcquisitionJobActionResponse,
+  GrabResponse,
   ManualReleaseListResponse,
   ManualReleaseResult,
   MediaItem,
   QueueItem,
   QueueResponse,
-  RequestResponse,
 } from '$lib/shared/types';
 
 export const configStatusFixture = {
@@ -297,12 +297,12 @@ export function searchResultsForQuery(query: string): unknown[] {
   return [];
 }
 
-type RequestItem = typeof movieSearchItem | typeof seriesSearchItem;
+type GrabItem = typeof movieSearchItem | typeof seriesSearchItem;
 
-export function buildRequestResponse(
-  item: RequestItem,
+export function buildGrabResponse(
+  item: GrabItem,
   seasonNumbers?: number[],
-): RequestResponse {
+): GrabResponse {
   const requestedItem = {
     ...item,
     arrItemId: item.kind === 'movie' ? 603 : 83867,

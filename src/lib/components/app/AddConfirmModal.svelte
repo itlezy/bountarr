@@ -7,7 +7,7 @@ let { state }: { state: AppState } = $props();
 
 const confirmItem = $derived(state.confirmAddItem);
 const confirmSeasonOptions = $derived(state.confirmSeasonOptions);
-const isSubmitting = $derived(confirmItem ? state.requesting === confirmItem.id : false);
+const isSubmitting = $derived(confirmItem ? state.grabbing === confirmItem.id : false);
 
 function seasonLabel(seasonNumber: number): string {
   return seasonNumber === 0 ? 'Specials' : `Season ${seasonNumber}`;
@@ -16,11 +16,11 @@ function seasonLabel(seasonNumber: number): string {
 
 {#if confirmItem}
   <OverlayDialog
-    closeLabel="Close add confirmation"
+    closeLabel="Close grab confirmation"
     closeDisabled={isSubmitting}
     onClose={() => state.closeAddConfirm()}
     size={confirmItem.kind === 'series' ? 'wide' : 'narrow'}
-    title={state.confirmOperatorOverride ? 'Grab anyway' : 'Grab title'}
+    title="Grab title"
     subtitle={`${confirmItem.title}${confirmItem.year ? ` (${confirmItem.year})` : ''}`}
   >
     {#snippet children()}
@@ -101,9 +101,9 @@ function seasonLabel(seasonNumber: number): string {
           </select>
         </label>
 
-        {#if state.confirmOperatorOverride}
+        {#if state.confirmPlexAvailability}
           <div class="rounded-[14px] border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
-            Plex already has this title. This override will still send a managed grab to Arr.
+            Plex already has this title. Confirm to send a managed grab to Arr anyway.
           </div>
         {/if}
 
@@ -125,7 +125,7 @@ function seasonLabel(seasonNumber: number): string {
           class="control-primary min-h-11 w-full px-4 text-sm font-700 disabled:cursor-not-allowed disabled:opacity-50"
           type="button"
           onclick={() => {
-            void state.submitRequest(
+            void state.submitGrab(
               confirmItem,
               state.confirmQualityProfileId,
               {

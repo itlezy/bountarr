@@ -1,12 +1,12 @@
 import { error, json } from '@sveltejs/kit';
-import { requestItem } from '$lib/server/acquisition-service';
-import { isAcquisitionRequestError } from '$lib/server/acquisition-domain';
+import { isAcquisitionGrabError } from '$lib/server/acquisition-domain';
+import { grabItem } from '$lib/server/acquisition-service';
 import { createAreaLogger, getErrorMessage, toErrorLogContext } from '$lib/server/logger';
 import { sanitizePreferences } from '$lib/shared/preferences';
 import type { ThemeMode } from '$lib/shared/themes';
 import type { MediaItem } from '$lib/shared/types';
 
-const logger = createAreaLogger('api.request');
+const logger = createAreaLogger('api.grab');
 
 function sanitizeSeasonNumbers(value: unknown): number[] | undefined {
   if (!Array.isArray(value)) {
@@ -40,7 +40,7 @@ export const POST = async ({ request }) => {
   };
   const preferences = sanitizePreferences(payload.preferences);
 
-  logger.info('Request API call started', {
+  logger.info('Grab API call started', {
     title: payload.item?.title ?? null,
     kind: payload.item?.kind ?? null,
     preferredLanguage: preferences.preferredLanguage,
@@ -48,30 +48,30 @@ export const POST = async ({ request }) => {
   });
 
   if (!payload.item) {
-    logger.warn('Request API call rejected because no media item was provided');
+    logger.warn('Grab API call rejected because no media item was provided');
     throw error(400, 'A media item is required.');
   }
 
   try {
-    const result = await requestItem(payload.item, preferences, {
+    const result = await grabItem(payload.item, preferences, {
       qualityProfileId:
         typeof payload.qualityProfileId === 'number' && Number.isFinite(payload.qualityProfileId)
           ? payload.qualityProfileId
           : undefined,
       seasonNumbers: sanitizeSeasonNumbers(payload.seasonNumbers),
     });
-    logger.info('Request API call completed', {
+    logger.info('Grab API call completed', {
       title: payload.item.title,
       existing: result.existing,
       jobId: result.job?.id ?? null,
     });
     return json(result);
-  } catch (requestError) {
-    const message = getErrorMessage(requestError, 'Unable to add the selected item.');
-    const status = isAcquisitionRequestError(requestError) ? requestError.status : 500;
-    logger.error('Request API call failed', {
+  } catch (grabError) {
+    const message = getErrorMessage(grabError, 'Unable to grab the selected item.');
+    const status = isAcquisitionGrabError(grabError) ? grabError.status : 500;
+    logger.error('Grab API call failed', {
       title: payload.item.title,
-      ...toErrorLogContext(requestError),
+      ...toErrorLogContext(grabError),
     });
 
     return new Response(message, {

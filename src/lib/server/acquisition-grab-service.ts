@@ -1,12 +1,12 @@
 import { sanitizePreferences } from '$lib/shared/preferences';
-import type { AcquisitionJob, MediaItem, Preferences, RequestResponse } from '$lib/shared/types';
+import type { AcquisitionJob, GrabResponse, MediaItem, Preferences } from '$lib/shared/types';
 import { createAreaLogger } from '$lib/server/logger';
 import { acquisitionMaxRetries, arrFetch } from '$lib/server/arr-client';
 import {
-  AcquisitionRequestError,
+  AcquisitionGrabError,
   cloneJob,
   type ArrService,
-  type RequestItemOptions,
+  type GrabItemOptions,
 } from '$lib/server/acquisition-domain';
 import { fetchServiceDefaults } from '$lib/server/config-service';
 import { getAcquisitionLifecycle } from '$lib/server/acquisition-lifecycle';
@@ -18,15 +18,17 @@ import { normalizeItem } from '$lib/server/media-normalize';
 import { asArray, asNumber, asPositiveNumber, asRecord, asString } from '$lib/server/raw';
 
 const logger = createAreaLogger('acquisition');
-const inFlightRequests = new Map<string, Promise<RequestResponse>>();
+// Collapse concurrent grabs for the same Arr item identity so a double-submit cannot create
+// competing tracking jobs before Arr and the local DB settle.
+const inFlightGrabs = new Map<string, Promise<GrabResponse>>();
 
-type RequestSpec = {
+type GrabSpec = {
   service: ArrService;
   trackedName: 'Radarr' | 'Sonarr';
   buildPayload: (
     item: MediaItem,
     defaults: Record<string, unknown>,
-    options?: RequestItemOptions,
+    options?: GrabItemOptions,
   ) => Record<string, unknown>;
   buildFallbackItem: (created: Record<string, unknown>, preferences: Preferences) => MediaItem;
   createPath: '/api/v3/movie' | '/api/v3/series';
@@ -35,29 +37,29 @@ type RequestSpec = {
 
 function ensureRootFolder(defaults: Record<string, unknown>, service: ArrService): void {
   if (!asString(defaults.rootFolderPath)) {
-    throw new AcquisitionRequestError(503, `No root folder is configured in ${service}`);
+    throw new AcquisitionGrabError(503, `No root folder is configured in ${service}`);
   }
 
   if (!asPositiveNumber(defaults.qualityProfileId)) {
-    throw new AcquisitionRequestError(503, `No quality profile is configured in ${service}`);
+    throw new AcquisitionGrabError(503, `No quality profile is configured in ${service}`);
   }
 
   if (service === 'sonarr' && !asPositiveNumber(defaults.languageProfileId)) {
-    throw new AcquisitionRequestError(503, 'No language profile is configured in sonarr');
+    throw new AcquisitionGrabError(503, 'No language profile is configured in sonarr');
   }
 }
 
 function ensureAddable(item: MediaItem): void {
   if (item.inArr) {
-    throw new AcquisitionRequestError(409, `${item.title} is already tracked in Arr`);
+    throw new AcquisitionGrabError(409, `${item.title} is already tracked in Arr`);
   }
 
   if (!item.canAdd || !item.requestPayload || item.sourceService === 'plex') {
-    throw new AcquisitionRequestError(400, `${item.title} cannot be added from this result`);
+    throw new AcquisitionGrabError(400, `${item.title} cannot be added from this result`);
   }
 }
 
-function requestIdentity(item: MediaItem): string {
+function grabIdentity(item: MediaItem): string {
   const payload = asRecord(item.requestPayload);
   const identity =
     asNumber(payload.id) ??
@@ -72,7 +74,7 @@ function requestIdentity(item: MediaItem): string {
 function buildMoviePayload(
   item: MediaItem,
   defaults: Record<string, unknown>,
-  options?: RequestItemOptions,
+  options?: GrabItemOptions,
 ): Record<string, unknown> {
   const raw = asRecord(item.requestPayload);
 
@@ -94,7 +96,7 @@ function buildMoviePayload(
 function buildSeriesPayload(
   item: MediaItem,
   defaults: Record<string, unknown>,
-  options?: RequestItemOptions,
+  options?: GrabItemOptions,
 ): Record<string, unknown> {
   const raw = asRecord(item.requestPayload);
   const normalizedSeasonNumbers =
@@ -131,7 +133,7 @@ function buildSeriesPayload(
   };
 }
 
-function movieRequestSpec(): RequestSpec {
+function movieGrabSpec(): GrabSpec {
   return {
     service: 'radarr',
     trackedName: 'Radarr',
@@ -148,7 +150,7 @@ function movieRequestSpec(): RequestSpec {
   };
 }
 
-function seriesRequestSpec(): RequestSpec {
+function seriesGrabSpec(): GrabSpec {
   return {
     service: 'sonarr',
     trackedName: 'Sonarr',
@@ -171,7 +173,7 @@ function existingResponse(
   trackedName: string,
   existingItem: MediaItem,
   activeJob: AcquisitionJob | null,
-): RequestResponse {
+): GrabResponse {
   return {
     existing: true,
     item: existingItem,
@@ -219,13 +221,13 @@ function createOrReuseJob(
   return cloneJob(job);
 }
 
-async function requestTrackedItem(
-  spec: RequestSpec,
+async function grabTrackedItem(
+  spec: GrabSpec,
   item: MediaItem,
   preferences: Preferences,
-  options?: RequestItemOptions,
-): Promise<RequestResponse> {
-  logger.info(`Submitting ${item.kind} request to ${spec.trackedName}`, {
+  options?: GrabItemOptions,
+): Promise<GrabResponse> {
+  logger.info(`Submitting ${item.kind} grab to ${spec.trackedName}`, {
     kind: item.kind,
     qualityProfileId: options?.qualityProfileId ?? null,
     title: item.title,
@@ -282,15 +284,28 @@ async function requestTrackedItem(
       throw trackingError;
     }
 
-    logger.error('Tracked item was created in Arr but acquisition tracking failed', {
+    logger.warn('Initial acquisition tracking failed after Arr create; attempting recovery', {
       arrItemId: createdId,
       itemTitle: item.title,
       service: spec.service,
     });
-    throw new AcquisitionRequestError(
-      500,
-      `${item.title} was added to ${spec.trackedName}, but acquisition tracking could not be started.`,
-    );
+
+    try {
+      createdItem =
+        (await spec.fetchExisting(createdId, preferences, item).catch(() => null)) ??
+        spec.buildFallbackItem(created, preferences);
+      job = createOrReuseJob(createdItem, createdId, spec.service, preferences);
+    } catch (recoveryError) {
+      logger.error('Tracked item was created in Arr but acquisition tracking could not be recovered', {
+        arrItemId: createdId,
+        itemTitle: item.title,
+        service: spec.service,
+      });
+      throw new AcquisitionGrabError(
+        500,
+        `${item.title} was added to ${spec.trackedName}, but acquisition tracking could not be started.`,
+      );
+    }
   }
 
   return {
@@ -304,24 +319,24 @@ async function requestTrackedItem(
   };
 }
 
-export async function requestItem(
+export async function grabItem(
   item: MediaItem,
   preferences?: Partial<Preferences>,
-  options?: RequestItemOptions,
-): Promise<RequestResponse> {
+  options?: GrabItemOptions,
+): Promise<GrabResponse> {
   const normalizedPreferences = sanitizePreferences(preferences);
-  const spec = item.kind === 'movie' ? movieRequestSpec() : seriesRequestSpec();
-  const lockKey = requestIdentity(item);
-  const existingRequest = inFlightRequests.get(lockKey);
-  if (existingRequest) {
-    return existingRequest;
+  const spec = item.kind === 'movie' ? movieGrabSpec() : seriesGrabSpec();
+  const lockKey = grabIdentity(item);
+  const existingGrab = inFlightGrabs.get(lockKey);
+  if (existingGrab) {
+    return existingGrab;
   }
 
-  const requestPromise = requestTrackedItem(spec, item, normalizedPreferences, options).finally(() => {
-    if (inFlightRequests.get(lockKey) === requestPromise) {
-      inFlightRequests.delete(lockKey);
+  const grabPromise = grabTrackedItem(spec, item, normalizedPreferences, options).finally(() => {
+    if (inFlightGrabs.get(lockKey) === grabPromise) {
+      inFlightGrabs.delete(lockKey);
     }
   });
-  inFlightRequests.set(lockKey, requestPromise);
-  return requestPromise;
+  inFlightGrabs.set(lockKey, grabPromise);
+  return grabPromise;
 }

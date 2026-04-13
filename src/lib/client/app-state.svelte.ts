@@ -9,16 +9,16 @@ import {
   fetchSearchResults,
   refreshDashboard,
   selectManualRelease,
-  submitRequest,
+  submitGrab,
 } from '$lib/client/api';
 import {
-  canOperatorRequestFromPlex,
+  canGrabWithPlexConfirmation,
   defaultQualityProfileId,
+  grabFeedbackMessage,
   kindLabel,
   mergeSearchItem,
-  operatorOverrideItem,
+  plexConfirmedGrabItem,
   qualityProfileOptions,
-  requestFeedbackMessage,
 } from '$lib/client/app-ui';
 import {
   ensureNotificationPermission,
@@ -66,7 +66,7 @@ type AppStateApi = {
   fetchSearchResults: typeof fetchSearchResults;
   fetchQueue: typeof fetchQueue;
   selectManualRelease: typeof selectManualRelease;
-  submitRequest: typeof submitRequest;
+  submitGrab: typeof submitGrab;
 };
 
 type AppStateStorage = {
@@ -112,7 +112,7 @@ const defaultDependencies: AppStateDependencies = {
     fetchSearchResults,
     fetchQueue,
     selectManualRelease,
-    submitRequest,
+    submitGrab,
   },
   storage: {
     applyTheme,
@@ -337,17 +337,17 @@ export class AppState {
   manualReleaseError = $state<Record<string, string | null>>({});
   manualReleaseLists = $state<Record<string, ManualReleaseListResponse | null>>({});
   manualSelectionError = $state<Record<string, string | null>>({});
-  requestError = $state<string | null>(null);
+  grabError = $state<string | null>(null);
   deleteError = $state<string | null>(null);
   latestActionMessage = $state<string | null>(null);
   addSuccessToastMessage = $state<string | null>(null);
-  requestFeedback = $state<Record<string, string>>({});
+  grabFeedback = $state<Record<string, string>>({});
   searchLoading = $state(false);
   recentPlexLoading = $state(false);
   dashboardLoading = $state(false);
   queueLoading = $state(false);
   manualReleaseLoading = $state<Record<string, boolean>>({});
-  requesting = $state<string | null>(null);
+  grabbing = $state<string | null>(null);
   deletingItemId = $state<string | null>(null);
   cancelingAcquisitionJobId = $state<string | null>(null);
   cancelingQueueItemId = $state<string | null>(null);
@@ -355,7 +355,7 @@ export class AppState {
   notificationState = $state<NotificationPermission | 'unsupported' | 'idle'>('idle');
   kindMenuOpen = $state(false);
   confirmAddItem = $state<MediaItem | null>(null);
-  confirmOperatorOverride = $state(false);
+  confirmPlexAvailability = $state(false);
   confirmQualityProfileId = $state<number | null>(null);
   confirmPreferredLanguage = $state<PreferredLanguage>(defaultPreferences.preferredLanguage);
   confirmSubtitleLanguage = $state<PreferredLanguage>(defaultPreferences.subtitleLanguage);
@@ -620,12 +620,12 @@ export class AppState {
     };
   }
 
-  canOperatorRequestFromPlex(item: MediaItem): boolean {
-    return canOperatorRequestFromPlex(item);
+  canGrabWithPlexConfirmation(item: MediaItem): boolean {
+    return canGrabWithPlexConfirmation(item);
   }
 
   hasSearchOperatorActions(item: MediaItem): boolean {
-    return this.canOperatorRequestFromPlex(item) || item.canDeleteFromArr === true;
+    return item.canDeleteFromArr === true;
   }
 
   hasQueueOperatorActions(item: QueueItem): boolean {
@@ -648,32 +648,34 @@ export class AppState {
     return `Tracking ${this.guidedQueueTitle} below so you can see what happens next.`;
   }
 
-  openAddConfirm(item: MediaItem, options?: { operatorOverride?: boolean }): void {
+  openAddConfirm(item: MediaItem, options?: { plexConfirmation?: boolean }): void {
     if (Date.now() < this.suppressAddConfirmOpenUntil) {
       return;
     }
 
-    const requestItem =
-      options?.operatorOverride && this.canOperatorRequestFromPlex(item)
-        ? operatorOverrideItem(item)
+    const usePlexConfirmation =
+      options?.plexConfirmation === true || this.canGrabWithPlexConfirmation(item);
+    const grabItem =
+      usePlexConfirmation && this.canGrabWithPlexConfirmation(item)
+        ? plexConfirmedGrabItem(item)
         : item;
 
-    if (!requestItem.canAdd) {
+    if (!grabItem.canAdd) {
       return;
     }
 
-    this.confirmAddItem = requestItem;
-    this.confirmOperatorOverride = options?.operatorOverride === true;
-    this.confirmQualityProfileId = this.defaultQualityProfileId(requestItem);
+    this.confirmAddItem = grabItem;
+    this.confirmPlexAvailability = usePlexConfirmation;
+    this.confirmQualityProfileId = this.defaultQualityProfileId(grabItem);
     this.confirmPreferredLanguage = this.preferredLanguage;
     this.confirmSubtitleLanguage = this.subtitleLanguage;
-    this.confirmSeasonNumbers = defaultSeasonNumbersForItem(requestItem);
-    this.requestError = null;
+    this.confirmSeasonNumbers = defaultSeasonNumbersForItem(grabItem);
+    this.grabError = null;
     this.closeMenus();
   }
 
   closeAddConfirm(): void {
-    if (this.confirmAddItem && this.requesting === this.confirmAddItem.id) {
+    if (this.confirmAddItem && this.grabbing === this.confirmAddItem.id) {
       return;
     }
 
@@ -682,7 +684,7 @@ export class AppState {
 
   resetAddConfirm(): void {
     this.confirmAddItem = null;
-    this.confirmOperatorOverride = false;
+    this.confirmPlexAvailability = false;
     this.confirmQualityProfileId = null;
     this.confirmPreferredLanguage = this.preferredLanguage;
     this.confirmSubtitleLanguage = this.subtitleLanguage;
@@ -939,14 +941,14 @@ export class AppState {
     });
   }
 
-  submitRequest(item: MediaItem, qualityProfileId?: number | null): Promise<void>;
-  submitRequest(
+  submitGrab(item: MediaItem, qualityProfileId?: number | null): Promise<void>;
+  submitGrab(
     item: MediaItem,
     qualityProfileId: number | null | undefined,
     preferencesOverride: Preferences,
     seasonNumbers?: number[],
   ): Promise<void>;
-  async submitRequest(
+  async submitGrab(
     item: MediaItem,
     qualityProfileId?: number | null,
     preferencesOverride?: Preferences,
@@ -962,12 +964,12 @@ export class AppState {
       subtitleLanguage: this.subtitleLanguage,
       theme: this.theme,
     };
-    this.requesting = item.id;
-    this.requestError = null;
+    this.grabbing = item.id;
+    this.grabError = null;
     this.latestActionMessage = null;
 
     try {
-      const result = await this.dependencies.api.submitRequest(
+      const result = await this.dependencies.api.submitGrab(
         item,
         requestPreferences,
         qualityProfileId,
@@ -976,16 +978,16 @@ export class AppState {
 
       this.suppressAddConfirmOpenUntil = Date.now() + AppState.addConfirmReopenCooldownMs;
       this.resetAddConfirm();
-      this.requesting = null;
+      this.grabbing = null;
       this.activeView = 'queue';
 
       this.preferredLanguage = requestPreferences.preferredLanguage;
       this.subtitleLanguage = requestPreferences.subtitleLanguage;
       this.dependencies.storage.savePreferences(this.preferences);
       this.showAddSuccessToast(result.message);
-      this.requestFeedback = {
-        ...this.requestFeedback,
-        [item.id]: requestFeedbackMessage(result),
+      this.grabFeedback = {
+        ...this.grabFeedback,
+        [item.id]: grabFeedbackMessage(result),
       };
       this.dependencies.notifications.pushNotification('Bountarr', result.message);
       this.searchResults = this.searchResults.map((candidate) =>
@@ -1004,10 +1006,10 @@ export class AppState {
         }
       })();
     } catch (error) {
-      this.requestError = error instanceof Error ? error.message : 'Add failed.';
-      this.dependencies.notifications.pushNotification('Bountarr add failed', this.requestError);
+      this.grabError = error instanceof Error ? error.message : 'Grab failed.';
+      this.dependencies.notifications.pushNotification('Bountarr grab failed', this.grabError);
     } finally {
-      this.requesting = null;
+      this.grabbing = null;
     }
   }
 

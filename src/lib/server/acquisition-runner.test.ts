@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { AcquisitionEventRepository } from '$lib/server/acquisition-event-repository';
+import { manualSelectionQueuedStatus } from '$lib/server/acquisition-domain';
 import { AcquisitionJobRepository } from '$lib/server/acquisition-job-repository';
 import { AcquisitionLifecycle } from '$lib/server/acquisition-lifecycle';
 import { AcquisitionRunner } from '$lib/server/acquisition-runner';
@@ -383,5 +384,173 @@ describe('AcquisitionRunner', () => {
     });
 
     expect(findReleaseSelection).not.toHaveBeenCalled();
+    runner.dispose();
+  });
+
+  it('fails queued manual selections that were lost before restart recovery', async () => {
+    const harness = createHarness();
+    const job = harness.jobs.createJob({
+      arrItemId: 888,
+      itemId: 'series:888',
+      kind: 'series',
+      maxRetries: 2,
+      preferredReleaser: 'flux',
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      sourceService: 'sonarr',
+      title: 'Lost Manual Pick',
+    });
+
+    harness.jobs.updateJob(job.id, {
+      queueStatus: manualSelectionQueuedStatus,
+      status: 'queued',
+      validationSummary: 'User selected Lost.Manual.Pick.S01.1080p.WEB-DL-FLUX',
+    });
+
+    const runner = new AcquisitionRunner(harness.jobs, harness.lifecycle, {
+      findReleaseSelection: vi.fn(),
+      probeAttempt: vi.fn(),
+      submitSelectedRelease: vi.fn(),
+      waitForAttemptOutcome: vi.fn(),
+    });
+
+    runner.ensureWorkers();
+
+    await vi.waitFor(() => {
+      expect(harness.jobs.getJob(job.id)?.status).toBe('failed');
+    });
+
+    const failed = harness.jobs.getJob(job.id);
+    expect(failed?.reasonCode).toBe('manual-selection-lost');
+    expect(failed?.queueStatus).toBe('Manual selection lost');
+    runner.dispose();
+  });
+
+  it('dedupes reconciliation scheduling across repeated worker startup calls', async () => {
+    const harness = createHarness();
+    const job = harness.jobs.createJob({
+      arrItemId: 889,
+      itemId: 'movie:889',
+      kind: 'movie',
+      maxRetries: 2,
+      preferredReleaser: 'flux',
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      sourceService: 'radarr',
+      title: 'Deduped Reconciliation',
+    });
+
+    harness.jobs.updateJob(job.id, {
+      currentRelease: 'Deduped.Reconciliation.2026.1080p.WEB-DL-FLUX',
+      queueStatus: 'Downloading',
+      selectedReleaser: 'flux',
+      status: 'validating',
+    });
+    harness.jobs.upsertAttempt(job.id, {
+      attempt: 1,
+      releaseTitle: 'Deduped.Reconciliation.2026.1080p.WEB-DL-FLUX',
+      releaser: 'flux',
+      startedAt: '2026-04-13T10:00:00.000Z',
+      status: 'grabbing',
+    });
+
+    type ProbeSuccess = {
+      outcome: 'success';
+      preferredReleaser: 'flux';
+      progress: 100;
+      queueStatus: 'Imported';
+      reasonCode: 'validated';
+      summary: 'Imported and validated';
+    };
+    let completeProbe!: (value: ProbeSuccess) => void;
+    const probeAttempt = vi.fn().mockImplementation(
+      () =>
+        new Promise<ProbeSuccess>((resolve) => {
+          completeProbe = resolve;
+        }),
+    );
+
+    const runner = new AcquisitionRunner(harness.jobs, harness.lifecycle, {
+      findReleaseSelection: vi.fn(),
+      probeAttempt,
+      submitSelectedRelease: vi.fn(),
+      waitForAttemptOutcome: vi.fn(),
+    });
+
+    runner.ensureWorkers();
+    runner.ensureWorkers();
+
+    await vi.waitFor(() => {
+      expect(probeAttempt).toHaveBeenCalledTimes(1);
+    });
+
+    completeProbe({
+      outcome: 'success',
+      preferredReleaser: 'flux',
+      progress: 100,
+      queueStatus: 'Imported',
+      reasonCode: 'validated',
+      summary: 'Imported and validated',
+    });
+
+    await vi.waitFor(() => {
+      expect(harness.jobs.getJob(job.id)?.status).toBe('completed');
+    });
+
+    runner.dispose();
+  });
+
+  it('uses the latest persisted progress when a wait cycle times out', async () => {
+    const harness = createHarness();
+    const job = harness.jobs.createJob({
+      arrItemId: 890,
+      itemId: 'movie:890',
+      kind: 'movie',
+      maxRetries: 1,
+      preferredReleaser: 'flux',
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      sourceService: 'radarr',
+      title: 'Timeout Title',
+    });
+
+    const runner = new AcquisitionRunner(harness.jobs, harness.lifecycle, {
+      findReleaseSelection: vi
+        .fn()
+        .mockResolvedValue(createSelectionResult('guid-timeout', 'Timeout.Title.2026.1080p.WEB-DL-FLUX')),
+      probeAttempt: vi.fn(),
+      submitSelectedRelease: vi.fn().mockResolvedValue(undefined),
+      waitForAttemptOutcome: vi.fn().mockImplementation(async (_job, _startedAt, onProgress) => {
+        onProgress?.({
+          progress: 67,
+          queueStatus: 'Downloading',
+        });
+
+        return {
+          outcome: 'timeout',
+          preferredReleaser: null,
+          progress: null,
+          queueStatus: null,
+          reasonCode: 'import-timeout',
+          summary: 'Timed out waiting for import',
+        };
+      }),
+    });
+
+    runner.enqueue(job.id);
+
+    await vi.waitFor(() => {
+      expect(harness.jobs.getJob(job.id)?.status).toBe('failed');
+    });
+
+    const failed = harness.jobs.getJob(job.id);
+    expect(failed?.progress).toBe(67);
+    expect(failed?.queueStatus).toBe('Downloading');
   });
 });

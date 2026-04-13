@@ -2,10 +2,10 @@ import type {
   AcquisitionResponse,
   ConfigStatus,
   DashboardResponse,
+  GrabResponse,
   HealthResponse,
   MediaItem,
   QueueResponse,
-  RequestResponse,
   RuntimeHealth,
 } from '$lib/shared/types';
 
@@ -198,7 +198,7 @@ export const queueResponseFixture: QueueResponse = {
   total: 2,
 };
 
-export const requestResponseFixture: RequestResponse = {
+export const grabResponseFixture: GrabResponse = {
   existing: true,
   item: {
     ...mediaItemFixture,

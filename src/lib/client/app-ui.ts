@@ -4,11 +4,11 @@ import type {
   AppView,
   AuditStatus,
   ConfigStatus,
+  GrabResponse,
   ManualReleaseResult,
   MediaItem,
   QualityProfileOption,
   QueueItem,
-  RequestResponse,
   SearchKind,
 } from '$lib/shared/types';
 import { acquisitionNextAction, acquisitionReasonLabel } from '$lib/shared/acquisition-reasons';
@@ -49,12 +49,12 @@ export function auditLabel(status: AuditStatus): string {
   }
 }
 
-export function actionLabel(item: MediaItem, requestingId: string | null): string {
-  if (requestingId === item.id) {
+export function actionLabel(item: MediaItem, grabbingId: string | null): string {
+  if (grabbingId === item.id) {
     return 'Grabbing...';
   }
 
-  if (item.canAdd) {
+  if (item.canAdd || canGrabWithPlexConfirmation(item)) {
     return 'Grab';
   }
 
@@ -69,8 +69,8 @@ export function actionLabel(item: MediaItem, requestingId: string | null): strin
   return 'Unavailable';
 }
 
-export function actionDisabled(item: MediaItem, requestingId: string | null): boolean {
-  return requestingId === item.id || !item.canAdd;
+export function actionDisabled(item: MediaItem, grabbingId: string | null): boolean {
+  return grabbingId === item.id || (!item.canAdd && !canGrabWithPlexConfirmation(item));
 }
 
 export function deleteActionLabel(item: MediaItem, deletingId: string | null): string {
@@ -121,11 +121,13 @@ export function resultMessage(item: MediaItem): string {
   return 'This title can be grabbed now.';
 }
 
-export function canOperatorRequestFromPlex(item: MediaItem): boolean {
+// Plex-backed merged results still need an explicit confirmation, but they use the same managed
+// grab flow when Arr can accept them.
+export function canGrabWithPlexConfirmation(item: MediaItem): boolean {
   return item.inPlex && !item.inArr && item.origin === 'merged' && item.requestPayload !== null;
 }
 
-export function operatorOverrideItem(item: MediaItem): MediaItem {
+export function plexConfirmedGrabItem(item: MediaItem): MediaItem {
   return {
     ...item,
     canAdd: true,
@@ -318,21 +320,24 @@ export function formatBytes(bytes: number): string {
 }
 
 export function mergeSearchItem(existing: MediaItem, next: MediaItem): MediaItem {
+  const inPlex = existing.inPlex || next.inPlex;
+  const plexOverrideEligible = inPlex && !next.inArr && next.requestPayload !== null;
+
   return {
     ...existing,
     ...next,
     arrItemId: next.arrItemId ?? existing.arrItemId ?? null,
-    inPlex: existing.inPlex || next.inPlex,
+    inPlex,
     plexLibraries: Array.from(
       new Set([...(existing.plexLibraries ?? []), ...(next.plexLibraries ?? [])]),
     ),
-    canAdd: !(existing.inPlex || next.inPlex) && next.canAdd,
+    canAdd: plexOverrideEligible ? false : next.canAdd,
     canDeleteFromArr: next.canDeleteFromArr || existing.canDeleteFromArr,
-    origin: existing.inPlex || next.inPlex ? 'merged' : next.origin,
+    origin: inPlex ? 'merged' : next.origin,
   };
 }
 
-export function requestFeedbackMessage(result: RequestResponse): string {
+export function grabFeedbackMessage(result: GrabResponse): string {
   if (!result.job) {
     return result.releaseDecision?.reason ?? result.message;
   }

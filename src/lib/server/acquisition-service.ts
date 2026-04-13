@@ -2,15 +2,16 @@ import type {
   ArrDeleteTarget,
   AcquisitionJobActionResponse,
   AcquisitionResponse,
+  GrabResponse,
   ManualReleaseListResponse,
   MediaItemActionResponse,
   MediaItem,
   Preferences,
-  RequestResponse,
   QueueItem,
   QueueActionResponse,
 } from '$lib/shared/types';
-import type { RequestItemOptions } from '$lib/server/acquisition-domain';
+import type { GrabItemOptions } from '$lib/server/acquisition-domain';
+import { manualSelectionQueuedStatus } from '$lib/server/acquisition-domain';
 import { getAcquisitionRunner } from '$lib/server/acquisition-runner';
 import {
   getAcquisitionJobsResponse,
@@ -19,9 +20,13 @@ import {
 import { getAcquisitionLifecycle } from '$lib/server/acquisition-lifecycle';
 import { getAcquisitionJobRepository } from '$lib/server/acquisition-job-repository';
 import { arrFetch } from '$lib/server/arr-client';
-import { lookupPageSize } from '$lib/server/acquisition-validator-shared';
-import { asArray, asNumber, asRecord } from '$lib/server/raw';
-import { requestItem as requestItemInternal } from '$lib/server/acquisition-request-service';
+import {
+  fetchQueueRecords,
+  findQueueRecordForArrItem,
+  queueRecordId,
+} from '$lib/server/acquisition-validator-shared';
+import { asArray, asRecord } from '$lib/server/raw';
+import { grabItem as grabItemInternal } from '$lib/server/acquisition-grab-service';
 import {
   findManualReleaseSelection,
   getManualReleaseResults as getManualReleaseResultsInternal,
@@ -41,12 +46,12 @@ export async function getAcquisitionJobs(): Promise<AcquisitionResponse> {
   return getAcquisitionJobsResponse();
 }
 
-export async function requestItem(
+export async function grabItem(
   item: MediaItem,
   preferences?: Partial<Preferences>,
-  options?: RequestItemOptions,
-): Promise<RequestResponse> {
-  return requestItemInternal(item, preferences, options);
+  options?: GrabItemOptions,
+): Promise<GrabResponse> {
+  return grabItemInternal(item, preferences, options);
 }
 
 async function unmonitorTrackedItem(
@@ -120,22 +125,8 @@ async function findQueueEntryForJob(
   service: 'radarr' | 'sonarr',
   arrItemId: number,
 ): Promise<number | null> {
-  const records = (await arrFetch<unknown>(service, '/api/v3/queue', undefined, {
-    page: 1,
-    pageSize: lookupPageSize(),
-    sortDirection: 'ascending',
-    sortKey: 'timeleft',
-  })) as { records?: unknown[] } | unknown[];
-  const items = Array.isArray(records) ? records : (records.records ?? []);
-  const match = items
-    .map((entry) => asRecord(entry))
-    .find((entry) =>
-      service === 'radarr'
-        ? asNumber(entry.movieId) === arrItemId
-        : asNumber(entry.seriesId) === arrItemId,
-    );
-
-  return typeof match?.id === 'number' && Number.isFinite(match.id) ? match.id : null;
+  const match = findQueueRecordForArrItem(await fetchQueueRecords(service), service, arrItemId);
+  return match ? queueRecordId(match) : null;
 }
 
 export async function getManualReleaseResults(jobId: string): Promise<ManualReleaseListResponse> {
@@ -170,7 +161,7 @@ export async function selectManualRelease(
     reasonCode: null,
     failureReason: null,
     progress: null,
-    queueStatus: 'Manual selection queued',
+    queueStatus: manualSelectionQueuedStatus,
     status: 'queued',
     validationSummary: selection.selection.decision.reason,
   });

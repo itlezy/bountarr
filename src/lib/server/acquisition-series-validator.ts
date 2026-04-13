@@ -2,6 +2,7 @@ import { jobStatusLabel } from '$lib/server/acquisition-domain';
 import {
   fetchHistoryRecords,
   fetchQueueRecords,
+  findQueueRecordForArrItem,
   historySince,
   type ValidationProbe,
 } from '$lib/server/acquisition-validator-shared';
@@ -20,8 +21,8 @@ export async function validateSeriesAttempt(
     fetchQueueRecords('sonarr'),
     fetchHistoryRecords('sonarr', job.arrItemId),
   ]);
-  const queueRecord =
-    queueRecords.find((record) => asNumber(asRecord(record.series).id) === job.arrItemId) ?? null;
+  const queueRecord = findQueueRecordForArrItem(queueRecords, 'sonarr', job.arrItemId);
+  const queueItem = queueRecord ? normalizeQueueItem('sonarr', queueRecord) : null;
   const relevantHistory = historySince(historyRecords, attemptStart, job.currentRelease);
   const episodeFileIds = Array.from(
     new Set(
@@ -35,8 +36,7 @@ export async function validateSeriesAttempt(
   );
 
   if (episodeFileIds.length === 0) {
-    if (queueRecord) {
-      const queueItem = normalizeQueueItem('sonarr', queueRecord);
+    if (queueItem) {
       return {
         outcome: 'pending',
         preferredReleaser: null,
@@ -89,12 +89,8 @@ export async function validateSeriesAttempt(
     return {
       outcome: 'pending',
       preferredReleaser: null,
-      progress: queueRecord
-        ? (normalizeQueueItem('sonarr', queueRecord)?.progress ?? null)
-        : job.progress,
-      queueStatus: queueRecord
-        ? (normalizeQueueItem('sonarr', queueRecord)?.status ?? job.queueStatus)
-        : job.queueStatus,
+      progress: queueItem?.progress ?? job.progress,
+      queueStatus: queueItem?.status ?? job.queueStatus,
       reasonCode: null,
       summary: 'Imported episodes are waiting for media info',
     };

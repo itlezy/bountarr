@@ -6,30 +6,32 @@ export type PersistedAcquisitionJob = AcquisitionJob & {
   failedGuids: string[];
 };
 
-export type RequestItemOptions = {
+export type GrabItemOptions = {
   qualityProfileId?: number | null;
   seasonNumbers?: number[];
 };
 
-export class AcquisitionRequestError extends Error {
+export const manualSelectionQueuedStatus = 'Manual selection queued';
+
+export class AcquisitionGrabError extends Error {
   readonly status: number;
 
   constructor(status: number, message: string) {
     super(message);
-    this.name = 'AcquisitionRequestError';
+    this.name = 'AcquisitionGrabError';
     this.status = status;
   }
 }
 
-export function isAcquisitionRequestError(error: unknown): error is AcquisitionRequestError {
+export function isAcquisitionGrabError(error: unknown): error is AcquisitionGrabError {
   if (!(error instanceof Error)) {
     return false;
   }
 
   const status = (error as { status?: unknown }).status;
   return (
-    error instanceof AcquisitionRequestError ||
-    (error.name === 'AcquisitionRequestError' &&
+    error instanceof AcquisitionGrabError ||
+    (error.name === 'AcquisitionGrabError' &&
       typeof status === 'number' &&
       Number.isFinite(status))
   );

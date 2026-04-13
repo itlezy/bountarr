@@ -4,7 +4,7 @@ import { asNumber, asRecord, asRecordsArray, asString } from '$lib/server/raw';
 import type { ArrService, PersistedAcquisitionJob } from '$lib/server/acquisition-domain';
 import type { AcquisitionReasonCode, MediaItem } from '$lib/shared/types';
 
-const acquisitionLookupPageSize = 500;
+const acquisitionLookupPageSize = 1000;
 
 export function lookupPageSize(): number {
   return acquisitionLookupPageSize;
@@ -33,6 +33,29 @@ export async function fetchQueueRecords(service: ArrService): Promise<Record<str
     .then(asRecordsArray)
     .then((records) => records.map(asRecord))
     .catch(() => []);
+}
+
+export function queueRecordArrItemId(
+  service: ArrService,
+  record: Record<string, unknown>,
+): number | null {
+  if (service === 'radarr') {
+    return asNumber(record.movieId) ?? asNumber(asRecord(record.movie).id);
+  }
+
+  return asNumber(record.seriesId) ?? asNumber(asRecord(record.series).id);
+}
+
+export function findQueueRecordForArrItem(
+  records: Record<string, unknown>[],
+  service: ArrService,
+  arrItemId: number,
+): Record<string, unknown> | null {
+  return records.find((record) => queueRecordArrItemId(service, record) === arrItemId) ?? null;
+}
+
+export function queueRecordId(record: Record<string, unknown>): number | null {
+  return asNumber(record.id);
 }
 
 export async function fetchHistoryRecords(

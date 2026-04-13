@@ -2,6 +2,7 @@ import type {
   ArrDeleteTarget,
   AcquisitionJobActionResponse,
   DashboardResponse,
+  GrabResponse,
   ManualReleaseListResponse,
   MediaItemActionResponse,
   MediaItem,
@@ -9,7 +10,6 @@ import type {
   QueueActionResponse,
   QueueItem,
   QueueResponse,
-  RequestResponse,
   SearchAvailability,
   SearchKind,
 } from '$lib/shared/types';
@@ -176,14 +176,14 @@ export async function deleteArrItem(item: ArrDeleteTarget): Promise<MediaItemAct
   );
 }
 
-export async function submitRequest(
+export async function submitGrab(
   item: MediaItem,
   preferences: UserPreferencesPayload,
   qualityProfileId?: number | null,
   seasonNumbers?: number[],
-): Promise<RequestResponse> {
-  return requestJson<RequestResponse>(
-    '/api/request',
+): Promise<GrabResponse> {
+  return requestJson<GrabResponse>(
+    '/api/grab',
     {
       method: 'POST',
       headers: {
@@ -196,6 +196,6 @@ export async function submitRequest(
         seasonNumbers: seasonNumbers && seasonNumbers.length > 0 ? seasonNumbers : undefined,
       }),
     },
-    'Add failed.',
+    'Grab failed.',
   );
 }

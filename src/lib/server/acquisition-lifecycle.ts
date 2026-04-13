@@ -355,6 +355,38 @@ export class AcquisitionLifecycle {
     return next;
   }
 
+  failLostManualSelection(
+    job: PersistedAcquisitionJob,
+    reason = 'The queued manual release selection was lost before it could be submitted.',
+  ): PersistedAcquisitionJob {
+    const current = this.getCurrentJob(job.id);
+    if (!current || isTerminalJobStatus(current.status)) {
+      return current ?? job;
+    }
+
+    this.jobs.upsertAttempt(current.id, {
+      attempt: current.attempt,
+      finishedAt: new Date().toISOString(),
+      reasonCode: 'manual-selection-lost',
+      reason,
+      status: 'failed',
+    });
+
+    const next = this.jobs.updateJob(current.id, {
+      autoRetrying: false,
+      completedAt: new Date().toISOString(),
+      reasonCode: 'manual-selection-lost',
+      failureReason: reason,
+      progress: null,
+      queueStatus: 'Manual selection lost',
+      status: 'failed',
+      validationSummary: reason,
+    });
+
+    this.log(next, 'manual-selection.lost', 'warn', 'Queued manual release selection was lost');
+    return next;
+  }
+
   cancelJob(job: PersistedAcquisitionJob, reason = 'Cancelled by user'): PersistedAcquisitionJob {
     const current = this.getCurrentJob(job.id);
     if (!current || isTerminalJobStatus(current.status)) {

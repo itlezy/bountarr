@@ -25,6 +25,7 @@ export type AcquisitionReasonCode =
   | 'import-timeout'
   | 'no-release-available'
   | 'no-acceptable-release'
+  | 'manual-selection-lost'
   | 'cancelled'
   | 'crashed';
 
@@ -241,7 +242,7 @@ export interface DashboardResponse {
   summary: DashboardSummary;
 }
 
-export interface RequestResponse {
+export interface GrabResponse {
   existing: boolean;
   item: MediaItem;
   message: string;

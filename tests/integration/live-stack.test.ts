@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { ConfigStatus, MediaItem, QueueResponse, RequestResponse } from '$lib/shared/types';
+import type { ConfigStatus, GrabResponse, MediaItem, QueueResponse } from '$lib/shared/types';
 import {
   assertLiveIntegrationEnabled,
   loadLiveIntegrationConfig,
@@ -105,7 +105,7 @@ describe.sequential('live stack integration', () => {
     expect(item?.inArr).toBe(false);
     expect(item?.canAdd).toBe(true);
 
-    const request = await postJson<RequestResponse>(`${config.baseUrl}/api/request`, {
+    const request = await postJson<GrabResponse>(`${config.baseUrl}/api/grab`, {
       item,
       preferences: {
         preferredLanguage: 'English',
@@ -151,7 +151,7 @@ describe.sequential('live stack integration', () => {
     expect(item?.inArr).toBe(true);
     expect(item?.canAdd).toBe(false);
 
-    const request = await postJson<RequestResponse>(`${config.baseUrl}/api/request`, {
+    const request = await postJson<GrabResponse>(`${config.baseUrl}/api/grab`, {
       item,
       preferences: {
         preferredLanguage: 'English',

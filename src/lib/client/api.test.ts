@@ -4,7 +4,7 @@ import {
   deleteArrItem,
   fetchQueue,
   fetchSearchResults,
-  submitRequest,
+  submitGrab,
 } from '$lib/client/api';
 import type { MediaItem } from '$lib/shared/types';
 
@@ -82,7 +82,7 @@ describe('client api', () => {
     expect(result).toEqual([movieItem]);
   });
 
-  it('posts request payloads with preferences and quality profile overrides', async () => {
+  it('posts grab payloads with preferences and quality profile overrides', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -107,7 +107,7 @@ describe('client api', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
 
-    await submitRequest(
+    await submitGrab(
       movieItem,
       {
         preferredLanguage: 'English',
@@ -118,7 +118,7 @@ describe('client api', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('/api/request');
+    expect(url).toBe('/api/grab');
     expect(init.method).toBe('POST');
     expect(init.headers).toEqual({
       'Content-Type': 'application/json',
@@ -133,7 +133,7 @@ describe('client api', () => {
     });
   });
 
-  it('posts selected seasons for series requests', async () => {
+  it('posts selected seasons for series grabs', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -158,7 +158,7 @@ describe('client api', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
 
-    await submitRequest(
+    await submitGrab(
       seriesItem,
       {
         preferredLanguage: 'English',

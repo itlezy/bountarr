@@ -1,4 +1,8 @@
-import { isTerminalJobStatus, type PersistedAcquisitionJob } from '$lib/server/acquisition-domain';
+import {
+  isTerminalJobStatus,
+  manualSelectionQueuedStatus,
+  type PersistedAcquisitionJob,
+} from '$lib/server/acquisition-domain';
 import {
   findReleaseSelection,
   submitSelectedRelease,
@@ -45,7 +49,11 @@ export class AcquisitionRunner {
   readonly jobs: AcquisitionJobRepository;
   readonly lifecycle: AcquisitionLifecycle;
   readonly manualSelectionOverrides = new Map<string, ReleaseSelectionResult>();
+  readonly reconciling = new Set<string>();
   readonly running = new Set<string>();
+  private readonly reconciliationSweepMs = 30_000;
+  private workersStarted = false;
+  private sweeper: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     jobs: AcquisitionJobRepository = getAcquisitionJobRepository(),
@@ -133,6 +141,15 @@ export class AcquisitionRunner {
       }
 
       try {
+        if (
+          job.status === 'queued' &&
+          job.queueStatus === manualSelectionQueuedStatus &&
+          !manualSelection
+        ) {
+          this.lifecycle.failLostManualSelection(job);
+          return;
+        }
+
         let releaseSelection: ReleaseSelectionResult;
         if (manualSelection) {
           releaseSelection = manualSelection;
@@ -167,7 +184,7 @@ export class AcquisitionRunner {
         );
 
         job = this.lifecycle.startValidation(job);
-        const waitResult = await this.dependencies.waitForAttemptOutcome(
+        let waitResult = await this.dependencies.waitForAttemptOutcome(
           job,
           chosen.attemptStartedAt,
           (progressUpdate) => {
@@ -187,6 +204,14 @@ export class AcquisitionRunner {
         if (waitResult.outcome === 'success') {
           this.lifecycle.completeJob(job, waitResult);
           return;
+        }
+
+        if (waitResult.outcome === 'timeout') {
+          waitResult = {
+            ...waitResult,
+            progress: job.progress,
+            queueStatus: job.queueStatus,
+          };
         }
 
         job = this.lifecycle.handleFailedValidation(job, releaseSelection.selectedGuid, waitResult);
@@ -223,20 +248,53 @@ export class AcquisitionRunner {
     });
   }
 
+  private scheduleReconciliation(jobId: string): void {
+    if (this.running.has(jobId) || this.reconciling.has(jobId)) {
+      return;
+    }
+
+    this.reconciling.add(jobId);
+    queueMicrotask(() => {
+      void this.reconcileJob(jobId)
+        .then((handled) => {
+          if (!handled) {
+            this.enqueue(jobId);
+          }
+        })
+        .finally(() => {
+          this.reconciling.delete(jobId);
+        });
+    });
+  }
+
+  private sweepRunnableJobs(): void {
+    for (const job of this.jobs.listRunnableJobs()) {
+      this.scheduleReconciliation(job.id);
+    }
+  }
+
   enqueueSelectedRelease(jobId: string, releaseSelection: ReleaseSelectionResult): void {
     this.manualSelectionOverrides.set(jobId, releaseSelection);
     this.enqueue(jobId);
   }
 
   ensureWorkers(): void {
-    for (const job of this.jobs.listRunnableJobs()) {
-      queueMicrotask(() => {
-        void this.reconcileJob(job.id).then((handled) => {
-          if (!handled) {
-            this.enqueue(job.id);
-          }
-        });
-      });
+    if (this.workersStarted) {
+      return;
+    }
+
+    this.workersStarted = true;
+    this.sweepRunnableJobs();
+    this.sweeper = setInterval(() => {
+      this.sweepRunnableJobs();
+    }, this.reconciliationSweepMs);
+    this.sweeper.unref?.();
+  }
+
+  dispose(): void {
+    if (this.sweeper) {
+      clearInterval(this.sweeper);
+      this.sweeper = null;
     }
   }
 }

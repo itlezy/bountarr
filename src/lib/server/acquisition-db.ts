@@ -33,7 +33,7 @@ const acquisitionSchema = `
     ON acquisition_jobs (status, updated_at DESC);
 
   CREATE INDEX IF NOT EXISTS acquisition_jobs_lookup_idx
-    ON acquisition_jobs (arr_item_id, kind, status);
+    ON acquisition_jobs (arr_item_id, kind, source_service, status);
 
   CREATE TABLE IF NOT EXISTS acquisition_attempts (
     job_id TEXT NOT NULL,
@@ -112,6 +112,31 @@ const expectedAcquisitionTableColumns = {
   ],
 } as const;
 
+const expectedAcquisitionIndexes = {
+  acquisition_events_job_idx: {
+    table: 'acquisition_events',
+    columns: [{ name: 'job_id', desc: false }, { name: 'created_at', desc: true }],
+  },
+  acquisition_jobs_lookup_idx: {
+    table: 'acquisition_jobs',
+    columns: [
+      { name: 'arr_item_id', desc: false },
+      { name: 'kind', desc: false },
+      { name: 'source_service', desc: false },
+      { name: 'status', desc: false },
+    ],
+  },
+  acquisition_jobs_status_idx: {
+    table: 'acquisition_jobs',
+    columns: [{ name: 'status', desc: false }, { name: 'updated_at', desc: true }],
+  },
+} as const;
+
+type ExplicitIndexDefinition = {
+  table: string;
+  columns: Array<{ name: string; desc: boolean }>;
+};
+
 function tableExists(database: DatabaseSync, tableName: string): boolean {
   const row = database
     .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
@@ -124,6 +149,74 @@ function tableColumns(database: DatabaseSync, tableName: string): string[] {
   return (
     database.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name?: unknown }>
   ).flatMap((row) => (typeof row.name === 'string' ? [row.name] : []));
+}
+
+function explicitIndexes(
+  database: DatabaseSync,
+): Record<string, ExplicitIndexDefinition> {
+  const definitions: Record<string, ExplicitIndexDefinition> = {};
+
+  for (const tableName of Object.keys(expectedAcquisitionTableColumns)) {
+    const indexes = database.prepare(`PRAGMA index_list(${tableName})`).all() as Array<{
+      name?: unknown;
+      origin?: unknown;
+    }>;
+
+    for (const index of indexes) {
+      if (typeof index.name !== 'string' || index.origin !== 'c') {
+        continue;
+      }
+
+      const columns = (
+        database.prepare(`PRAGMA index_xinfo(${index.name})`).all() as Array<{
+          cid?: unknown;
+          desc?: unknown;
+          key?: unknown;
+          name?: unknown;
+        }>
+      )
+        .filter((column) => column.key === 1 && typeof column.cid === 'number' && column.cid >= 0)
+        .flatMap((column) =>
+          typeof column.name === 'string'
+            ? [
+                {
+                  desc: column.desc === 1,
+                  name: column.name,
+                },
+              ]
+            : [],
+        );
+
+      definitions[index.name] = {
+        columns,
+        table: tableName,
+      };
+    }
+  }
+
+  return definitions;
+}
+
+function expectedJournalMode(database: DatabaseSync): string {
+  const databasePath = (
+    database.prepare('PRAGMA database_list').get() as { file?: unknown } | undefined
+  )?.file;
+  return typeof databasePath === 'string' && databasePath.length > 0 ? 'wal' : 'memory';
+}
+
+function currentJournalMode(database: DatabaseSync): string {
+  const row = database.prepare('PRAGMA journal_mode').get() as
+    | { journal_mode?: unknown }
+    | undefined;
+  return typeof row?.journal_mode === 'string' ? row.journal_mode.toLowerCase() : '';
+}
+
+function hasRequiredPersistentPragmas(database: DatabaseSync): boolean {
+  return currentJournalMode(database) === expectedJournalMode(database);
+}
+
+function applyRequiredPragmas(database: DatabaseSync): void {
+  database.exec(`PRAGMA journal_mode = ${expectedJournalMode(database)}`);
 }
 
 function resetAcquisitionTables(database: DatabaseSync): void {
@@ -139,18 +232,51 @@ function hasAnyAcquisitionTables(database: DatabaseSync): boolean {
   );
 }
 
-function hasCurrentAcquisitionSchema(database: DatabaseSync): boolean {
-  return Object.entries(expectedAcquisitionTableColumns).every(([tableName, expectedColumns]) => {
-    if (!tableExists(database, tableName)) {
-      return false;
-    }
+function hasCurrentAcquisitionIndexes(database: DatabaseSync): boolean {
+  const actualIndexes = explicitIndexes(database);
+  const expectedNames = Object.keys(expectedAcquisitionIndexes).sort() as Array<
+    keyof typeof expectedAcquisitionIndexes
+  >;
+  const actualNames = Object.keys(actualIndexes).sort();
 
-    const actualColumns = tableColumns(database, tableName);
+  if (
+    actualNames.length !== expectedNames.length ||
+    actualNames.some((name, index) => name !== expectedNames[index])
+  ) {
+    return false;
+  }
+
+  return expectedNames.every((indexName) => {
+    const expectedIndex = expectedAcquisitionIndexes[indexName];
+    const actualIndex = actualIndexes[indexName];
     return (
-      actualColumns.length === expectedColumns.length &&
-      actualColumns.every((columnName, index) => columnName === expectedColumns[index])
+      actualIndex.table === expectedIndex.table &&
+      actualIndex.columns.length === expectedIndex.columns.length &&
+      actualIndex.columns.every(
+        (column, index) =>
+          column.name === expectedIndex.columns[index]?.name &&
+          column.desc === expectedIndex.columns[index]?.desc,
+      )
     );
   });
+}
+
+function hasCurrentAcquisitionSchema(database: DatabaseSync): boolean {
+  return (
+    Object.entries(expectedAcquisitionTableColumns).every(([tableName, expectedColumns]) => {
+      if (!tableExists(database, tableName)) {
+        return false;
+      }
+
+      const actualColumns = tableColumns(database, tableName);
+      return (
+        actualColumns.length === expectedColumns.length &&
+        actualColumns.every((columnName, index) => columnName === expectedColumns[index])
+      );
+    }) &&
+    hasCurrentAcquisitionIndexes(database) &&
+    hasRequiredPersistentPragmas(database)
+  );
 }
 
 export function defaultAcquisitionDatabasePath(): string {
@@ -171,6 +297,10 @@ export function ensureAcquisitionSchema(database: DatabaseSync): void {
     if (shouldReset) {
       resetAcquisitionTables(database);
     }
+    // Acquisition tracking is disposable state in this repo. Any table, index, or persistent
+    // pragma drift is treated as corruption and rebuilt from the current schema instead of
+    // carrying compatibility code.
+    applyRequiredPragmas(database);
     database.exec(acquisitionSchema);
   } finally {
     database.exec('PRAGMA foreign_keys = ON');

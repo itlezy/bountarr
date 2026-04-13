@@ -95,9 +95,9 @@ test('selected filter options keep the active styling marker', async ({ page }) 
   await expect(activeSort.locator('.filter-option__marker')).toBeVisible();
 });
 
-test('movie request submits through the add dialog and moves to queue view', async ({ page }, testInfo) => {
+test('movie grab submits through the grab dialog and moves to queue view', async ({ page }, testInfo) => {
   const api = await mockAppApi(page, {
-    requestResponse: (body) =>
+    grabResponse: (body) =>
       mockJson(
         {
           existing: false,
@@ -164,15 +164,15 @@ test('movie request submits through the add dialog and moves to queue view', asy
 
   const dialog = page.getByRole('dialog', { name: 'Grab title' });
   await expect(dialog).toBeVisible();
-  await dialog.getByRole('button', { name: 'Grab' }).click();
+  await dialog.getByRole('button', { name: 'Grab', exact: true }).click();
 
   await expect(dialog.getByRole('button', { name: 'Grabbing...' })).toBeDisabled();
-  await expect(dialog.getByLabel('Close add confirmation')).toBeDisabled();
+  await expect(dialog.getByLabel('Close grab confirmation')).toBeDisabled();
   await expect(dialog.getByLabel('Quality profile')).toBeDisabled();
 
   await expect
-    .poll(() => api.requestBodies.length, {
-      message: 'movie request should submit a single request body',
+    .poll(() => api.grabBodies.length, {
+      message: 'movie grab should submit a single request body',
     })
     .toBe(1);
 
@@ -185,14 +185,14 @@ test('movie request submits through the add dialog and moves to queue view', asy
     expect(Math.round(box?.x ?? -1)).toBe(0);
     expect(Math.round(box?.width ?? 0)).toBe(page.viewportSize()?.width ?? 0);
   }
-  expect(api.requestBodies[0]?.seasonNumbers).toBeUndefined();
+  expect(api.grabBodies[0]?.seasonNumbers).toBeUndefined();
   await expect(page.getByRole('heading', { name: 'Grab Progress' })).toBeVisible();
   await expect(page.getByText('Tracking The Matrix below so you can see what happens next.')).toBeVisible();
   await page.waitForTimeout(3_200);
   await expect(confirmation).toHaveCount(0);
 });
 
-test('series request defaults to season 1 and allows changing seasons', async ({ page }) => {
+test('series grab defaults to season 1 and allows changing seasons', async ({ page }) => {
   const api = await mockAppApi(page);
   await openSearch(page, api, 'Andor', 'Andor');
 
@@ -213,16 +213,69 @@ test('series request defaults to season 1 and allows changing seasons', async ({
   await season2.click();
   await expect(season2).toHaveAttribute('aria-pressed', 'true');
 
-  await dialog.getByRole('button', { name: 'Grab' }).click();
+  await dialog.getByRole('button', { name: 'Grab', exact: true }).click();
 
   await expect
-    .poll(() => api.requestBodies.length, {
-      message: 'series request should submit a single request body',
+    .poll(() => api.grabBodies.length, {
+      message: 'series grab should submit a single request body',
     })
     .toBe(1);
 
   await expect(page.getByRole('dialog', { name: 'Grab title' })).toHaveCount(0);
   await expect(page.getByRole('status')).toContainText('Andor was added to Sonarr.');
-  expect(api.requestBodies[0]?.seasonNumbers).toEqual([1, 2]);
+  expect(api.grabBodies[0]?.seasonNumbers).toEqual([1, 2]);
   await expect(page.getByText('Tracking Andor below so you can see what happens next.')).toBeVisible();
+});
+
+test('plex-available search results still use the normal grab dialog with confirmation', async ({
+  page,
+}) => {
+  const api = await mockAppApi(page, {
+    searchResponse: () => [
+      {
+        id: 'movie:603',
+        kind: 'movie',
+        title: 'The Matrix',
+        year: 1999,
+        rating: 8.7,
+        poster: null,
+        overview: 'Sci-fi',
+        status: 'Available in Plex',
+        isExisting: false,
+        isRequested: false,
+        auditStatus: 'pending',
+        audioLanguages: [],
+        subtitleLanguages: [],
+        sourceService: 'plex',
+        origin: 'merged',
+        inArr: false,
+        inPlex: true,
+        plexLibraries: ['Movies'],
+        canAdd: false,
+        detail: null,
+        requestPayload: { tmdbId: 603 },
+      },
+    ],
+  });
+  await openSearch(page, api, 'Matrix', 'The Matrix');
+
+  const matrixCard = page.locator('article').filter({
+    has: page.getByRole('heading', { name: 'The Matrix' }),
+  });
+  await matrixCard.getByRole('button', { name: 'Grab' }).click();
+
+  const dialog = page.getByRole('dialog', { name: 'Grab title' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText(
+    'Plex already has this title. Confirm to send a managed grab to Arr anyway.',
+  );
+
+  await dialog.getByRole('button', { name: 'Grab', exact: true }).click();
+
+  await expect
+    .poll(() => api.grabBodies.length, {
+      message: 'plex-available result should still submit through the standard grab flow',
+    })
+    .toBe(1);
+  await expect(page.getByRole('dialog', { name: 'Grab title' })).toHaveCount(0);
 });

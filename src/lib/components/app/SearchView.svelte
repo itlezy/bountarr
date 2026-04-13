@@ -98,7 +98,7 @@ let { state }: { state: AppState } = $props();
     <div class="mt-3 space-y-2">
       {#each state.visibleSearchResults as item}
         <SearchResultCard
-          feedback={state.requestFeedback[item.id] ?? null}
+          feedback={state.grabFeedback[item.id] ?? null}
           {item}
           {state}
         />
@@ -106,9 +106,9 @@ let { state }: { state: AppState } = $props();
     </div>
   {/if}
 
-  {#if state.requestError}
+  {#if state.grabError}
     <div class="mt-3 rounded-[14px] border border-rose-300 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-200">
-      {state.requestError}
+      {state.grabError}
     </div>
   {/if}
 

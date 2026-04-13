@@ -5,10 +5,10 @@ import type { PageData } from '$lib/client/app-state.svelte';
 import type {
   AcquisitionJob,
   DashboardResponse,
+  GrabResponse,
   MediaItem,
   ManualReleaseListResponse,
   QueueResponse,
-  RequestResponse,
 } from '$lib/shared/types';
 
 type Deferred<T> = {
@@ -245,7 +245,7 @@ function createDependencies(
       fetchSearchResults: vi.fn().mockResolvedValue([movieItem]),
       fetchQueue: vi.fn().mockResolvedValue(queueResponse),
       selectManualRelease: vi.fn(),
-      submitRequest: vi.fn(),
+      submitGrab: vi.fn(),
       ...overrides.api,
     },
     storage: {
@@ -325,7 +325,7 @@ describe('app state', () => {
   });
 
   it('updates the queue view and request feedback after a successful add', async () => {
-    const requestResponse: RequestResponse = {
+    const grabResponse: GrabResponse = {
       existing: false,
       item: {
         ...movieItem,
@@ -366,7 +366,7 @@ describe('app state', () => {
     };
     const dependencies = createDependencies({
       api: {
-        submitRequest: vi.fn().mockResolvedValue(requestResponse),
+        submitGrab: vi.fn().mockResolvedValue(grabResponse),
       },
       timers: {
         setTimeout: vi.fn().mockReturnValue(99) as unknown as typeof globalThis.setTimeout,
@@ -377,12 +377,12 @@ describe('app state', () => {
     state.searchResults = [movieItem];
     state.openAddConfirm(movieItem);
 
-    await state.submitRequest(movieItem, state.confirmQualityProfileId);
+    await state.submitGrab(movieItem, state.confirmQualityProfileId);
 
     expect(state.activeView).toBe('queue');
     expect(state.latestActionMessage).toBeNull();
-    expect(state.addSuccessToastMessage).toBe(requestResponse.message);
-    expect(state.requestFeedback[movieItem.id]).toContain('Getting started');
+    expect(state.addSuccessToastMessage).toBe(grabResponse.message);
+    expect(state.grabFeedback[movieItem.id]).toContain('Getting started');
     expect(state.searchResults[0]?.inArr).toBe(true);
     expect(state.confirmAddItem).toBeNull();
     expect(state.guidedQueueJobId).toBe('job-1');
@@ -394,7 +394,7 @@ describe('app state', () => {
   it('closes the add dialog immediately after request success without waiting for refreshes', async () => {
     const queueRefresh = createDeferred<QueueResponse>();
     const dashboardRefresh = createDeferred<DashboardResponse>();
-    const requestResponse: RequestResponse = {
+    const grabResponse: GrabResponse = {
       existing: false,
       item: {
         ...movieItem,
@@ -435,7 +435,7 @@ describe('app state', () => {
     };
     const dependencies = createDependencies({
       api: {
-        submitRequest: vi.fn().mockResolvedValue(requestResponse),
+        submitGrab: vi.fn().mockResolvedValue(grabResponse),
         fetchQueue: vi.fn().mockImplementation(() => queueRefresh.promise),
         refreshDashboard: vi.fn().mockImplementation(() => dashboardRefresh.promise),
       },
@@ -447,10 +447,10 @@ describe('app state', () => {
     const state = new AppState(pageData, dependencies);
     state.openAddConfirm(movieItem);
 
-    await state.submitRequest(movieItem, state.confirmQualityProfileId);
+    await state.submitGrab(movieItem, state.confirmQualityProfileId);
 
     expect(state.confirmAddItem).toBeNull();
-    expect(state.requesting).toBeNull();
+    expect(state.grabbing).toBeNull();
     expect(state.activeView).toBe('queue');
     expect(state.queue?.acquisitionJobs[0]?.id).toBe('job-1');
     expect(dependencies.api.fetchQueue).toHaveBeenCalledTimes(1);
@@ -462,7 +462,7 @@ describe('app state', () => {
   });
 
   it('keeps optimistic queue state and shows a warning when refresh fails after a successful grab', async () => {
-    const requestResponse: RequestResponse = {
+    const grabResponse: GrabResponse = {
       existing: false,
       item: {
         ...movieItem,
@@ -503,7 +503,7 @@ describe('app state', () => {
     };
     const dependencies = createDependencies({
       api: {
-        submitRequest: vi.fn().mockResolvedValue(requestResponse),
+        submitGrab: vi.fn().mockResolvedValue(grabResponse),
         fetchQueue: vi.fn().mockRejectedValue(new Error('Queue refresh failed')),
         refreshDashboard: vi.fn().mockRejectedValue(new Error('Dashboard refresh failed')),
       },
@@ -514,7 +514,7 @@ describe('app state', () => {
     });
     const state = new AppState(pageData, dependencies);
 
-    await state.submitRequest(movieItem, 7);
+    await state.submitGrab(movieItem, 7);
 
     expect(state.queue?.acquisitionJobs[0]?.id).toBe('job-1');
     await vi.waitFor(() => {
@@ -527,7 +527,7 @@ describe('app state', () => {
     nowSpy.mockReturnValue(1_000);
     const dependencies = createDependencies({
       api: {
-        submitRequest: vi.fn().mockResolvedValue({
+        submitGrab: vi.fn().mockResolvedValue({
           existing: false,
           item: {
             ...movieItem,
@@ -538,13 +538,13 @@ describe('app state', () => {
           message: 'The Matrix was added to Radarr.',
           releaseDecision: null,
           job: null,
-        } satisfies RequestResponse),
+        } satisfies GrabResponse),
       },
     });
     const state = new AppState(pageData, dependencies);
 
     state.openAddConfirm(movieItem);
-    await state.submitRequest(movieItem, state.confirmQualityProfileId);
+    await state.submitGrab(movieItem, state.confirmQualityProfileId);
 
     expect(state.confirmAddItem).toBeNull();
 
@@ -561,7 +561,7 @@ describe('app state', () => {
   it('still closes the add dialog when client preference persistence fails after a successful request', async () => {
     const dependencies = createDependencies({
       api: {
-        submitRequest: vi.fn().mockResolvedValue({
+        submitGrab: vi.fn().mockResolvedValue({
           existing: false,
           item: {
             ...movieItem,
@@ -572,7 +572,7 @@ describe('app state', () => {
           message: 'The Matrix was added to Radarr.',
           releaseDecision: null,
           job: null,
-        } satisfies RequestResponse),
+        } satisfies GrabResponse),
       },
       storage: {
         savePreferences: vi.fn().mockImplementation(() => {
@@ -583,16 +583,16 @@ describe('app state', () => {
     const state = new AppState(pageData, dependencies);
 
     state.openAddConfirm(movieItem);
-    await state.submitRequest(movieItem, state.confirmQualityProfileId);
+    await state.submitGrab(movieItem, state.confirmQualityProfileId);
 
     expect(state.confirmAddItem).toBeNull();
-    expect(state.requesting).toBeNull();
+    expect(state.grabbing).toBeNull();
     expect(state.activeView).toBe('queue');
-    expect(state.requestError).toBe('localStorage write failed');
+    expect(state.grabError).toBe('localStorage write failed');
   });
 
   it('auto clears the add success popup after three seconds', async () => {
-    const requestResponse: RequestResponse = {
+    const grabResponse: GrabResponse = {
       existing: false,
       item: {
         ...movieItem,
@@ -607,7 +607,7 @@ describe('app state', () => {
     let toastTimer: (() => void) | null = null;
     const dependencies = createDependencies({
       api: {
-        submitRequest: vi.fn().mockResolvedValue(requestResponse),
+        submitGrab: vi.fn().mockResolvedValue(grabResponse),
       },
       timers: {
         setTimeout: vi.fn().mockImplementation((handler: TimerHandler) => {
@@ -619,9 +619,9 @@ describe('app state', () => {
     });
     const state = new AppState(pageData, dependencies);
 
-    await state.submitRequest(movieItem, 7);
+    await state.submitGrab(movieItem, 7);
 
-    expect(state.addSuccessToastMessage).toBe(requestResponse.message);
+    expect(state.addSuccessToastMessage).toBe(grabResponse.message);
     expect(toastTimer).not.toBeNull();
     const timer =
       toastTimer ??
@@ -645,9 +645,9 @@ describe('app state', () => {
       status: 'Available in Plex',
     };
 
-    state.openAddConfirm(plexMergedItem, { operatorOverride: true });
+    state.openAddConfirm(plexMergedItem);
 
-    expect(state.confirmOperatorOverride).toBe(true);
+    expect(state.confirmPlexAvailability).toBe(true);
     expect(state.confirmAddItem).toMatchObject({
       canAdd: true,
       sourceService: 'radarr',
@@ -655,10 +655,28 @@ describe('app state', () => {
     });
   });
 
+  it('does not open the grab dialog for Plex-only items without Arr request context', () => {
+    const state = new AppState(pageData, createDependencies());
+    const plexOnlyItem: MediaItem = {
+      ...movieItem,
+      sourceService: 'plex',
+      origin: 'plex',
+      inPlex: true,
+      canAdd: false,
+      requestPayload: null,
+      status: 'Available in Plex',
+    };
+
+    state.openAddConfirm(plexOnlyItem);
+
+    expect(state.confirmAddItem).toBeNull();
+    expect(state.confirmPlexAvailability).toBe(false);
+  });
+
   it('passes selected seasons through the request submission flow for series', async () => {
     const dependencies = createDependencies({
       api: {
-        submitRequest: vi.fn().mockResolvedValue({
+        submitGrab: vi.fn().mockResolvedValue({
           existing: false,
           item: {
             ...seriesItem,
@@ -669,7 +687,7 @@ describe('app state', () => {
           message: 'Added',
           releaseDecision: null,
           job: null,
-        } satisfies RequestResponse),
+        } satisfies GrabResponse),
       },
     });
     const state = new AppState(pageData, dependencies);
@@ -677,7 +695,7 @@ describe('app state', () => {
     state.openAddConfirm(seriesItem);
     state.toggleConfirmSeason(2);
 
-    await state.submitRequest(
+    await state.submitGrab(
       seriesItem,
       state.confirmQualityProfileId,
       {
@@ -689,7 +707,7 @@ describe('app state', () => {
       state.confirmSeasonNumbers,
     );
 
-    expect(dependencies.api.submitRequest).toHaveBeenCalledWith(
+    expect(dependencies.api.submitGrab).toHaveBeenCalledWith(
       seriesItem,
       {
         cardsView: state.cardsView,

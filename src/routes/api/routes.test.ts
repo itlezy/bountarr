@@ -3,13 +3,13 @@ import {
   acquisitionResponseFixture,
   configStatusFixture,
   dashboardResponseFixture,
+  grabResponseFixture,
   healthResponseFixture,
   mediaItemFixture,
   queueResponseFixture,
-  requestResponseFixture,
   runtimeHealthFixture,
 } from '$lib/server/api-test-fixtures';
-import { AcquisitionRequestError } from '$lib/server/acquisition-domain';
+import { AcquisitionGrabError } from '$lib/server/acquisition-domain';
 import { createGetEvent, createPostEvent, loadRouteModule, readJson } from '$lib/server/api-test';
 
 afterEach(() => {
@@ -180,18 +180,18 @@ describe('API routes', () => {
     expect(payload.jobs[0]?.title).toBe('The Matrix');
   });
 
-  it('rejects request calls without a media item', async () => {
+  it('rejects grab calls without a media item', async () => {
     const route = await loadRouteModule<{
       POST: (event: { request: Request }) => Promise<Response>;
-    }>('../../routes/api/request/+server', {
+    }>('../../routes/api/grab/+server', {
       '$lib/server/acquisition-service': () => ({
-        requestItem: vi.fn(),
+        grabItem: vi.fn(),
       }),
     });
 
     await expect(
       route.POST(
-        createPostEvent('http://local.test/api/request', {
+        createPostEvent('http://local.test/api/grab', {
           preferences: {
             preferredLanguage: 'English',
             subtitleLanguage: 'English',
@@ -203,18 +203,18 @@ describe('API routes', () => {
     });
   });
 
-  it('returns duplicate request responses unchanged when the item already exists', async () => {
-    const requestItem = vi.fn().mockResolvedValue(requestResponseFixture);
+  it('returns duplicate grab responses unchanged when the item already exists', async () => {
+    const grabItem = vi.fn().mockResolvedValue(grabResponseFixture);
     const route = await loadRouteModule<{
       POST: (event: { request: Request }) => Promise<Response>;
-    }>('../../routes/api/request/+server', {
+    }>('../../routes/api/grab/+server', {
       '$lib/server/acquisition-service': () => ({
-        requestItem,
+        grabItem,
       }),
     });
 
     const response = await route.POST(
-      createPostEvent('http://local.test/api/request', {
+      createPostEvent('http://local.test/api/grab', {
         item: mediaItemFixture,
         qualityProfileId: 7,
         preferences: {
@@ -223,9 +223,9 @@ describe('API routes', () => {
         },
       }),
     );
-    const payload = await readJson<typeof requestResponseFixture>(response);
+    const payload = await readJson<typeof grabResponseFixture>(response);
 
-    expect(requestItem).toHaveBeenCalledWith(
+    expect(grabItem).toHaveBeenCalledWith(
       mediaItemFixture,
       {
         cardsView: 'rounded',
@@ -335,18 +335,18 @@ describe('API routes', () => {
     expect(payload.itemId).toBe('radarr:queue:1');
   });
 
-  it('returns plain-text request errors when the acquisition service fails', async () => {
-    const requestItem = vi.fn().mockRejectedValue(new Error('Arr is unavailable'));
+  it('returns plain-text grab errors when the acquisition service fails', async () => {
+    const grabItem = vi.fn().mockRejectedValue(new Error('Arr is unavailable'));
     const route = await loadRouteModule<{
       POST: (event: { request: Request }) => Promise<Response>;
-    }>('../../routes/api/request/+server', {
+    }>('../../routes/api/grab/+server', {
       '$lib/server/acquisition-service': () => ({
-        requestItem,
+        grabItem,
       }),
     });
 
     const response = await route.POST(
-      createPostEvent('http://local.test/api/request', {
+      createPostEvent('http://local.test/api/grab', {
         item: mediaItemFixture,
       }),
     );
@@ -355,20 +355,20 @@ describe('API routes', () => {
     expect(await response.text()).toBe('Arr is unavailable');
   });
 
-  it('preserves typed request statuses for predictable request failures', async () => {
-    const requestItem = vi
+  it('preserves typed grab statuses for predictable grab failures', async () => {
+    const grabItem = vi
       .fn()
-      .mockRejectedValue(new AcquisitionRequestError(409, 'The Matrix is already tracked in Arr'));
+      .mockRejectedValue(new AcquisitionGrabError(409, 'The Matrix is already tracked in Arr'));
     const route = await loadRouteModule<{
       POST: (event: { request: Request }) => Promise<Response>;
-    }>('../../routes/api/request/+server', {
+    }>('../../routes/api/grab/+server', {
       '$lib/server/acquisition-service': () => ({
-        requestItem,
+        grabItem,
       }),
     });
 
     const response = await route.POST(
-      createPostEvent('http://local.test/api/request', {
+      createPostEvent('http://local.test/api/grab', {
         item: mediaItemFixture,
       }),
     );

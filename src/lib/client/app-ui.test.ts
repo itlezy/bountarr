@@ -3,11 +3,13 @@ import {
   acquisitionAttemptSummary,
   acquisitionNextStep,
   acquisitionReasonSummary,
-  canOperatorRequestFromPlex,
-  operatorOverrideItem,
-  requestFeedbackMessage,
+  actionDisabled,
+  actionLabel,
+  canGrabWithPlexConfirmation,
+  grabFeedbackMessage,
+  plexConfirmedGrabItem,
 } from '$lib/client/app-ui';
-import type { AcquisitionJob, MediaItem, RequestResponse } from '$lib/shared/types';
+import type { AcquisitionJob, GrabResponse, MediaItem } from '$lib/shared/types';
 
 const baseJob: AcquisitionJob = {
   id: 'job-1',
@@ -63,8 +65,8 @@ describe('app-ui acquisition helpers', () => {
     );
   });
 
-  it('formats request feedback from the normalized acquisition reason', () => {
-    const response: RequestResponse = {
+  it('formats grab feedback from the normalized acquisition reason', () => {
+    const response: GrabResponse = {
       existing: false,
       item: {
         id: 'movie:603',
@@ -94,12 +96,12 @@ describe('app-ui acquisition helpers', () => {
       job: baseJob,
     };
 
-    expect(requestFeedbackMessage(response)).toBe(
+    expect(grabFeedbackMessage(response)).toBe(
       'Trying another option · attempt 2/4 · Missing selected subtitles',
     );
   });
 
-  it('allows an operator override when a merged Plex result still has Arr request context', () => {
+  it('allows a Plex-confirmed grab when a merged Plex result still has Arr request context', () => {
     const item: MediaItem = {
       id: 'movie:603',
       kind: 'movie',
@@ -124,11 +126,13 @@ describe('app-ui acquisition helpers', () => {
       requestPayload: { tmdbId: 603 },
     };
 
-    expect(canOperatorRequestFromPlex(item)).toBe(true);
-    expect(operatorOverrideItem(item)).toMatchObject({
+    expect(canGrabWithPlexConfirmation(item)).toBe(true);
+    expect(plexConfirmedGrabItem(item)).toMatchObject({
       canAdd: true,
       sourceService: 'radarr',
       origin: 'arr',
     });
+    expect(actionLabel(item, null)).toBe('Grab');
+    expect(actionDisabled(item, null)).toBe(false);
   });
 });

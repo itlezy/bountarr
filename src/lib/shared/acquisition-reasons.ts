@@ -14,6 +14,8 @@ export function acquisitionReasonLabel(code: AcquisitionReasonCode | null): stri
       return 'No release was available';
     case 'no-acceptable-release':
       return 'Nothing suitable was found';
+    case 'manual-selection-lost':
+      return 'Manual release selection was lost';
     case 'cancelled':
       return 'Stopped by user';
     case 'crashed':
@@ -52,6 +54,10 @@ export function acquisitionNextAction(
   if (job.status === 'failed') {
     if (job.reasonCode === 'no-release-available' || job.reasonCode === 'no-acceptable-release') {
       return 'Stopped because no acceptable release remains.';
+    }
+
+    if (job.reasonCode === 'manual-selection-lost') {
+      return 'Stopped because the queued manual release selection was lost.';
     }
 
     if (job.reasonCode === 'crashed') {

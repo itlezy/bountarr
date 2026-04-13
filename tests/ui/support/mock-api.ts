@@ -1,6 +1,6 @@
 import type { Page, Request, Route } from '@playwright/test';
 import {
-  buildRequestResponse,
+  buildGrabResponse,
   buildSelectedManualReleaseList,
   buildQueueResponse,
   configStatusFixture,
@@ -13,7 +13,7 @@ import {
 } from './fixtures';
 
 type SearchResponseResolver = (url: URL) => unknown;
-type RequestResponseResolver = (body: Record<string, unknown>) => unknown;
+type GrabResponseResolver = (body: Record<string, unknown>) => unknown;
 type RequestAwareResolver = (request: Request, url: URL) => unknown;
 type ManualReleaseResponseResolver = (jobId: string, request: Request, url: URL) => unknown;
 type SelectManualReleaseResponseResolver = (
@@ -25,19 +25,19 @@ type SelectManualReleaseResponseResolver = (
 
 type MockApiOptions = {
   dashboard?: unknown | RequestAwareResolver;
+  grabResponse?: GrabResponseResolver;
   manualReleaseResponse?: ManualReleaseResponseResolver;
   plexRecent?: unknown;
   queue?: unknown | RequestAwareResolver;
-  requestResponse?: RequestResponseResolver;
   searchResponse?: SearchResponseResolver;
   selectManualReleaseResponse?: SelectManualReleaseResponseResolver;
 };
 
 export type MockApiController = {
   dashboardRequests: string[];
+  grabBodies: Record<string, unknown>[];
   manualReleaseRequests: string[];
   queueRequests: string[];
-  requestBodies: Record<string, unknown>[];
   searchUrls: string[];
   selectManualReleaseBodies: Array<{ body: Record<string, unknown>; jobId: string }>;
 };
@@ -133,9 +133,9 @@ export async function mockAppApi(
 ): Promise<MockApiController> {
   const controller: MockApiController = {
     dashboardRequests: [],
+    grabBodies: [],
     manualReleaseRequests: [],
     queueRequests: [],
-    requestBodies: [],
     searchUrls: [],
     selectManualReleaseBodies: [],
   };
@@ -213,12 +213,12 @@ export async function mockAppApi(
       return;
     }
 
-    if (url.pathname === '/api/request') {
+    if (url.pathname === '/api/grab') {
       const body = (request.postDataJSON() as Record<string, unknown> | null) ?? {};
-      controller.requestBodies.push(body);
+      controller.grabBodies.push(body);
       const payload =
-        options.requestResponse?.(body) ??
-        buildRequestResponse(
+        options.grabResponse?.(body) ??
+        buildGrabResponse(
           requestedItemFromBody(body),
           Array.isArray(body.seasonNumbers)
             ? body.seasonNumbers.filter((value): value is number => typeof value === 'number')

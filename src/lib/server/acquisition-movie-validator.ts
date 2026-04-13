@@ -2,12 +2,12 @@ import { jobStatusLabel } from '$lib/server/acquisition-domain';
 import {
   fetchHistoryRecords,
   fetchQueueRecords,
+  findQueueRecordForArrItem,
   historySince,
   type ValidationProbe,
   validationSummary,
 } from '$lib/server/acquisition-validator-shared';
 import { normalizeQueueItem } from '$lib/server/queue-normalize';
-import { asNumber, asRecord } from '$lib/server/raw';
 import { fetchExistingMovie } from '$lib/server/lookup-service';
 import type { PersistedAcquisitionJob } from '$lib/server/acquisition-domain';
 import { defaultPreferences } from '$lib/shared/preferences';
@@ -20,13 +20,12 @@ export async function validateMovieAttempt(
     fetchQueueRecords('radarr'),
     fetchHistoryRecords('radarr', job.arrItemId),
   ]);
-  const queueRecord =
-    queueRecords.find((record) => asNumber(asRecord(record.movie).id) === job.arrItemId) ?? null;
+  const queueRecord = findQueueRecordForArrItem(queueRecords, 'radarr', job.arrItemId);
+  const queueItem = queueRecord ? normalizeQueueItem('radarr', queueRecord) : null;
   const relevantHistory = historySince(historyRecords, attemptStart, job.currentRelease);
 
   if (relevantHistory.length === 0) {
-    if (queueRecord) {
-      const queueItem = normalizeQueueItem('radarr', queueRecord);
+    if (queueItem) {
       return {
         outcome: 'pending',
         preferredReleaser: null,
@@ -80,12 +79,8 @@ export async function validateMovieAttempt(
   return {
     outcome: 'pending',
     preferredReleaser: null,
-    progress: queueRecord
-      ? (normalizeQueueItem('radarr', queueRecord)?.progress ?? null)
-      : job.progress,
-    queueStatus: queueRecord
-      ? (normalizeQueueItem('radarr', queueRecord)?.status ?? job.queueStatus)
-      : job.queueStatus,
+    progress: queueItem?.progress ?? job.progress,
+    queueStatus: queueItem?.status ?? job.queueStatus,
     reasonCode: null,
     summary,
   };

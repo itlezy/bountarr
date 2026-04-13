@@ -94,15 +94,15 @@ let { feedback, item, state }: {
     </div>
   {/if}
 
-  {#if item.canAdd}
+  {#if item.canAdd || state.canGrabWithPlexConfirmation(item)}
     <div class="mt-3">
       <button
         class="control-primary min-h-11 w-full px-4 text-sm font-700 disabled:cursor-not-allowed disabled:opacity-50"
         type="button"
-        disabled={actionDisabled(item, state.requesting)}
+        disabled={actionDisabled(item, state.grabbing)}
         onclick={() => state.openAddConfirm(item)}
       >
-        {actionLabel(item, state.requesting)}
+        {actionLabel(item, state.grabbing)}
       </button>
     </div>
   {:else}
@@ -113,18 +113,6 @@ let { feedback, item, state }: {
 
   {#if state.hasSearchOperatorActions(item)}
     <div class="mt-3 space-y-2">
-      {#if state.canOperatorRequestFromPlex(item)}
-        <div class="overflow-safe-text text-sm text-[var(--muted)]">
-          Plex already has this title, but you can still grab a managed copy from Arr if you want a different version.
-        </div>
-        <button
-          class="control-primary min-h-10 w-full px-4 text-sm font-700"
-          type="button"
-          onclick={() => state.openAddConfirm(item, { operatorOverride: true })}
-        >
-          Grab anyway
-        </button>
-      {/if}
       {#if item.canDeleteFromArr}
         <button
           class="control-shell min-h-10 w-full border-rose-300 px-4 text-sm font-700 text-rose-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-700 dark:text-rose-200"
