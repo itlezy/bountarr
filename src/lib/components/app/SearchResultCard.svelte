@@ -112,8 +112,7 @@ let { feedback, item, state }: {
   {/if}
 
   {#if state.hasSearchOperatorActions(item)}
-    <div class="mt-3 space-y-2 rounded-[14px] border border-[var(--line)] bg-[var(--surface)] p-3">
-      <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Operator tools</div>
+    <div class="mt-3 space-y-2">
       {#if state.canOperatorRequestFromPlex(item)}
         <div class="text-sm text-[var(--muted)]">
           Plex already has this title, but you can still request a managed copy from Arr if you want a different version.
