@@ -78,7 +78,7 @@ export function deleteActionLabel(item: MediaItem, deletingId: string | null): s
     return 'Removing...';
   }
 
-  return 'Remove from library system';
+  return 'Remove from Library';
 }
 
 export function mediaKindLabel(kind: MediaItem['kind']): string {

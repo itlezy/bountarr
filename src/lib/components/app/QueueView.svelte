@@ -8,7 +8,7 @@ let { state }: { state: AppState } = $props();
 
 <section class="panel-shell relative px-3 py-3 sm:px-4">
   <div>
-    <h2 class="text-lg font-800">Request progress</h2>
+    <h2 class="text-lg font-800">Grab Progress</h2>
     <div class="text-sm text-[var(--muted)]">
       {state.queue?.updatedAt ? `Updated ${new Date(state.queue.updatedAt).toLocaleTimeString()}` : 'Waiting for first sync'}
     </div>
