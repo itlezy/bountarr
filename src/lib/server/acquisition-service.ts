@@ -57,46 +57,64 @@ export async function grabItem(
 async function unmonitorTrackedItem(
   service: 'radarr' | 'sonarr',
   arrItemId: number,
-): Promise<void> {
-  if (service === 'radarr') {
-    const movie = asRecord(await arrFetch<unknown>('radarr', `/api/v3/movie/${arrItemId}`));
-    await arrFetch<unknown>('radarr', `/api/v3/movie/${arrItemId}`, {
+) : Promise<boolean> {
+  try {
+    if (service === 'radarr') {
+      const movie = asRecord(await arrFetch<unknown>('radarr', `/api/v3/movie/${arrItemId}`));
+      await arrFetch<unknown>('radarr', `/api/v3/movie/${arrItemId}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          ...movie,
+          monitored: false,
+        }),
+      });
+      return true;
+    }
+
+    const series = asRecord(await arrFetch<unknown>('sonarr', `/api/v3/series/${arrItemId}`));
+    await arrFetch<unknown>('sonarr', `/api/v3/series/${arrItemId}`, {
       method: 'PUT',
       body: JSON.stringify({
-        ...movie,
+        ...series,
         monitored: false,
+        seasons: asArray(series.seasons).map((season) => ({
+          ...asRecord(season),
+          monitored: false,
+        })),
       }),
     });
-    return;
-  }
+    return true;
+  } catch (error) {
+    if (isMissingArrItemError(error)) {
+      return false;
+    }
 
-  const series = asRecord(await arrFetch<unknown>('sonarr', `/api/v3/series/${arrItemId}`));
-  await arrFetch<unknown>('sonarr', `/api/v3/series/${arrItemId}`, {
-    method: 'PUT',
-    body: JSON.stringify({
-      ...series,
-      monitored: false,
-      seasons: asArray(series.seasons).map((season) => ({
-        ...asRecord(season),
-        monitored: false,
-      })),
-    }),
-  });
+    throw error;
+  }
 }
 
-async function deleteQueueEntry(service: 'radarr' | 'sonarr', queueId: number): Promise<void> {
-  await arrFetch<unknown>(
-    service,
-    `/api/v3/queue/${queueId}`,
-    {
-      method: 'DELETE',
-    },
-    {
-      blocklist: false,
-      removeFromClient: true,
-      skipRedownload: false,
-    },
-  );
+async function deleteQueueEntry(service: 'radarr' | 'sonarr', queueId: number): Promise<boolean> {
+  try {
+    await arrFetch<unknown>(
+      service,
+      `/api/v3/queue/${queueId}`,
+      {
+        method: 'DELETE',
+      },
+      {
+        blocklist: false,
+        removeFromClient: true,
+        skipRedownload: false,
+      },
+    );
+    return true;
+  } catch (error) {
+    if (isMissingArrItemError(error)) {
+      return false;
+    }
+
+    throw error;
+  }
 }
 
 async function deleteTrackedItem(

@@ -1,0 +1,199 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { AcquisitionJob, QueueItem } from '$lib/shared/types';
+
+const job: AcquisitionJob = {
+  id: 'job-1',
+  itemId: 'movie:603',
+  arrItemId: 603,
+  kind: 'movie',
+  title: 'The Matrix',
+  sourceService: 'radarr',
+  status: 'validating',
+  attempt: 1,
+  maxRetries: 4,
+  currentRelease: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+  selectedReleaser: 'flux',
+  preferredReleaser: 'flux',
+  reasonCode: null,
+  failureReason: null,
+  validationSummary: null,
+  autoRetrying: false,
+  progress: 50,
+  queueStatus: 'Downloading',
+  preferences: {
+    preferredLanguage: 'English',
+    subtitleLanguage: 'English',
+  },
+  startedAt: '2026-04-13T12:00:00.000Z',
+  updatedAt: '2026-04-13T12:00:00.000Z',
+  completedAt: null,
+  attempts: [],
+};
+
+const cancelledJob: AcquisitionJob = {
+  ...job,
+  completedAt: '2026-04-13T12:05:00.000Z',
+  failureReason: 'Cancelled by user',
+  queueStatus: 'Cancelled',
+  reasonCode: 'cancelled',
+  status: 'cancelled',
+  validationSummary: 'Cancelled by user',
+};
+
+afterEach(() => {
+  vi.resetModules();
+  vi.restoreAllMocks();
+});
+
+describe('acquisition service', () => {
+  it('cancels a job cleanly when the Arr queue row and tracked item are already missing', async () => {
+    const cancelJob = vi.fn().mockReturnValue(cancelledJob);
+    const arrFetch = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('radarr 404: Queue entry missing'))
+      .mockRejectedValueOnce(new Error('radarr 404: Movie missing'));
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        ensureWorkers: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        cancelJob,
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        getJob: vi.fn().mockReturnValue(job),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      getAcquisitionJobsResponse: vi.fn(),
+      listQueueAcquisitionJobs: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-validator-shared', () => ({
+      fetchQueueRecords: vi.fn().mockResolvedValue([{ id: 7, movieId: 603 }]),
+      findQueueRecordForArrItem: vi.fn().mockReturnValue({ id: 7, movieId: 603 }),
+      queueRecordId: vi.fn().mockReturnValue(7),
+    }));
+    vi.doMock('$lib/server/acquisition-selection', () => ({
+      findManualReleaseSelection: vi.fn(),
+      getManualReleaseResults: vi.fn(),
+    }));
+
+    const module = await import('$lib/server/acquisition-service');
+    const result = await module.cancelAcquisitionJob(job.id);
+
+    expect(result.job.status).toBe('cancelled');
+    expect(cancelJob).toHaveBeenCalledWith(job);
+    expect(arrFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('cleans up stale queue deletes when the queue entry is already gone', async () => {
+    const arrFetch = vi.fn().mockRejectedValue(new Error('radarr 404: Queue entry missing'));
+    const queueItem: Pick<
+      QueueItem,
+      'arrItemId' | 'canCancel' | 'id' | 'kind' | 'queueId' | 'sourceService' | 'title'
+    > = {
+      arrItemId: null,
+      canCancel: true,
+      id: 'radarr:queue:7',
+      kind: 'movie',
+      queueId: 7,
+      sourceService: 'radarr',
+      title: 'The Matrix',
+    };
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        ensureWorkers: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        cancelJob: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        listActiveJobsByArrItem: vi.fn().mockReturnValue([]),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      getAcquisitionJobsResponse: vi.fn(),
+      listQueueAcquisitionJobs: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-validator-shared', () => ({
+      fetchQueueRecords: vi.fn().mockResolvedValue([]),
+      findQueueRecordForArrItem: vi.fn().mockReturnValue(null),
+      queueRecordId: vi.fn().mockReturnValue(null),
+    }));
+    vi.doMock('$lib/server/acquisition-selection', () => ({
+      findManualReleaseSelection: vi.fn(),
+      getManualReleaseResults: vi.fn(),
+    }));
+
+    const module = await import('$lib/server/acquisition-service');
+    const result = await module.cancelQueueItem(queueItem);
+
+    expect(result.itemId).toBe(queueItem.id);
+    expect(result.message).toContain('cancelled and unmonitored');
+  });
+
+  it('removes local jobs when the Arr item is already missing during delete', async () => {
+    const deleteJobsByArrItem = vi.fn();
+    const arrFetch = vi.fn().mockRejectedValue(new Error('radarr 404: Movie missing'));
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        ensureWorkers: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        cancelJob: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        deleteJobsByArrItem,
+        listActiveJobsByArrItem: vi.fn().mockReturnValue([]),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      getAcquisitionJobsResponse: vi.fn(),
+      listQueueAcquisitionJobs: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-validator-shared', () => ({
+      fetchQueueRecords: vi.fn().mockResolvedValue([]),
+      findQueueRecordForArrItem: vi.fn().mockReturnValue(null),
+      queueRecordId: vi.fn().mockReturnValue(null),
+    }));
+    vi.doMock('$lib/server/acquisition-selection', () => ({
+      findManualReleaseSelection: vi.fn(),
+      getManualReleaseResults: vi.fn(),
+    }));
+
+    const module = await import('$lib/server/acquisition-service');
+    const result = await module.deleteArrItem({
+      arrItemId: 603,
+      id: 'movie:603',
+      kind: 'movie',
+      sourceService: 'radarr',
+      title: 'The Matrix',
+    });
+
+    expect(deleteJobsByArrItem).toHaveBeenCalledWith(603, 'movie', 'radarr');
+    expect(result.message).toContain('already missing from Radarr');
+  });
+});

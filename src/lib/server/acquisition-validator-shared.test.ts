@@ -1,9 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   findQueueRecordForArrItem,
   queueRecordArrItemId,
   queueRecordId,
 } from '$lib/server/acquisition-validator-shared';
+
+afterEach(() => {
+  vi.resetModules();
+  vi.restoreAllMocks();
+});
 
 describe('acquisition validator shared helpers', () => {
   it('matches Radarr queue rows using top-level or nested movie ids', () => {
@@ -44,5 +49,64 @@ describe('acquisition validator shared helpers', () => {
       nestedRecord,
     );
     expect(queueRecordId(nestedRecord)).toBe(22);
+  });
+
+  it('paginates Arr queue lookups until the matching record is found', async () => {
+    vi.resetModules();
+    const arrFetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        page: 1,
+        pageSize: 1,
+        records: [{ id: 11, movieId: 100 }],
+        totalRecords: 2,
+      })
+      .mockResolvedValueOnce({
+        page: 2,
+        pageSize: 1,
+        records: [{ id: 12, movieId: 603 }],
+        totalRecords: 2,
+      });
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+
+    const module = await import('$lib/server/acquisition-validator-shared');
+    const records = await module.fetchQueueRecords('radarr');
+
+    expect(arrFetch).toHaveBeenCalledTimes(2);
+    expect(module.findQueueRecordForArrItem(records, 'radarr', 603)).toEqual({
+      id: 12,
+      movieId: 603,
+    });
+  });
+
+  it('paginates Arr history lookups using top-level or nested item ids', async () => {
+    vi.resetModules();
+    const arrFetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        page: 1,
+        pageSize: 1,
+        records: [{ id: 31, movieId: 100, date: '2026-04-13T12:00:00.000Z' }],
+        totalRecords: 2,
+      })
+      .mockResolvedValueOnce({
+        page: 2,
+        pageSize: 1,
+        records: [{ id: 32, movie: { id: 603 }, date: '2026-04-13T12:01:00.000Z' }],
+        totalRecords: 2,
+      });
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+
+    const module = await import('$lib/server/acquisition-validator-shared');
+    const records = await module.fetchHistoryRecords('radarr', 603);
+
+    expect(arrFetch).toHaveBeenCalledTimes(2);
+    expect(records).toEqual([{ id: 32, movie: { id: 603 }, date: '2026-04-13T12:01:00.000Z' }]);
   });
 });

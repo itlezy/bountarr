@@ -296,6 +296,8 @@ export class AcquisitionRunner {
       clearInterval(this.sweeper);
       this.sweeper = null;
     }
+
+    this.workersStarted = false;
   }
 }
 

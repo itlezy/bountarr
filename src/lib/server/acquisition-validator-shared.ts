@@ -1,10 +1,11 @@
 import { arrFetch } from '$lib/server/arr-client';
 import { normalizeToken } from '$lib/server/media-identity';
-import { asNumber, asRecord, asRecordsArray, asString } from '$lib/server/raw';
+import { asNumber, asPositiveNumber, asRecord, asRecordsArray, asString } from '$lib/server/raw';
 import type { ArrService, PersistedAcquisitionJob } from '$lib/server/acquisition-domain';
 import type { AcquisitionReasonCode, MediaItem } from '$lib/shared/types';
 
 const acquisitionLookupPageSize = 1000;
+const acquisitionLookupMaxPages = 20;
 
 export function lookupPageSize(): number {
   return acquisitionLookupPageSize;
@@ -19,20 +20,75 @@ export type ValidationProbe = {
   summary: string | null;
 };
 
+type PagedArrResponse = {
+  pageSize: number | null;
+  records: Record<string, unknown>[];
+  totalRecords: number | null;
+};
+
 export function normalizeReleaseTitle(value: string | null): string {
   return normalizeToken(value ?? '');
 }
 
+function pagedArrResponse(payload: unknown): PagedArrResponse {
+  if (Array.isArray(payload)) {
+    return {
+      pageSize: null,
+      records: payload.map(asRecord),
+      totalRecords: payload.length,
+    };
+  }
+
+  const record = asRecord(payload);
+  return {
+    pageSize: asPositiveNumber(record.pageSize),
+    records: asRecordsArray(record).map(asRecord),
+    totalRecords: asPositiveNumber(record.totalRecords),
+  };
+}
+
+async function fetchPagedRecords(
+  service: ArrService,
+  requestPath: string,
+  query: Record<string, string | number | boolean | undefined>,
+): Promise<Record<string, unknown>[]> {
+  try {
+    const records: Record<string, unknown>[] = [];
+
+    for (let page = 1; page <= acquisitionLookupMaxPages; page += 1) {
+      const payload = pagedArrResponse(
+        await arrFetch<unknown>(service, requestPath, undefined, {
+          ...query,
+          page,
+          pageSize: acquisitionLookupPageSize,
+        }),
+      );
+      records.push(...payload.records);
+
+      if (payload.records.length === 0) {
+        break;
+      }
+
+      if (payload.totalRecords !== null && records.length >= payload.totalRecords) {
+        break;
+      }
+
+      if (payload.pageSize === null || payload.records.length < payload.pageSize) {
+        break;
+      }
+    }
+
+    return records;
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchQueueRecords(service: ArrService): Promise<Record<string, unknown>[]> {
-  return arrFetch<unknown>(service, '/api/v3/queue', undefined, {
-    pageSize: acquisitionLookupPageSize,
-    page: 1,
+  return fetchPagedRecords(service, '/api/v3/queue', {
     sortKey: 'timeleft',
     sortDirection: 'ascending',
-  })
-    .then(asRecordsArray)
-    .then((records) => records.map(asRecord))
-    .catch(() => []);
+  });
 }
 
 export function queueRecordArrItemId(
@@ -58,27 +114,27 @@ export function queueRecordId(record: Record<string, unknown>): number | null {
   return asNumber(record.id);
 }
 
+function historyRecordArrItemId(
+  service: ArrService,
+  record: Record<string, unknown>,
+): number | null {
+  if (service === 'radarr') {
+    return asNumber(record.movieId) ?? asNumber(asRecord(record.movie).id);
+  }
+
+  return asNumber(record.seriesId) ?? asNumber(asRecord(record.series).id);
+}
+
 export async function fetchHistoryRecords(
   service: ArrService,
   itemId: number,
 ): Promise<Record<string, unknown>[]> {
-  return arrFetch<unknown>(service, '/api/v3/history', undefined, {
-    pageSize: acquisitionLookupPageSize,
-    page: 1,
+  const records = await fetchPagedRecords(service, '/api/v3/history', {
     sortKey: 'date',
     sortDirection: 'descending',
-  })
-    .then(asRecordsArray)
-    .then((records) =>
-      records
-        .map(asRecord)
-        .filter((record) =>
-          service === 'radarr'
-            ? asNumber(record.movieId) === itemId
-            : asNumber(record.seriesId) === itemId,
-        ),
-    )
-    .catch(() => []);
+  });
+
+  return records.filter((record) => historyRecordArrItemId(service, record) === itemId);
 }
 
 export function historySince(
