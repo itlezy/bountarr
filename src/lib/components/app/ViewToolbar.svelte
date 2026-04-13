@@ -26,7 +26,7 @@ let {
 </script>
 
 <nav
-  class="floating-shell fixed left-1/2 top-0 z-50 w-[calc(100%-1rem)] max-w-3xl -translate-x-1/2 px-2 py-2 sm:w-[calc(100%-1.5rem)]"
+  class="floating-shell top-nav-shell fixed left-0 right-0 top-0 z-50 mx-auto w-[calc(100%-1rem)] max-w-3xl sm:w-[calc(100%-1.5rem)]"
   aria-label="Primary navigation"
 >
   <div class="grid grid-cols-5 gap-2">
