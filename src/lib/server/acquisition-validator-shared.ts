@@ -4,6 +4,12 @@ import { asNumber, asRecord, asRecordsArray, asString } from '$lib/server/raw';
 import type { ArrService, PersistedAcquisitionJob } from '$lib/server/acquisition-domain';
 import type { AcquisitionReasonCode, MediaItem } from '$lib/shared/types';
 
+const acquisitionLookupPageSize = 500;
+
+export function lookupPageSize(): number {
+  return acquisitionLookupPageSize;
+}
+
 export type ValidationProbe = {
   outcome: 'pending' | 'success' | 'failure';
   preferredReleaser: string | null;
@@ -19,7 +25,7 @@ export function normalizeReleaseTitle(value: string | null): string {
 
 export async function fetchQueueRecords(service: ArrService): Promise<Record<string, unknown>[]> {
   return arrFetch<unknown>(service, '/api/v3/queue', undefined, {
-    pageSize: 50,
+    pageSize: acquisitionLookupPageSize,
     page: 1,
     sortKey: 'timeleft',
     sortDirection: 'ascending',
@@ -34,7 +40,7 @@ export async function fetchHistoryRecords(
   itemId: number,
 ): Promise<Record<string, unknown>[]> {
   return arrFetch<unknown>(service, '/api/v3/history', undefined, {
-    pageSize: 50,
+    pageSize: acquisitionLookupPageSize,
     page: 1,
     sortKey: 'date',
     sortDirection: 'descending',

@@ -13,12 +13,15 @@ import {
   getAcquisitionJobRepository,
 } from '$lib/server/acquisition-job-repository';
 import {
+  probeAttempt,
   waitForAttemptOutcome,
   type WaitForAttemptOutcomeResult,
 } from '$lib/server/acquisition-validator';
+import type { ValidationProbe } from '$lib/server/acquisition-validator-shared';
 
 type AcquisitionRunnerDependencies = {
   findReleaseSelection: (job: PersistedAcquisitionJob) => Promise<ReleaseSelectionResult>;
+  probeAttempt: (job: PersistedAcquisitionJob, attemptStartedAt: string) => Promise<ValidationProbe>;
   submitSelectedRelease: (
     job: PersistedAcquisitionJob,
     selection: ReleaseSelectionResult['selection'],
@@ -32,6 +35,7 @@ type AcquisitionRunnerDependencies = {
 
 const defaultDependencies: AcquisitionRunnerDependencies = {
   findReleaseSelection,
+  probeAttempt,
   submitSelectedRelease,
   waitForAttemptOutcome,
 };
@@ -51,6 +55,69 @@ export class AcquisitionRunner {
     this.jobs = jobs;
     this.lifecycle = lifecycle;
     this.dependencies = dependencies;
+  }
+
+  private normalizeProbeResult(probe: ValidationProbe): WaitForAttemptOutcomeResult {
+    return {
+      outcome: probe.outcome === 'failure' ? 'failure' : 'success',
+      preferredReleaser: probe.outcome === 'success' ? probe.preferredReleaser : null,
+      progress: probe.progress,
+      queueStatus: probe.queueStatus,
+      reasonCode:
+        probe.reasonCode ??
+        (probe.outcome === 'success' ? 'validated' : 'missing-audio'),
+      summary:
+        probe.summary ??
+        (probe.outcome === 'success'
+          ? 'Imported and validated'
+          : 'Imported release failed validation'),
+    };
+  }
+
+  private currentAttemptStartedAt(job: PersistedAcquisitionJob): string | null {
+    return job.attempts.find((attempt) => attempt.attempt === job.attempt)?.startedAt ?? null;
+  }
+
+  private async reconcileJob(jobId: string): Promise<boolean> {
+    const job = this.jobs.getJob(jobId);
+    if (!job || isTerminalJobStatus(job.status)) {
+      return true;
+    }
+
+    if (job.status !== 'grabbing' && job.status !== 'validating') {
+      return false;
+    }
+
+    const attemptStartedAt = this.currentAttemptStartedAt(job);
+    if (!attemptStartedAt) {
+      return false;
+    }
+
+    const probe = await this.dependencies.probeAttempt(job, attemptStartedAt);
+    const current = this.jobs.getJob(job.id);
+    if (!current || isTerminalJobStatus(current.status)) {
+      return true;
+    }
+
+    if (probe.progress !== null || probe.queueStatus) {
+      this.lifecycle.updateValidationProgress(current.id, probe.progress, probe.queueStatus);
+    }
+
+    if (current.status === 'grabbing') {
+      this.lifecycle.startValidation(current);
+    }
+
+    if (probe.outcome === 'success') {
+      this.lifecycle.completeJob(current, this.normalizeProbeResult(probe));
+      return true;
+    }
+
+    if (probe.outcome === 'failure') {
+      this.lifecycle.handleFailedValidation(current, null, this.normalizeProbeResult(probe));
+      return true;
+    }
+
+    return false;
   }
 
   private async processJob(jobId: string): Promise<void> {
@@ -162,8 +229,14 @@ export class AcquisitionRunner {
   }
 
   ensureWorkers(): void {
-    for (const jobId of this.jobs.listRunnableJobIds()) {
-      this.enqueue(jobId);
+    for (const job of this.jobs.listRunnableJobs()) {
+      queueMicrotask(() => {
+        void this.reconcileJob(job.id).then((handled) => {
+          if (!handled) {
+            this.enqueue(job.id);
+          }
+        });
+      });
     }
   }
 }

@@ -114,6 +114,7 @@ describe('AcquisitionRunner', () => {
       findReleaseSelection: vi
         .fn()
         .mockResolvedValue(createSelectionResult('guid-1', 'The.Matrix.1999.1080p.WEB-DL-FLUX')),
+      probeAttempt: vi.fn(),
       submitSelectedRelease: vi.fn().mockResolvedValue(undefined),
       waitForAttemptOutcome: vi.fn().mockResolvedValue({
         outcome: 'success',
@@ -189,6 +190,7 @@ describe('AcquisitionRunner', () => {
 
     const runner = new AcquisitionRunner(harness.jobs, harness.lifecycle, {
       findReleaseSelection,
+      probeAttempt: vi.fn(),
       submitSelectedRelease: vi.fn().mockResolvedValue(undefined),
       waitForAttemptOutcome,
     });
@@ -235,6 +237,7 @@ describe('AcquisitionRunner', () => {
         releaseSelectionCalls += 1;
         return createSelectionResult('guid-1', 'Andor.S01E01.1080p.WEB-DL-GROUP');
       }),
+      probeAttempt: vi.fn(),
       submitSelectedRelease: vi.fn().mockResolvedValue(undefined),
       waitForAttemptOutcome: vi.fn().mockResolvedValue({
         outcome: 'success',
@@ -274,6 +277,7 @@ describe('AcquisitionRunner', () => {
 
     const runner = new AcquisitionRunner(harness.jobs, harness.lifecycle, {
       findReleaseSelection: vi.fn().mockResolvedValue(createRejectedSelectionResult()),
+      probeAttempt: vi.fn(),
       submitSelectedRelease: vi.fn().mockResolvedValue(undefined),
       waitForAttemptOutcome: vi.fn(),
     });
@@ -309,9 +313,10 @@ describe('AcquisitionRunner', () => {
 
     const runner = new AcquisitionRunner(harness.jobs, harness.lifecycle, {
       findReleaseSelection: vi.fn().mockImplementation(async () => {
-        harness.jobs.deleteJobsByArrItem(job.arrItemId, job.kind);
+        harness.jobs.deleteJobsByArrItem(job.arrItemId, job.kind, job.sourceService);
         throw new Error('selection exploded after reset');
       }),
+      probeAttempt: vi.fn(),
       submitSelectedRelease: vi.fn().mockResolvedValue(undefined),
       waitForAttemptOutcome: vi.fn(),
     });
@@ -324,5 +329,59 @@ describe('AcquisitionRunner', () => {
 
     expect(harness.jobs.getJob(job.id)).toBeNull();
     expect(harness.events.listByJob(job.id)).toEqual([]);
+  });
+
+  it('reconciles validating jobs on startup before blindly resuming them', async () => {
+    const harness = createHarness();
+    const job = harness.jobs.createJob({
+      arrItemId: 777,
+      itemId: 'movie:777',
+      kind: 'movie',
+      maxRetries: 2,
+      preferredReleaser: 'flux',
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      sourceService: 'radarr',
+      title: 'Startup Title',
+    });
+
+    harness.jobs.updateJob(job.id, {
+      currentRelease: 'Startup.Title.2026.1080p.WEB-DL-FLUX',
+      queueStatus: 'Downloading',
+      selectedReleaser: 'flux',
+      status: 'validating',
+    });
+    harness.jobs.upsertAttempt(job.id, {
+      attempt: 1,
+      releaseTitle: 'Startup.Title.2026.1080p.WEB-DL-FLUX',
+      releaser: 'flux',
+      startedAt: '2026-04-13T10:00:00.000Z',
+      status: 'grabbing',
+    });
+
+    const findReleaseSelection = vi.fn();
+    const runner = new AcquisitionRunner(harness.jobs, harness.lifecycle, {
+      findReleaseSelection,
+      probeAttempt: vi.fn().mockResolvedValue({
+        outcome: 'success',
+        preferredReleaser: 'flux',
+        progress: 100,
+        queueStatus: 'Imported',
+        reasonCode: 'validated',
+        summary: 'Imported and validated',
+      }),
+      submitSelectedRelease: vi.fn(),
+      waitForAttemptOutcome: vi.fn(),
+    });
+
+    runner.ensureWorkers();
+
+    await vi.waitFor(() => {
+      expect(harness.jobs.getJob(job.id)?.status).toBe('completed');
+    });
+
+    expect(findReleaseSelection).not.toHaveBeenCalled();
   });
 });

@@ -5,6 +5,7 @@ import type { PersistedAcquisitionJob } from '$lib/server/acquisition-domain';
 import type {
   AttemptProgressHandler,
   AttemptValidator,
+  ValidationProbe,
   WaitForAttemptOutcomeResult,
 } from '$lib/server/acquisition-validator-shared';
 
@@ -17,6 +18,14 @@ function validatorForJob(job: PersistedAcquisitionJob): AttemptValidator {
 }
 
 export type { WaitForAttemptOutcomeResult } from '$lib/server/acquisition-validator-shared';
+
+export async function probeAttempt(
+  job: PersistedAcquisitionJob,
+  attemptStartedAt: string,
+): Promise<ValidationProbe> {
+  const validateAttempt = validatorForJob(job);
+  return validateAttempt(job, attemptStartedAt);
+}
 
 export async function waitForAttemptOutcome(
   job: PersistedAcquisitionJob,

@@ -12,7 +12,7 @@ import {
   selectionLogContext,
   type ReleaseSelectionResult,
 } from '$lib/server/acquisition-selection';
-import type { PersistedAcquisitionJob } from '$lib/server/acquisition-domain';
+import { isTerminalJobStatus, type PersistedAcquisitionJob } from '$lib/server/acquisition-domain';
 import type { WaitForAttemptOutcomeResult } from '$lib/server/acquisition-validator-shared';
 import type { AcquisitionReasonCode } from '$lib/shared/types';
 
@@ -54,6 +54,15 @@ export class AcquisitionLifecycle {
     return this.jobs.getJob(jobId);
   }
 
+  private getMutableJob(jobId: string): PersistedAcquisitionJob | null {
+    const current = this.getCurrentJob(jobId);
+    if (!current || isTerminalJobStatus(current.status)) {
+      return null;
+    }
+
+    return current;
+  }
+
   private log(
     job: PersistedAcquisitionJob,
     kind: string,
@@ -77,8 +86,13 @@ export class AcquisitionLifecycle {
   }
 
   startSearch(job: PersistedAcquisitionJob): PersistedAcquisitionJob {
-    const next = this.jobs.updateJob(job.id, {
-      autoRetrying: job.autoRetrying,
+    const current = this.getMutableJob(job.id);
+    if (!current) {
+      return job;
+    }
+
+    const next = this.jobs.updateJob(current.id, {
+      autoRetrying: current.autoRetrying,
       failureReason: null,
       progress: null,
       queueStatus: 'Searching releases',
@@ -177,7 +191,12 @@ export class AcquisitionLifecycle {
   }
 
   startValidation(job: PersistedAcquisitionJob): PersistedAcquisitionJob {
-    return this.jobs.updateJob(job.id, {
+    const current = this.getMutableJob(job.id);
+    if (!current) {
+      return job;
+    }
+
+    return this.jobs.updateJob(current.id, {
       queueStatus: 'Waiting for download',
       status: 'validating',
     });
@@ -187,7 +206,16 @@ export class AcquisitionLifecycle {
     jobId: string,
     progress: number | null,
     queueStatus: string | null,
-  ): PersistedAcquisitionJob {
+  ): PersistedAcquisitionJob | null {
+    const current = this.getMutableJob(jobId);
+    if (!current) {
+      return null;
+    }
+
+    if (current.status !== 'grabbing' && current.status !== 'validating') {
+      return current;
+    }
+
     return this.jobs.updateJob(jobId, {
       progress,
       queueStatus,
@@ -199,20 +227,25 @@ export class AcquisitionLifecycle {
     job: PersistedAcquisitionJob,
     waitResult: WaitForAttemptOutcomeResult,
   ): PersistedAcquisitionJob {
-    this.jobs.upsertAttempt(job.id, {
-      attempt: job.attempt,
+    const current = this.getMutableJob(job.id);
+    if (!current) {
+      return job;
+    }
+
+    this.jobs.upsertAttempt(current.id, {
+      attempt: current.attempt,
       finishedAt: new Date().toISOString(),
       reasonCode: waitResult.reasonCode,
       reason: waitResult.summary,
       status: 'completed',
     });
 
-    const next = this.jobs.updateJob(job.id, {
+    const next = this.jobs.updateJob(current.id, {
       autoRetrying: false,
       completedAt: new Date().toISOString(),
       reasonCode: waitResult.reasonCode,
       failureReason: null,
-      preferredReleaser: waitResult.preferredReleaser ?? job.selectedReleaser,
+      preferredReleaser: waitResult.preferredReleaser ?? current.selectedReleaser,
       progress: waitResult.progress ?? 100,
       queueStatus: waitResult.queueStatus ?? 'Imported',
       status: 'completed',
@@ -231,22 +264,33 @@ export class AcquisitionLifecycle {
 
   handleFailedValidation(
     job: PersistedAcquisitionJob,
-    selectedGuid: string,
+    selectedGuid: string | null,
     waitResult: WaitForAttemptOutcomeResult,
   ): PersistedAcquisitionJob {
-    this.jobs.addFailedGuid(job.id, selectedGuid);
-    const nextAttempt = job.attempt + 1;
-    const terminal = nextAttempt > job.maxRetries;
+    const current = this.getMutableJob(job.id);
+    if (!current) {
+      return job;
+    }
 
-    this.jobs.upsertAttempt(job.id, {
-      attempt: job.attempt,
+    if (current.status !== 'grabbing' && current.status !== 'validating') {
+      return current;
+    }
+
+    if (selectedGuid) {
+      this.jobs.addFailedGuid(current.id, selectedGuid);
+    }
+    const nextAttempt = current.attempt + 1;
+    const terminal = nextAttempt > current.maxRetries;
+
+    this.jobs.upsertAttempt(current.id, {
+      attempt: current.attempt,
       finishedAt: new Date().toISOString(),
       reasonCode: waitResult.reasonCode,
       reason: waitResult.summary,
       status: terminal ? 'failed' : 'retrying',
     });
 
-    const next = this.jobs.updateJob(job.id, {
+    const next = this.jobs.updateJob(current.id, {
       attempt: nextAttempt,
       autoRetrying: !terminal,
       completedAt: terminal ? new Date().toISOString() : null,
@@ -279,7 +323,7 @@ export class AcquisitionLifecycle {
 
   handleCrash(job: PersistedAcquisitionJob, error: unknown): PersistedAcquisitionJob {
     const current = this.getCurrentJob(job.id);
-    if (!current) {
+    if (!current || isTerminalJobStatus(current.status)) {
       return job;
     }
 
@@ -312,15 +356,20 @@ export class AcquisitionLifecycle {
   }
 
   cancelJob(job: PersistedAcquisitionJob, reason = 'Cancelled by user'): PersistedAcquisitionJob {
-    this.jobs.upsertAttempt(job.id, {
-      attempt: job.attempt,
+    const current = this.getCurrentJob(job.id);
+    if (!current || isTerminalJobStatus(current.status)) {
+      return current ?? job;
+    }
+
+    this.jobs.upsertAttempt(current.id, {
+      attempt: current.attempt,
       finishedAt: new Date().toISOString(),
       reasonCode: 'cancelled',
       reason,
       status: 'cancelled',
     });
 
-    const next = this.jobs.updateJob(job.id, {
+    const next = this.jobs.updateJob(current.id, {
       autoRetrying: false,
       completedAt: new Date().toISOString(),
       reasonCode: 'cancelled',
