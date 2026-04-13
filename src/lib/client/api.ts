@@ -180,6 +180,7 @@ export async function submitRequest(
   item: MediaItem,
   preferences: UserPreferencesPayload,
   qualityProfileId?: number | null,
+  seasonNumbers?: number[],
 ): Promise<RequestResponse> {
   return requestJson<RequestResponse>(
     '/api/request',
@@ -192,6 +193,7 @@ export async function submitRequest(
         item,
         qualityProfileId: qualityProfileId ?? undefined,
         preferences,
+        seasonNumbers: seasonNumbers && seasonNumbers.length > 0 ? seasonNumbers : undefined,
       }),
     },
     'Add failed.',

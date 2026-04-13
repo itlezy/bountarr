@@ -32,6 +32,30 @@ const movieItem: MediaItem = {
   requestPayload: { tmdbId: 603 },
 };
 
+const seriesItem: MediaItem = {
+  id: 'series:80',
+  kind: 'series',
+  title: 'Andor',
+  year: 2022,
+  rating: 8.5,
+  poster: null,
+  overview: 'Sci-fi',
+  status: 'Ready to add',
+  isExisting: false,
+  isRequested: false,
+  auditStatus: 'pending',
+  audioLanguages: [],
+  subtitleLanguages: [],
+  sourceService: 'sonarr',
+  origin: 'arr',
+  inArr: false,
+  inPlex: false,
+  plexLibraries: [],
+  canAdd: true,
+  detail: null,
+  requestPayload: { tvdbId: 393189 },
+};
+
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -106,6 +130,53 @@ describe('client api', () => {
         preferredLanguage: 'English',
         subtitleLanguage: 'Spanish',
       },
+    });
+  });
+
+  it('posts selected seasons for series requests', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          existing: false,
+          item: {
+            ...seriesItem,
+            inArr: true,
+            canAdd: false,
+            status: 'Already in Arr',
+          },
+          message: 'Added',
+          releaseDecision: null,
+          job: null,
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await submitRequest(
+      seriesItem,
+      {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'Any',
+      },
+      11,
+      [1, 2],
+    );
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({
+      item: seriesItem,
+      qualityProfileId: 11,
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'Any',
+      },
+      seasonNumbers: [1, 2],
     });
   });
 
