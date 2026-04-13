@@ -1,12 +1,13 @@
-import { mergeConfig, defineConfig } from 'vitest/config';
+import { defineConfig, type UserConfig } from 'vitest/config';
 import baseConfig from './vite.config';
 
-export default mergeConfig(
-  baseConfig,
-  defineConfig({
-    test: {
-      environment: 'node',
-      include: ['tests/integration/**/*.test.ts'],
-    },
-  }),
-);
+const resolvedBaseConfig = baseConfig as UserConfig;
+
+export default defineConfig({
+  ...resolvedBaseConfig,
+  test: {
+    ...(resolvedBaseConfig.test ?? {}),
+    environment: 'node',
+    include: ['tests/integration/**/*.test.ts'],
+  },
+});
