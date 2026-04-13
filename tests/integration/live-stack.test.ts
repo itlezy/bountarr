@@ -13,6 +13,16 @@ import {
   getMovieById,
   listMovies,
 } from './support/live-radarr';
+import {
+  listAcquisitionEvents,
+  listAttemptSubmissions,
+} from './support/live-acquisition-db';
+import {
+  countRadarrSabQueueAdds,
+  countSabQueueAdds,
+  createLogCheckpoint,
+  readLogAppendix,
+} from './support/live-log-files';
 
 type DeleteTarget = {
   arrItemId: number;
@@ -122,6 +132,33 @@ async function verifyPreflight(config: LiveIntegrationConfig): Promise<void> {
     const recent = await getJson<unknown[]>(`${config.baseUrl}/api/plex/recent`);
     expect(Array.isArray(recent)).toBe(true);
   }
+}
+
+async function waitForSubmittedReleaseTitle(jobId: string, timeoutMs = 45_000): Promise<string> {
+  return pollUntil(async () => {
+    const submittedEvent =
+      listAcquisitionEvents(jobId).find((event) => event.kind === 'grab.submitted') ?? null;
+    const selectedTitle = submittedEvent?.context.selectedTitle;
+    return typeof selectedTitle === 'string' && selectedTitle.length > 0 ? selectedTitle : null;
+  }, timeoutMs);
+}
+
+async function waitForSingleActiveJob(
+  config: LiveIntegrationConfig,
+  request: GrabResponse,
+  timeoutMs = 45_000,
+) {
+  return pollUntil(async () => {
+    const acquisition = await getJson<{ jobs: GrabResponse['job'][] }>(`${config.baseUrl}/api/acquisition`);
+    const matchingJobs = acquisition.jobs.filter(
+      (job) =>
+        job !== null &&
+        (job.id === request.job?.id ||
+          (request.item.arrItemId !== null && job.arrItemId === request.item.arrItemId)),
+    );
+
+    return matchingJobs.length === 1 ? matchingJobs[0] : null;
+  }, timeoutMs);
 }
 
 describe.sequential('live stack integration', () => {
@@ -308,5 +345,276 @@ describe.sequential('live stack integration', () => {
     expect(request.existing).toBe(true);
     expect(request.message).toContain('already tracked');
     expect(request.item.inArr).toBe(true);
+  }, 120_000);
+
+  it('keeps release submission idempotent across a live app restart after claim', async () => {
+    const search = await getJson<MediaItem[]>(
+      `${config.baseUrl}/api/search?q=Dredd&kind=movie&availability=all`,
+    );
+    const item = exactMovieMatch(search, config.untrackedMovie.title, config.untrackedMovie.year);
+
+    expect(item).not.toBeNull();
+    if (!item) {
+      throw new Error('Expected Dredd (2012) to be searchable for live idempotency verification.');
+    }
+
+    const request = await postJson<GrabResponse>(`${config.baseUrl}/api/grab`, {
+      item,
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+    });
+
+    expect(request.job).not.toBeNull();
+    cleanupTargets.push(asDeleteTarget(request.item));
+
+    const claimedAttempt = await pollUntil(async () => {
+      const attempts = listAttemptSubmissions(request.job!.id);
+      const currentAttempt = attempts.find((attempt) => attempt.attempt === 1) ?? null;
+      if (!currentAttempt?.submittedGuid || !currentAttempt.submissionClaimedAt) {
+        return null;
+      }
+
+      return currentAttempt;
+    }, 45_000);
+
+    expect(claimedAttempt.submittedGuid).toBeTruthy();
+    expect(claimedAttempt.submissionClaimedAt).toBeTruthy();
+    await pollUntil(async () => {
+      const submittedEvents = listAcquisitionEvents(request.job!.id).filter(
+        (event) => event.kind === 'grab.submitted',
+      );
+      return submittedEvents.length === 1 ? submittedEvents : null;
+    }, 45_000);
+
+    if (app) {
+      await app.stop();
+      app = null;
+    }
+
+    app = await startLiveApp(config);
+    await verifyPreflight(config);
+
+    await pollUntil(async () => {
+      const queue = await getJson<QueueResponse>(`${config.baseUrl}/api/queue`);
+      const acquisitionJob = matchingAcquisitionJob(queue, request);
+      return acquisitionJob && acquisitionJob.status !== 'queued' ? acquisitionJob : null;
+    }, 45_000);
+
+    const attemptsAfterRestart = listAttemptSubmissions(request.job!.id);
+    const claimedAttempts = attemptsAfterRestart.filter((attempt) => attempt.submittedGuid !== null);
+    const submittedEvents = listAcquisitionEvents(request.job!.id).filter(
+      (event) => event.kind === 'grab.submitted',
+    );
+    const skippedEvents = listAcquisitionEvents(request.job!.id).filter(
+      (event) => event.kind === 'grab.submit_skipped',
+    );
+
+    expect(claimedAttempts).toHaveLength(1);
+    expect(claimedAttempts[0]?.submittedGuid).toBe(claimedAttempt.submittedGuid);
+    expect(submittedEvents).toHaveLength(1);
+    expect(skippedEvents.length).toBeLessThanOrEqual(1);
+  }, 120_000);
+
+  it('correlates one submitted release to at most one Radarr and SAB handoff', async () => {
+    const radarrLogCheckpoint = createLogCheckpoint(config.radarrLogPath);
+    const sabLogCheckpoint = createLogCheckpoint(config.sabLogPath);
+    const search = await getJson<MediaItem[]>(
+      `${config.baseUrl}/api/search?q=Dredd&kind=movie&availability=all`,
+    );
+    const item = exactMovieMatch(search, config.untrackedMovie.title, config.untrackedMovie.year);
+
+    expect(item).not.toBeNull();
+    if (!item) {
+      throw new Error('Expected Dredd (2012) to be searchable for downstream handoff verification.');
+    }
+
+    const request = await postJson<GrabResponse>(`${config.baseUrl}/api/grab`, {
+      item,
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+    });
+
+    expect(request.job).not.toBeNull();
+    cleanupTargets.push(asDeleteTarget(request.item));
+
+    const selectedReleaseTitle = await waitForSubmittedReleaseTitle(request.job!.id).catch(() => null);
+    if (!selectedReleaseTitle) {
+      return;
+    }
+    await waitForAcquisitionVisibility(config, request);
+
+    await pollUntil(async () => {
+      const radarrAdds = countRadarrSabQueueAdds(
+        readLogAppendix(radarrLogCheckpoint),
+        selectedReleaseTitle,
+      );
+      return radarrAdds >= 1 ? radarrAdds : null;
+    }, 45_000);
+
+    const radarrAdds = countRadarrSabQueueAdds(
+      readLogAppendix(radarrLogCheckpoint),
+      selectedReleaseTitle,
+    );
+    const sabAdds = countSabQueueAdds(readLogAppendix(sabLogCheckpoint), selectedReleaseTitle);
+
+    expect(radarrAdds).toBe(1);
+    expect(sabAdds).toBeLessThanOrEqual(1);
+  }, 120_000);
+
+  it('collapses concurrent live grab requests into one job and one downstream handoff', async () => {
+    const radarrLogCheckpoint = createLogCheckpoint(config.radarrLogPath);
+    const sabLogCheckpoint = createLogCheckpoint(config.sabLogPath);
+    const search = await getJson<MediaItem[]>(
+      `${config.baseUrl}/api/search?q=Dredd&kind=movie&availability=all`,
+    );
+    const item = exactMovieMatch(search, config.untrackedMovie.title, config.untrackedMovie.year);
+
+    expect(item).not.toBeNull();
+    if (!item) {
+      throw new Error('Expected Dredd (2012) to be searchable for concurrent live grab verification.');
+    }
+
+    const [first, second] = await Promise.all([
+      postJson<GrabResponse>(`${config.baseUrl}/api/grab`, {
+        item,
+        preferences: {
+          preferredLanguage: 'English',
+          subtitleLanguage: 'English',
+        },
+      }),
+      postJson<GrabResponse>(`${config.baseUrl}/api/grab`, {
+        item,
+        preferences: {
+          preferredLanguage: 'English',
+          subtitleLanguage: 'English',
+        },
+      }),
+    ]);
+
+    expect(first.job).not.toBeNull();
+    expect(second.job).not.toBeNull();
+    expect(first.job?.id).toBe(second.job?.id);
+    expect(first.item.arrItemId).toBe(second.item.arrItemId);
+    cleanupTargets.push(asDeleteTarget(first.item));
+
+    await waitForSingleActiveJob(config, first);
+    await waitForAcquisitionVisibility(config, first);
+    await pollUntil(async () => {
+      const acquisitionJob = await waitForSingleActiveJob(config, first, 5_000).catch(() => null);
+      const submissionClaims = listAttemptSubmissions(first.job!.id).filter(
+        (attempt) => attempt.submittedGuid !== null,
+      );
+      const submissionEvents = listAcquisitionEvents(first.job!.id).filter(
+        (event) => event.kind === 'grab.submitted',
+      );
+
+      return acquisitionJob && submissionClaims.length <= 1 && submissionEvents.length <= 1
+        ? { submissionClaims, submissionEvents }
+        : null;
+    }, 15_000);
+
+    const submissionClaims = listAttemptSubmissions(first.job!.id).filter(
+      (attempt) => attempt.submittedGuid !== null,
+    );
+    const submittedEvents = listAcquisitionEvents(first.job!.id).filter(
+      (event) => event.kind === 'grab.submitted',
+    );
+
+    expect(submissionClaims.length).toBeLessThanOrEqual(1);
+    expect(submittedEvents.length).toBeLessThanOrEqual(1);
+
+    if (submittedEvents[0]) {
+      const selectedReleaseTitle = submittedEvents[0].context.selectedTitle;
+      if (typeof selectedReleaseTitle === 'string' && selectedReleaseTitle.length > 0) {
+        const radarrAdds = countRadarrSabQueueAdds(
+          readLogAppendix(radarrLogCheckpoint),
+          selectedReleaseTitle,
+        );
+        const sabAdds = countSabQueueAdds(readLogAppendix(sabLogCheckpoint), selectedReleaseTitle);
+
+        expect(radarrAdds).toBeLessThanOrEqual(1);
+        expect(sabAdds).toBeLessThanOrEqual(1);
+      }
+    }
+  }, 120_000);
+
+  it('does not create an extra downstream handoff when a submitted job is cancelled', async () => {
+    const radarrLogCheckpoint = createLogCheckpoint(config.radarrLogPath);
+    const sabLogCheckpoint = createLogCheckpoint(config.sabLogPath);
+    const search = await getJson<MediaItem[]>(
+      `${config.baseUrl}/api/search?q=Dredd&kind=movie&availability=all`,
+    );
+    const item = exactMovieMatch(search, config.untrackedMovie.title, config.untrackedMovie.year);
+
+    expect(item).not.toBeNull();
+    if (!item) {
+      throw new Error('Expected Dredd (2012) to be searchable for cancel-after-submit verification.');
+    }
+
+    const request = await postJson<GrabResponse>(`${config.baseUrl}/api/grab`, {
+      item,
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+    });
+
+    expect(request.job).not.toBeNull();
+    cleanupTargets.push(asDeleteTarget(request.item));
+
+    const selectedReleaseTitle = await waitForSubmittedReleaseTitle(request.job!.id).catch(() => null);
+    if (!selectedReleaseTitle) {
+      return;
+    }
+    await waitForAcquisitionVisibility(config, request);
+
+    await pollUntil(async () => {
+      const radarrAdds = countRadarrSabQueueAdds(
+        readLogAppendix(radarrLogCheckpoint),
+        selectedReleaseTitle,
+      );
+      return radarrAdds >= 1 ? radarrAdds : null;
+    }, 45_000);
+
+    const cancelResponse = await postJson<{ job: { status: string }; message: string }>(
+      `${config.baseUrl}/api/acquisition/${encodeURIComponent(request.job!.id)}/cancel`,
+      {},
+    );
+    expect(cancelResponse.job.status).toBe('cancelled');
+
+    await pollUntil(async () => {
+      const cancelledEvents = listAcquisitionEvents(request.job!.id).filter(
+        (event) => event.kind === 'job.cancelled',
+      );
+      return cancelledEvents.length === 1 ? cancelledEvents : null;
+    }, 45_000);
+
+    await pollUntil(async () => {
+      const submittedEvents = listAcquisitionEvents(request.job!.id).filter(
+        (event) => event.kind === 'grab.submitted',
+      );
+      const radarrAdds = countRadarrSabQueueAdds(
+        readLogAppendix(radarrLogCheckpoint),
+        selectedReleaseTitle,
+      );
+      const sabAdds = countSabQueueAdds(readLogAppendix(sabLogCheckpoint), selectedReleaseTitle);
+
+      return submittedEvents.length === 1 && radarrAdds <= 1 && sabAdds <= 1
+        ? { radarrAdds, sabAdds }
+        : null;
+    }, 45_000);
+
+    const finalRadarrAdds = countRadarrSabQueueAdds(
+      readLogAppendix(radarrLogCheckpoint),
+      selectedReleaseTitle,
+    );
+    const finalSabAdds = countSabQueueAdds(readLogAppendix(sabLogCheckpoint), selectedReleaseTitle);
+
+    expect(finalRadarrAdds).toBe(1);
+    expect(finalSabAdds).toBeLessThanOrEqual(1);
   }, 120_000);
 });

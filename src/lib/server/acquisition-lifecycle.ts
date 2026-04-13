@@ -5,6 +5,7 @@ import {
 } from '$lib/server/acquisition-event-repository';
 import {
   getAcquisitionJobRepository,
+  type ClaimAttemptReleaseSubmissionResult,
   type AcquisitionJobRepository,
 } from '$lib/server/acquisition-job-repository';
 import { extractReleaser } from '$lib/server/media-identity';
@@ -188,6 +189,36 @@ export class AcquisitionLifecycle {
       selectedGuid,
       selectedTitle,
     });
+  }
+
+  claimGrabSubmission(
+    job: PersistedAcquisitionJob,
+    selectedGuid: string,
+    indexerId: number,
+    selectedTitle: string,
+  ): ClaimAttemptReleaseSubmissionResult {
+    const claimResult = this.jobs.claimAttemptReleaseSubmission(
+      job.id,
+      job.attempt,
+      selectedGuid,
+      indexerId,
+    );
+
+    if (claimResult === 'already-claimed') {
+      this.log(
+        job,
+        'grab.submit_skipped',
+        'warn',
+        'Skipped duplicate Arr release submission for an already claimed acquisition attempt',
+        {
+          indexerId,
+          selectedGuid,
+          selectedTitle,
+        },
+      );
+    }
+
+    return claimResult;
   }
 
   startValidation(job: PersistedAcquisitionJob): PersistedAcquisitionJob {

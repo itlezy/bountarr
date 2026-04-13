@@ -625,4 +625,62 @@ describe('AcquisitionRunner', () => {
       'Race.Condition.Title.2026.1080p.WEB-DL-MANUAL',
     );
   });
+
+  it('does not post the same release twice when an attempt re-enters after submission was already claimed', async () => {
+    const harness = createHarness();
+    const job = harness.jobs.createJob({
+      arrItemId: 892,
+      itemId: 'movie:892',
+      kind: 'movie',
+      maxRetries: 2,
+      preferredReleaser: 'flux',
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      sourceService: 'radarr',
+      title: 'Duplicate Submit Guard',
+    });
+
+    harness.jobs.upsertAttempt(job.id, {
+      attempt: 1,
+      releaseTitle: 'Duplicate.Submit.Guard.2026.1080p.WEB-DL-FLUX',
+      releaser: 'flux',
+      startedAt: '2026-04-13T10:00:00.000Z',
+      status: 'grabbing',
+      submittedGuid: 'guid-1',
+      submittedIndexerId: 5,
+      submissionClaimedAt: '2026-04-13T10:01:00.000Z',
+    });
+
+    const submitSelectedRelease = vi.fn().mockResolvedValue(undefined);
+    const runner = new AcquisitionRunner(harness.jobs, harness.lifecycle, {
+      findReleaseSelection: vi
+        .fn()
+        .mockResolvedValue(
+          createSelectionResult('guid-1', 'Duplicate.Submit.Guard.2026.1080p.WEB-DL-FLUX'),
+        ),
+      probeAttempt: vi.fn(),
+      submitSelectedRelease,
+      waitForAttemptOutcome: vi.fn().mockResolvedValue({
+        outcome: 'success',
+        preferredReleaser: 'flux',
+        progress: 100,
+        queueStatus: 'Imported',
+        reasonCode: 'validated',
+        summary: 'Imported and validated',
+      }),
+    });
+
+    runner.enqueue(job.id);
+
+    await vi.waitFor(() => {
+      expect(harness.jobs.getJob(job.id)?.status).toBe('completed');
+    });
+
+    expect(submitSelectedRelease).not.toHaveBeenCalled();
+    expect(
+      harness.events.listByJob(job.id).some((event) => event.kind === 'grab.submit_skipped'),
+    ).toBe(true);
+  });
 });

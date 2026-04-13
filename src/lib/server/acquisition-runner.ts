@@ -186,17 +186,33 @@ export class AcquisitionRunner {
         const chosen = this.lifecycle.chooseRelease(job, releaseSelection);
         job = chosen.job;
 
-        await this.dependencies.submitSelectedRelease(job, releaseSelection.selection);
+        // Claim the Arr handoff in durable attempt state before the network call so a re-entered
+        // attempt cannot post the same release twice.
+        const submitClaim = this.lifecycle.claimGrabSubmission(
+          job,
+          releaseSelection.selectedGuid,
+          releaseSelection.selectedRelease.indexerId,
+          releaseSelection.selectedRelease.title,
+        );
+        if (submitClaim === 'missing') {
+          return;
+        }
+
+        if (submitClaim === 'claimed') {
+          await this.dependencies.submitSelectedRelease(job, releaseSelection.selection);
+        }
         const submittedJob = this.jobs.getJob(job.id);
         if (!submittedJob || isTerminalJobStatus(submittedJob.status)) {
           return;
         }
         job = submittedJob;
-        this.lifecycle.recordGrabSubmitted(
-          job,
-          releaseSelection.selectedGuid,
-          releaseSelection.selectedRelease.title,
-        );
+        if (submitClaim === 'claimed') {
+          this.lifecycle.recordGrabSubmitted(
+            job,
+            releaseSelection.selectedGuid,
+            releaseSelection.selectedRelease.title,
+          );
+        }
 
         job = this.lifecycle.startValidation(job);
         let waitResult = await this.dependencies.waitForAttemptOutcome(

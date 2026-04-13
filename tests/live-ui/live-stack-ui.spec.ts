@@ -63,6 +63,20 @@ type QueueResponse = {
   updatedAt: string;
 };
 
+type ManualReleaseListResponse = {
+  jobId: string;
+  releases: Array<{
+    canSelect: boolean;
+    guid: string;
+    indexerId: number;
+    status: string;
+    title: string;
+  }>;
+  selectedGuid: string | null;
+  summary: string;
+  updatedAt: string;
+};
+
 const config = loadLiveIntegrationConfig();
 let activeSeriesTarget: { title: string; year: number } | null = null;
 
@@ -137,6 +151,22 @@ async function waitForManualReleaseDialogState(
 
     return null;
   }, 45_000);
+}
+
+async function waitForSelectableManualRelease(
+  jobId: string,
+  timeoutMs = 45_000,
+): Promise<ManualReleaseListResponse> {
+  return pollUntil(async () => {
+    const releases = await getJson<ManualReleaseListResponse>(
+      `${config.baseUrl}/api/acquisition/${encodeURIComponent(jobId)}/releases`,
+    ).catch(() => null);
+    if (!releases) {
+      return null;
+    }
+
+    return releases.releases.some((release) => release.canSelect) ? releases : null;
+  }, timeoutMs, 2_000);
 }
 
 async function queueResponse(): Promise<QueueResponse> {
@@ -440,6 +470,63 @@ test('movie live UI opens manual release options and removes the tracked item cl
   await waitForManualReleaseDialogState(manualReleaseDialog);
   await manualReleaseDialog.getByRole('button', { name: 'Close manual release options' }).click();
   await expect(manualReleaseDialog).toHaveCount(0);
+
+  page.once('dialog', (dialogEvent) => dialogEvent.accept());
+  await jobCard.getByRole('button', { name: 'Remove from Library' }).click();
+  await expect(page.getByText(/was deleted from Radarr/i)).toBeVisible();
+
+  await pollUntil(async () => {
+    const tracked = await findMovieByTitleYear(config, config.untrackedMovie);
+    return tracked === null ? true : null;
+  }, 45_000);
+  await waitForQueueToClear(config.untrackedMovie.title, 'movie', 'radarr');
+});
+
+test('movie live UI can submit a manual release selection when Arr exposes one', async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+
+  await searchForTitle(page, config.untrackedMovie.title, 'Movies');
+
+  const resultCard = searchResultCard(page, config.untrackedMovie.title);
+  await resultCard.getByRole('button', { name: 'Grab', exact: true }).click();
+
+  const dialog = page.getByRole('dialog', { name: 'Grab title' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Grab', exact: true }).click();
+
+  await expect(page.getByRole('heading', { name: 'Grab Progress' })).toBeVisible();
+  const job = await waitForJob(config.untrackedMovie.title, 'movie', 'radarr');
+  const manualReleases = await waitForSelectableManualRelease(job.id, 20_000).catch(() => null);
+  test.skip(
+    manualReleases === null,
+    'No selectable manual-search release was available from Arr for this live movie target.',
+  );
+  if (!manualReleases) {
+    return;
+  }
+
+  const jobCard = acquisitionJobCard(page, config.untrackedMovie.title);
+  await expect(jobCard).toBeVisible();
+  await jobCard.getByRole('button', { name: 'Show manual release options' }).click();
+
+  const manualReleaseDialog = page.getByRole('dialog', { name: 'Manual release options' });
+  await expect(manualReleaseDialog).toBeVisible();
+  await waitForManualReleaseDialogState(manualReleaseDialog);
+
+  const selectableRelease = manualReleases.releases.find((release) => release.canSelect) ?? null;
+  test.skip(
+    selectableRelease === null,
+    'Arr returned manual releases, but none were selectable in this environment.',
+  );
+  if (!selectableRelease) {
+    return;
+  }
+
+  await manualReleaseDialog.getByRole('button', { name: 'Select release' }).first().click();
+  await expect(page.getByText(/Queued manual release|Manual release selected/i)).toBeVisible();
+  await expect(jobCard).toContainText(selectableRelease.title);
 
   page.once('dialog', (dialogEvent) => dialogEvent.accept());
   await jobCard.getByRole('button', { name: 'Remove from Library' }).click();

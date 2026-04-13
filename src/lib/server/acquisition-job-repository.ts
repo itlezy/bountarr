@@ -41,6 +41,9 @@ type AttemptRow = {
   release_title: string | null;
   releaser: string | null;
   reason: string | null;
+  submitted_guid: string | null;
+  submitted_indexer_id: number | null;
+  submission_claimed_at: string | null;
   started_at: string;
   finished_at: string | null;
 };
@@ -86,9 +89,14 @@ export type UpsertAcquisitionAttemptInput = {
   reason?: string | null;
   releaseTitle?: string | null;
   releaser?: string | null;
+  submittedGuid?: string | null;
+  submittedIndexerId?: number | null;
+  submissionClaimedAt?: string | null;
   startedAt?: string;
   status: AcquisitionAttempt['status'];
 };
+
+export type ClaimAttemptReleaseSubmissionResult = 'claimed' | 'already-claimed' | 'missing';
 
 function placeholders(count: number): string {
   return new Array(count).fill('?').join(', ');
@@ -144,6 +152,9 @@ export class AcquisitionJobRepository {
         releaseTitle: row.release_title,
         releaser: row.releaser,
         reason: row.reason,
+        submittedGuid: row.submitted_guid,
+        submittedIndexerId: row.submitted_indexer_id,
+        submissionClaimedAt: row.submission_claimed_at,
         startedAt: row.started_at,
         finishedAt: row.finished_at,
       });
@@ -435,6 +446,16 @@ export class AcquisitionJobRepository {
       release_title: input.releaseTitle ?? existing?.release_title ?? null,
       releaser: input.releaser ?? existing?.releaser ?? null,
       reason: input.reason ?? existing?.reason ?? null,
+      submitted_guid:
+        input.submittedGuid !== undefined ? input.submittedGuid : (existing?.submitted_guid ?? null),
+      submitted_indexer_id:
+        input.submittedIndexerId !== undefined
+          ? input.submittedIndexerId
+          : (existing?.submitted_indexer_id ?? null),
+      submission_claimed_at:
+        input.submissionClaimedAt !== undefined
+          ? input.submissionClaimedAt
+          : (existing?.submission_claimed_at ?? null),
       started_at: input.startedAt ?? existing?.started_at ?? new Date().toISOString(),
       finished_at:
         input.finishedAt !== undefined ? input.finishedAt : (existing?.finished_at ?? null),
@@ -444,14 +465,18 @@ export class AcquisitionJobRepository {
       this.database
         .prepare(
           `INSERT INTO acquisition_attempts (
-            job_id, attempt, status, reason_code, release_title, releaser, reason, started_at, finished_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            job_id, attempt, status, reason_code, release_title, releaser, reason,
+            submitted_guid, submitted_indexer_id, submission_claimed_at, started_at, finished_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(job_id, attempt) DO UPDATE SET
             status = excluded.status,
             reason_code = excluded.reason_code,
             release_title = excluded.release_title,
             releaser = excluded.releaser,
             reason = excluded.reason,
+            submitted_guid = excluded.submitted_guid,
+            submitted_indexer_id = excluded.submitted_indexer_id,
+            submission_claimed_at = excluded.submission_claimed_at,
             started_at = excluded.started_at,
             finished_at = excluded.finished_at`,
         )
@@ -463,12 +488,55 @@ export class AcquisitionJobRepository {
           row.release_title,
           row.releaser,
           row.reason,
+          row.submitted_guid,
+          row.submitted_indexer_id,
+          row.submission_claimed_at,
           row.started_at,
           row.finished_at,
         );
     });
 
     this.invalidateQueueCache();
+  }
+
+  claimAttemptReleaseSubmission(
+    jobId: string,
+    attempt: number,
+    guid: string,
+    indexerId: number,
+  ): ClaimAttemptReleaseSubmissionResult {
+    const result = this.withTransaction<ClaimAttemptReleaseSubmissionResult>(() => {
+      const existing = this.database
+        .prepare('SELECT * FROM acquisition_attempts WHERE job_id = ? AND attempt = ?')
+        .get(jobId, attempt) as AttemptRow | undefined;
+
+      if (!existing) {
+        return 'missing';
+      }
+
+      if (existing.submission_claimed_at) {
+        if (existing.submitted_guid === guid && existing.submitted_indexer_id === indexerId) {
+          return 'already-claimed';
+        }
+
+        throw new Error(
+          `Acquisition attempt ${attempt} for job ${jobId} already claimed release submission for ${existing.submitted_guid ?? 'unknown guid'}`,
+        );
+      }
+
+      this.database
+        .prepare(
+          `UPDATE acquisition_attempts
+           SET submitted_guid = ?, submitted_indexer_id = ?, submission_claimed_at = ?
+           WHERE job_id = ? AND attempt = ?`,
+        )
+        .run(guid, indexerId, new Date().toISOString(), jobId, attempt);
+
+      return 'claimed';
+    });
+
+    this.invalidateQueueCache();
+    return result;
   }
 
   addFailedGuid(jobId: string, guid: string): void {

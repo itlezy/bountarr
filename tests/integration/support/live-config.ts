@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import path from 'node:path';
 
 export type ExactMovieTarget = {
@@ -13,8 +14,10 @@ export type LiveIntegrationConfig = {
   appPort: number;
   baseUrl: string;
   duplicateMovie: ExactMovieTarget;
+  radarrLogPath: string;
   radarrApiKey: string;
   radarrUrl: string;
+  sabLogPath: string;
   sonarrApiKey: string | null;
   sonarrUrl: string | null;
   untrackedMovie: ExactMovieTarget;
@@ -77,6 +80,7 @@ function requiredEnvValue(name: string, envFileValues: Record<string, string>): 
 
 export function loadLiveIntegrationConfig(): LiveIntegrationConfig {
   const repoRoot = process.cwd();
+  const userHome = homedir();
   const envFileValues = parseEnvFile(path.join(repoRoot, '.env'));
   const appPortValue = readEnvValue('BOUNTARR_INTEGRATION_PORT', envFileValues) ?? '4311';
   const appPort = Number.parseInt(appPortValue, 10);
@@ -96,8 +100,13 @@ export function loadLiveIntegrationConfig(): LiveIntegrationConfig {
         10,
       ),
     },
+    radarrLogPath:
+      readEnvValue('RADARR_LOG_PATH', envFileValues) ?? 'C:\\var\\tarr\\RADARR_DATA_ENG\\logs\\radarr.txt',
     radarrApiKey: requiredEnvValue('RADARR_API_KEY', envFileValues),
     radarrUrl: requiredEnvValue('RADARR_URL', envFileValues).replace(/\/+$/, ''),
+    sabLogPath:
+      readEnvValue('SAB_LOG_PATH', envFileValues) ??
+      path.join(userHome, 'AppData', 'Local', 'sabnzbd', 'logs', 'sabnzbd.log'),
     sonarrApiKey: readEnvValue('SONARR_API_KEY', envFileValues),
     sonarrUrl: readEnvValue('SONARR_URL', envFileValues)?.replace(/\/+$/, '') ?? null,
     untrackedMovie: {

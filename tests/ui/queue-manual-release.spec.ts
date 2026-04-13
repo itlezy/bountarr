@@ -296,3 +296,34 @@ test('manual release dialog disables releases that Arr already marked as not dow
   await expect(dialog.getByRole('button', { name: 'Select release' }).first()).toBeEnabled();
   await expect(dialog.getByRole('button', { name: 'Not downloadable' })).toBeDisabled();
 });
+
+test('manual release dialog shows title-mismatch warnings while still allowing manual override', async ({
+  page,
+}) => {
+  const api = await mockAppApi(page, {
+    queue: buildQueueResponse(),
+    manualReleaseResponse: () => ({
+      ...manualReleaseListFixture,
+      releases: [
+        {
+          ...manualReleaseFixture,
+          title: 'Who.Am.I.1998.1080p.WEBRip.DD2.0.x264-NTb',
+          identityReason: 'Structured movie titles point to a different title: Who Am I',
+          identityStatus: 'mismatch',
+          reason: 'Preferred releaser NTB would normally score highest.',
+          status: 'locally-rejected',
+        },
+      ],
+      summary: 'One release is available, but it does not match the requested title safely.',
+    }),
+  });
+
+  await openQueue(page, api);
+  const dialog = await openManualReleaseModal(page);
+
+  await expect(dialog.getByText(/Title mismatch:/)).toBeVisible();
+  await expect(
+    dialog.getByText('Structured movie titles point to a different title: Who Am I'),
+  ).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Select release' })).toBeEnabled();
+});

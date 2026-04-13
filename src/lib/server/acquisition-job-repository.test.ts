@@ -69,7 +69,45 @@ describe('AcquisitionJobRepository', () => {
     expect(loaded?.attempts).toHaveLength(1);
     expect(loaded?.attempts[0]?.reasonCode).toBe('validated');
     expect(loaded?.attempts[0]?.releaseTitle).toContain('Flux');
+    expect(loaded?.attempts[0]?.submittedGuid).toBeNull();
     expect(loaded?.failedGuids).toEqual(['guid-1']);
+  });
+
+  it('claims release submission only once per attempt', () => {
+    const database = createDatabase();
+    const jobs = new AcquisitionJobRepository(database);
+    const job = jobs.createJob({
+      arrItemId: 102,
+      itemId: 'movie:102',
+      kind: 'movie',
+      maxRetries: 4,
+      preferredReleaser: 'flux',
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      sourceService: 'radarr',
+      title: 'Submission Claim',
+    });
+
+    jobs.upsertAttempt(job.id, {
+      attempt: 1,
+      releaseTitle: 'Submission.Claim.2026.1080p.WEB-DL-FLUX',
+      releaser: 'flux',
+      startedAt: '2026-04-02T10:00:00.000Z',
+      status: 'grabbing',
+    });
+
+    expect(jobs.claimAttemptReleaseSubmission(job.id, 1, 'guid-1', 7)).toBe('claimed');
+    expect(jobs.claimAttemptReleaseSubmission(job.id, 1, 'guid-1', 7)).toBe('already-claimed');
+    expect(() => jobs.claimAttemptReleaseSubmission(job.id, 1, 'guid-2', 7)).toThrow(
+      /already claimed release submission/,
+    );
+
+    const loaded = jobs.getJob(job.id);
+    expect(loaded?.attempts[0]?.submittedGuid).toBe('guid-1');
+    expect(loaded?.attempts[0]?.submittedIndexerId).toBe(7);
+    expect(loaded?.attempts[0]?.submissionClaimedAt).toBeTruthy();
   });
 
   it('returns the most recent completed releaser for a matching title', () => {

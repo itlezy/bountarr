@@ -203,6 +203,9 @@ export interface AcquisitionAttempt {
   releaseTitle: string | null;
   releaser: string | null;
   reason: string | null;
+  submittedGuid?: string | null;
+  submittedIndexerId?: number | null;
+  submissionClaimedAt?: string | null;
   startedAt: string;
   finishedAt: string | null;
 }
