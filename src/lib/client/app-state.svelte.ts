@@ -162,6 +162,21 @@ function asNumber(value: unknown): number | null {
   return null;
 }
 
+function optimisticQueueResponse(
+  currentQueue: QueueResponse | null,
+  job: AcquisitionJob,
+): QueueResponse {
+  const acquisitionJobs = [job, ...(currentQueue?.acquisitionJobs ?? []).filter((entry) => entry.id !== job.id)];
+  const items = currentQueue?.items ?? [];
+
+  return {
+    acquisitionJobs,
+    items,
+    total: items.length + acquisitionJobs.length,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 function extractPopularity(item: MediaItem): number {
   const payload = asRecord(item.requestPayload);
   return (
@@ -978,7 +993,16 @@ export class AppState {
       );
       this.guidedQueueJobId = result.job?.id ?? null;
       this.guidedQueueTitle = result.item.title;
-      void Promise.all([this.loadDashboard(true), this.loadQueue()]);
+      if (result.job) {
+        this.queue = optimisticQueueResponse(this.queue, result.job);
+      }
+      void (async () => {
+        await Promise.all([this.loadDashboard(true), this.loadQueue()]);
+        if (this.dashboardError || this.queueError) {
+          this.latestActionMessage =
+            `${result.item.title} was grabbed, but refresh is still catching up. Showing the latest known state.`;
+        }
+      })();
     } catch (error) {
       this.requestError = error instanceof Error ? error.message : 'Add failed.';
       this.dependencies.notifications.pushNotification('Bountarr add failed', this.requestError);

@@ -452,12 +452,74 @@ describe('app state', () => {
     expect(state.confirmAddItem).toBeNull();
     expect(state.requesting).toBeNull();
     expect(state.activeView).toBe('queue');
+    expect(state.queue?.acquisitionJobs[0]?.id).toBe('job-1');
     expect(dependencies.api.fetchQueue).toHaveBeenCalledTimes(1);
     expect(dependencies.api.refreshDashboard).toHaveBeenCalledTimes(1);
 
     queueRefresh.resolve(queueResponse);
     dashboardRefresh.resolve(dashboardResponse);
     await Promise.all([queueRefresh.promise, dashboardRefresh.promise]);
+  });
+
+  it('keeps optimistic queue state and shows a warning when refresh fails after a successful grab', async () => {
+    const requestResponse: RequestResponse = {
+      existing: false,
+      item: {
+        ...movieItem,
+        inArr: true,
+        canAdd: false,
+        status: 'Already in Arr',
+      },
+      message: 'The Matrix was added to Radarr.',
+      releaseDecision: null,
+      job: {
+        id: 'job-1',
+        itemId: movieItem.id,
+        arrItemId: 603,
+        kind: 'movie',
+        title: movieItem.title,
+        sourceService: 'radarr',
+        status: 'queued',
+        attempt: 1,
+        maxRetries: 4,
+        currentRelease: null,
+        selectedReleaser: null,
+        preferredReleaser: null,
+        reasonCode: null,
+        failureReason: null,
+        validationSummary: null,
+        autoRetrying: false,
+        progress: null,
+        queueStatus: 'Queued',
+        preferences: {
+          preferredLanguage: 'English',
+          subtitleLanguage: 'English',
+        },
+        startedAt: '2026-04-02T10:05:00.000Z',
+        updatedAt: '2026-04-02T10:05:00.000Z',
+        completedAt: null,
+        attempts: [],
+      },
+    };
+    const dependencies = createDependencies({
+      api: {
+        submitRequest: vi.fn().mockResolvedValue(requestResponse),
+        fetchQueue: vi.fn().mockRejectedValue(new Error('Queue refresh failed')),
+        refreshDashboard: vi.fn().mockRejectedValue(new Error('Dashboard refresh failed')),
+      },
+      timers: {
+        setTimeout: vi.fn().mockReturnValue(99) as unknown as typeof globalThis.setTimeout,
+        clearTimeout: vi.fn() as unknown as typeof globalThis.clearTimeout,
+      },
+    });
+    const state = new AppState(pageData, dependencies);
+
+    await state.submitRequest(movieItem, 7);
+
+    expect(state.queue?.acquisitionJobs[0]?.id).toBe('job-1');
+    await vi.waitFor(() => {
+      expect(state.latestActionMessage).toContain('refresh is still catching up');
+    });
   });
 
   it('ignores add-dialog reopen attempts for a short window after a successful request', async () => {
