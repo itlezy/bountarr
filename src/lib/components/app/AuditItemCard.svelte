@@ -1,6 +1,13 @@
 <script lang="ts">
 import type { AppState } from '$lib/client/app-state.svelte';
-import { auditDetailSummary, auditLabel, deleteActionLabel, statusTone } from '$lib/client/app-ui';
+import {
+  actionDisabled,
+  actionLabel,
+  auditDetailSummary,
+  auditLabel,
+  deleteActionLabel,
+  statusTone,
+} from '$lib/client/app-ui';
 import type { MediaItem } from '$lib/shared/types';
 
 let { item, state }: { item: MediaItem; state: AppState } = $props();
@@ -57,8 +64,20 @@ function fileNameOnly(value: string): string {
         </div>
       </div>
 
-      {#if state.hasAuditOperatorActions(item)}
-        <div class="mt-3">
+      {#if item.canAdd || state.canGrabWithConfirmation(item) || state.hasAuditOperatorActions(item)}
+        <div class="mt-3 space-y-2">
+          {#if item.canAdd || state.canGrabWithConfirmation(item)}
+            <button
+              class="control-primary min-h-11 w-full px-4 text-sm font-700 disabled:cursor-not-allowed disabled:opacity-50"
+              type="button"
+              disabled={actionDisabled(item, state.grabbing)}
+              onclick={() => state.openAddConfirm(item)}
+            >
+              {actionLabel(item, state.grabbing)}
+            </button>
+          {/if}
+
+          {#if state.hasAuditOperatorActions(item)}
           <button
             class="control-shell min-h-11 w-full border-rose-300 px-4 text-sm font-700 text-rose-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-700 dark:text-rose-200"
             type="button"
@@ -67,6 +86,7 @@ function fileNameOnly(value: string): string {
           >
             {deleteActionLabel(item, state.deletingItemId)}
           </button>
+          {/if}
         </div>
       {/if}
     </div>

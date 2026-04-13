@@ -84,6 +84,11 @@ const isLoading = $derived(activeJobId ? state.manualReleaseLoading[activeJobId]
                     {release.languages.length > 0 ? release.languages.join(', ') : 'Unknown audio'} · Score {release.score}
                   </div>
                   <div class="mt-2 overflow-safe-text text-sm text-[var(--muted)]">{release.reason}</div>
+                  {#if release.identityStatus === 'mismatch'}
+                    <div class="mt-2 overflow-safe-text rounded-[14px] border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+                      Title mismatch: {release.identityReason}
+                    </div>
+                  {/if}
                   {#if release.rejectionReasons.length > 0}
                     <div class="mt-2 overflow-safe-text text-sm text-[var(--muted)]">
                       Arr: {release.rejectionReasons.join('; ')}

@@ -50,13 +50,13 @@ function ensureRootFolder(defaults: Record<string, unknown>, service: ArrService
 }
 
 function ensureAddable(item: MediaItem): void {
-  if (item.inArr) {
-    throw new AcquisitionGrabError(409, `${item.title} is already tracked in Arr`);
-  }
-
   if (!item.canAdd || !item.requestPayload || item.sourceService === 'plex') {
     throw new AcquisitionGrabError(400, `${item.title} cannot be added from this result`);
   }
+}
+
+function trackedArrItemId(item: MediaItem): number | null {
+  return item.arrItemId ?? asNumber(asRecord(item.requestPayload).id);
 }
 
 function grabIdentity(item: MediaItem): string {
@@ -233,29 +233,28 @@ async function grabTrackedItem(
     title: item.title,
   });
 
-  const sourceId = asNumber(asRecord(item.requestPayload).id);
+  const sourceId = trackedArrItemId(item);
   if (item.inArr && sourceId) {
     const activeJob = getAcquisitionJobRepository().findActiveJob(sourceId, item.kind, spec.service);
-    return existingResponse(
-      item,
-      spec.trackedName,
-      await spec.fetchExisting(sourceId, preferences, item),
-      activeJob ? cloneJob(activeJob) : null,
-    );
-  }
+    const existingItem = await spec.fetchExisting(sourceId, preferences, item);
+    if (activeJob) {
+      return {
+        existing: true,
+        item: existingItem,
+        job: cloneJob(activeJob),
+        message: `${item.title} is already tracked in ${spec.trackedName}. Reusing the active alternate-release grab.`,
+        releaseDecision: null,
+      };
+    }
 
-  if (item.inArr) {
-    return existingResponse(
-      item,
-      spec.trackedName,
-      {
-        ...item,
-        canAdd: false,
-        inArr: true,
-        status: 'Already in Arr',
-      },
-      null,
-    );
+    const job = createOrReuseJob(existingItem, sourceId, spec.service, preferences);
+    return {
+      existing: true,
+      item: existingItem,
+      job,
+      message: `${item.title} is already tracked in ${spec.trackedName}. Alternate-release acquisition started.`,
+      releaseDecision: null,
+    };
   }
 
   ensureAddable(item);

@@ -1,5 +1,5 @@
 import { arrFetch } from '$lib/server/arr-client';
-import { itemMatchKeys, itemSearchTitles } from '$lib/server/media-identity';
+import { itemMatchKeys, itemSearchTitles, normalizeToken } from '$lib/server/media-identity';
 import { mergeItems, normalizeItem, sortSearchResults } from '$lib/server/media-normalize';
 import { searchPlex } from '$lib/server/plex-service';
 import { asNumber, asRecord, asString } from '$lib/server/raw';
@@ -103,6 +103,14 @@ async function findSupplementalPlexItems(
   return supplemental.filter((plexItem) =>
     unresolvedItems.some((arrItem) => matchesByIdentity(arrItem, plexItem)),
   );
+}
+
+function visibleInNotAvailableFilter(item: MediaItem): boolean {
+  if (!item.inPlex) {
+    return true;
+  }
+
+  return item.requestPayload !== null && (item.inArr || item.origin === 'merged');
 }
 
 async function fetchMovieFile(movieFileId: number): Promise<Record<string, unknown> | null> {
@@ -337,7 +345,57 @@ export async function lookupItems(
       ? deduped
       : availability === 'available-only'
         ? deduped.filter((item) => item.inPlex)
-        : deduped.filter((item) => !item.inPlex);
+        : deduped.filter(visibleInNotAvailableFilter);
 
   return sortSearchResults(term, filtered).slice(0, SEARCH_RESULT_LIMIT);
+}
+
+function exactPlexFallbackMatch(left: MediaItem, right: MediaItem): boolean {
+  const leftTitle = normalizeToken(left.title);
+  const rightTitle = normalizeToken(right.title);
+
+  if (leftTitle !== rightTitle) {
+    return false;
+  }
+
+  return left.year === null || right.year === null || left.year === right.year;
+}
+
+export async function resolveGrabCandidateFromPlexItem(
+  item: MediaItem,
+  preferences?: Partial<Preferences>,
+): Promise<MediaItem | null> {
+  if (item.sourceService !== 'plex' || item.requestPayload === null) {
+    return null;
+  }
+
+  const normalizedPreferences = sanitizePreferences(preferences);
+  const terms = [...new Set([item.title, ...itemSearchTitles(item)])].filter(
+    (candidate) => candidate.trim().length >= 2,
+  );
+  if (terms.length === 0) {
+    return null;
+  }
+
+  const candidates = (
+    await Promise.all(
+      terms.map((term) => lookupArrItems(term, item.kind, normalizedPreferences)),
+    )
+  ).flat();
+  const resolved =
+    candidates.find((candidate) => matchesByIdentity(candidate, item)) ??
+    candidates.find((candidate) => exactPlexFallbackMatch(candidate, item)) ??
+    null;
+
+  if (!resolved) {
+    return null;
+  }
+
+  const merged = mergeItems(resolved, item);
+  return {
+    ...merged,
+    sourceService: resolved.sourceService,
+    origin: 'merged',
+    requestPayload: resolved.requestPayload,
+  };
 }

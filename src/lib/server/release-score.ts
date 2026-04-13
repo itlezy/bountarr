@@ -1,5 +1,10 @@
 import { languageMatchesPreferred } from '$lib/shared/languages';
-import type { Preferences, ReleaseDecision, ReleaseDecisionCandidate } from '$lib/shared/types';
+import type {
+  Preferences,
+  ReleaseDecision,
+  ReleaseDecisionCandidate,
+  ReleaseIdentityStatus,
+} from '$lib/shared/types';
 
 type ReleaseSelection = {
   decision: ReleaseDecision;
@@ -9,7 +14,10 @@ type ReleaseSelection = {
 export type EvaluatedRelease = {
   acceptedByLocalRules: boolean;
   arrRejected: boolean;
+  autoSelectable: boolean;
   candidate: ReleaseDecisionCandidate;
+  identityReason: string;
+  identityStatus: ReleaseIdentityStatus;
   payload: Record<string, unknown>;
   rejectionReasons: string[];
 };
@@ -17,6 +25,7 @@ export type EvaluatedRelease = {
 type ReleaseSelectionOptions = {
   kind: 'movie' | 'series';
   preferredReleaser?: string | null;
+  targetTitle: string;
 };
 
 type ReleaseSignals = {
@@ -46,6 +55,76 @@ const sourceWeights: Array<{ pattern: RegExp; score: number; label: string }> = 
   { pattern: /\bwebrip\b/i, score: 80, label: 'WEBRip' },
   { pattern: /\bblu[\s.-]?ray\b/i, score: 40, label: 'BluRay' },
 ];
+
+const romanNumerals = new Map<string, string>([
+  ['i', '1'],
+  ['ii', '2'],
+  ['iii', '3'],
+  ['iv', '4'],
+  ['v', '5'],
+  ['vi', '6'],
+  ['vii', '7'],
+  ['viii', '8'],
+  ['ix', '9'],
+  ['x', '10'],
+]);
+
+const releaseNoiseTokens = new Set([
+  '1080p',
+  '2160p',
+  '720p',
+  '480p',
+  '576p',
+  '4k',
+  '8k',
+  'webrip',
+  'web',
+  'webdl',
+  'web-dl',
+  'bluray',
+  'blu',
+  'ray',
+  'bdrip',
+  'brrip',
+  'remux',
+  'hdtv',
+  'hdrip',
+  'dvdrip',
+  'dvd',
+  'proper',
+  'repack',
+  'internal',
+  'extended',
+  'criterion',
+  'uncut',
+  'unrated',
+  'limited',
+  'complete',
+  'multi',
+  'multi',
+  'dual',
+  'audio',
+  'dd',
+  'ddp',
+  'dts',
+  'atmos',
+  'aac',
+  'ac3',
+  'x264',
+  'x265',
+  'h264',
+  'h265',
+  'hevc',
+  'hdr',
+  'dv',
+  'dubbed',
+  'subbed',
+  'subs',
+  'proper',
+  'readnfo',
+  'torrent',
+  'usenet',
+]);
 
 function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
@@ -88,6 +167,184 @@ function parseLanguages(value: unknown): string[] {
   }
 
   return [...languages];
+}
+
+function normalizeIdentityText(value: string): string {
+  const normalized = value
+    .normalize('NFKD')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/['’]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+  if (normalized.length === 0) {
+    return '';
+  }
+
+  return normalized
+    .split(/\s+/)
+    .map((token) => romanNumerals.get(token) ?? token)
+    .join(' ');
+}
+
+function titleTokens(value: string): string[] {
+  const normalized = normalizeIdentityText(value);
+  return normalized.length === 0 ? [] : normalized.split(' ');
+}
+
+function uniqueStrings(values: Array<string | null>): string[] {
+  return [...new Set(values.filter((value): value is string => value !== null && value.length > 0))];
+}
+
+function parseStructuredTitles(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return uniqueStrings(
+      value.flatMap((entry) => {
+        const record = asRecord(entry);
+        return [
+          asString(record.title),
+          asString(record.name),
+          asString(record.value),
+          asString(record.cleanTitle),
+          asString(entry),
+        ];
+      }),
+    );
+  }
+
+  const single = asString(value);
+  return single ? [single] : [];
+}
+
+function extractStructuredTitles(
+  release: Record<string, unknown>,
+  kind: 'movie' | 'series',
+): string[] {
+  return kind === 'movie'
+    ? parseStructuredTitles(release.movieTitles)
+    : parseStructuredTitles(release.seriesTitles);
+}
+
+function maybeYearToken(token: string): boolean {
+  return /^(19|20)\d{2}$/.test(token);
+}
+
+function extractReleaseTitleSegment(title: string): string {
+  const rawTokens = title
+    .normalize('NFKD')
+    .replace(/[\[\]()]/g, ' ')
+    .split(/[\s._-]+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+
+  const chosen: string[] = [];
+
+  for (const token of rawTokens) {
+    const normalized = normalizeIdentityText(token);
+    if (!normalized) {
+      continue;
+    }
+
+    if (maybeYearToken(normalized)) {
+      break;
+    }
+
+    if (releaseNoiseTokens.has(normalized)) {
+      break;
+    }
+
+    chosen.push(token);
+  }
+
+  if (chosen.length === 0) {
+    return title;
+  }
+
+  return chosen.join(' ');
+}
+
+function isStrongTitleMatch(target: string, candidate: string): boolean {
+  return normalizeIdentityText(target) === normalizeIdentityText(candidate);
+}
+
+function isWeakTitleMatch(target: string, candidate: string): boolean {
+  const targetNormalized = normalizeIdentityText(target);
+  const candidateNormalized = normalizeIdentityText(candidate);
+
+  if (!targetNormalized || !candidateNormalized) {
+    return false;
+  }
+
+  if (targetNormalized === candidateNormalized) {
+    return true;
+  }
+
+  const targetParts = titleTokens(target);
+  const candidateParts = titleTokens(candidate);
+  if (targetParts.length === 0 || candidateParts.length === 0) {
+    return false;
+  }
+
+  const matchingParts = targetParts.filter((part) => candidateParts.includes(part)).length;
+  return (
+    matchingParts === targetParts.length &&
+    Math.abs(candidateParts.length - targetParts.length) <= 1
+  );
+}
+
+function classifyIdentity(
+  release: Record<string, unknown>,
+  options: ReleaseSelectionOptions,
+): { reason: string; status: ReleaseIdentityStatus } {
+  const releaseTitle = asString(release.title);
+  const structuredTitles = extractStructuredTitles(release, options.kind);
+  const exactStructuredMatch = structuredTitles.find((entry) =>
+    isStrongTitleMatch(options.targetTitle, entry),
+  );
+
+  // Arr mapping can be wrong, so structured title lists must agree before a release can be
+  // considered safe for automatic selection.
+  if (structuredTitles.length > 0) {
+    if (exactStructuredMatch) {
+      return {
+        status: 'exact-match',
+        reason: `Structured ${options.kind} title matched ${exactStructuredMatch}`,
+      };
+    }
+
+    return {
+      status: 'mismatch',
+      reason: `Structured ${options.kind} titles point to a different title: ${structuredTitles.join(', ')}`,
+    };
+  }
+
+  if (!releaseTitle) {
+    return {
+      status: 'mismatch',
+      reason: 'Release is missing a usable title',
+    };
+  }
+
+  const titleSegment = extractReleaseTitleSegment(releaseTitle);
+  if (isStrongTitleMatch(options.targetTitle, titleSegment)) {
+    return {
+      status: 'exact-match',
+      reason: `Release title matched ${options.targetTitle}`,
+    };
+  }
+
+  if (isWeakTitleMatch(options.targetTitle, titleSegment)) {
+    return {
+      status: 'weak-match',
+      reason: `Release title partially matched ${options.targetTitle}`,
+    };
+  }
+
+  return {
+    status: 'mismatch',
+    reason: `Release title points to ${titleSegment}`,
+  };
 }
 
 function titleSignals(title: string, preferences: Preferences): ReleaseSignals {
@@ -246,6 +503,7 @@ function buildCandidate(
   const isMultiAudio = signals.multiLanguageHint || /\bmulti\b|\bdual[ .-]?audio\b/i.test(title);
   const hasEnglish = includesEnglish(languages, title);
   const state = createScoreState(release);
+  const identity = classifyIdentity(release, options);
 
   applyAvailabilityRules(
     state,
@@ -267,10 +525,14 @@ function buildCandidate(
   );
 
   const releaseRejectionReasons = rejectionReasons(release);
+  const acceptedByLocalRules = state.score > ACCEPTED_SCORE_FLOOR;
+  // Manual selection may still allow mismatches, but auto-selection must never promote them.
+  const autoSelectable = acceptedByLocalRules && identity.status !== 'mismatch';
 
   return {
-    acceptedByLocalRules: state.score > ACCEPTED_SCORE_FLOOR,
+    acceptedByLocalRules,
     arrRejected: releaseRejectionReasons.length > 0,
+    autoSelectable,
     candidate: {
       title,
       guid,
@@ -282,6 +544,8 @@ function buildCandidate(
       score: state.score,
       reason: state.reasons.join('; ') || 'Arr score only',
     },
+    identityReason: identity.reason,
+    identityStatus: identity.status,
     payload: release,
     rejectionReasons: releaseRejectionReasons,
   };
@@ -316,7 +580,7 @@ export function selectBestEvaluatedRelease(
   evaluated: EvaluatedRelease[],
   considered = evaluated.length,
 ): ReleaseSelection {
-  const accepted = evaluated.filter((entry) => entry.acceptedByLocalRules);
+  const accepted = evaluated.filter((entry) => entry.autoSelectable);
   const ordered = orderAcceptedCandidates(accepted);
   const selected = ordered[0] ?? null;
 

@@ -4,6 +4,7 @@ import {
   cancelQueueItem,
   deleteArrItem,
   fetchQueue,
+  resolveGrabCandidate,
   fetchSearchResults,
   submitGrab,
 } from '$lib/client/api';
@@ -178,6 +179,49 @@ describe('client api', () => {
         subtitleLanguage: 'Any',
       },
       seasonNumbers: [1, 2],
+    });
+  });
+
+  it('posts grab-resolution payloads for Plex-only items', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(movieItem), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await resolveGrabCandidate(
+      {
+        ...movieItem,
+        sourceService: 'plex',
+        origin: 'plex',
+        inPlex: true,
+        canAdd: false,
+      },
+      {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+    );
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/grab/resolve');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({
+      item: {
+        ...movieItem,
+        sourceService: 'plex',
+        origin: 'plex',
+        inPlex: true,
+        canAdd: false,
+      },
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
     });
   });
 

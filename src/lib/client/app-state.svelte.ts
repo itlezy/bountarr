@@ -6,18 +6,20 @@ import {
   fetchDashboard,
   fetchQueue,
   fetchRecentPlexItems,
+  resolveGrabCandidate,
   fetchSearchResults,
   refreshDashboard,
   selectManualRelease,
   submitGrab,
 } from '$lib/client/api';
 import {
-  canGrabWithPlexConfirmation,
+  canGrabWithConfirmation,
+  canResolveGrabCandidate,
+  confirmedGrabItem,
   defaultQualityProfileId,
   grabFeedbackMessage,
   kindLabel,
   mergeSearchItem,
-  plexConfirmedGrabItem,
   qualityProfileOptions,
 } from '$lib/client/app-ui';
 import {
@@ -63,6 +65,7 @@ type AppStateApi = {
   fetchDashboard: typeof fetchDashboard;
   refreshDashboard: typeof refreshDashboard;
   fetchRecentPlexItems: typeof fetchRecentPlexItems;
+  resolveGrabCandidate: typeof resolveGrabCandidate;
   fetchSearchResults: typeof fetchSearchResults;
   fetchQueue: typeof fetchQueue;
   selectManualRelease: typeof selectManualRelease;
@@ -109,6 +112,7 @@ const defaultDependencies: AppStateDependencies = {
     fetchDashboard,
     refreshDashboard,
     fetchRecentPlexItems,
+    resolveGrabCandidate,
     fetchSearchResults,
     fetchQueue,
     selectManualRelease,
@@ -348,6 +352,7 @@ export class AppState {
   queueLoading = $state(false);
   manualReleaseLoading = $state<Record<string, boolean>>({});
   grabbing = $state<string | null>(null);
+  resolvingGrabItemId = $state<string | null>(null);
   deletingItemId = $state<string | null>(null);
   cancelingAcquisitionJobId = $state<string | null>(null);
   cancelingQueueItemId = $state<string | null>(null);
@@ -355,7 +360,6 @@ export class AppState {
   notificationState = $state<NotificationPermission | 'unsupported' | 'idle'>('idle');
   kindMenuOpen = $state(false);
   confirmAddItem = $state<MediaItem | null>(null);
-  confirmPlexAvailability = $state(false);
   confirmQualityProfileId = $state<number | null>(null);
   confirmPreferredLanguage = $state<PreferredLanguage>(defaultPreferences.preferredLanguage);
   confirmSubtitleLanguage = $state<PreferredLanguage>(defaultPreferences.subtitleLanguage);
@@ -620,8 +624,16 @@ export class AppState {
     };
   }
 
-  canGrabWithPlexConfirmation(item: MediaItem): boolean {
-    return canGrabWithPlexConfirmation(item);
+  canGrabWithConfirmation(item: MediaItem): boolean {
+    return canGrabWithConfirmation(item);
+  }
+
+  canResolveGrabCandidate(item: MediaItem): boolean {
+    return canResolveGrabCandidate(item);
+  }
+
+  canStartGrabFlow(item: MediaItem): boolean {
+    return item.canAdd || this.canGrabWithConfirmation(item) || this.canResolveGrabCandidate(item);
   }
 
   hasSearchOperatorActions(item: MediaItem): boolean {
@@ -648,29 +660,50 @@ export class AppState {
     return `Tracking ${this.guidedQueueTitle} below so you can see what happens next.`;
   }
 
-  openAddConfirm(item: MediaItem, options?: { plexConfirmation?: boolean }): void {
+  async openAddConfirm(item: MediaItem): Promise<void> {
     if (Date.now() < this.suppressAddConfirmOpenUntil) {
       return;
     }
 
-    const usePlexConfirmation =
-      options?.plexConfirmation === true || this.canGrabWithPlexConfirmation(item);
-    const grabItem =
-      usePlexConfirmation && this.canGrabWithPlexConfirmation(item)
-        ? plexConfirmedGrabItem(item)
-        : item;
+    this.grabError = null;
+    let grabItem = item;
+
+    if (this.canResolveGrabCandidate(item) && !this.canGrabWithConfirmation(item) && !item.canAdd) {
+      this.resolvingGrabItemId = item.id;
+      try {
+        const resolvedItem = await this.dependencies.api.resolveGrabCandidate(item, {
+          preferredLanguage: this.preferredLanguage,
+          subtitleLanguage: this.subtitleLanguage,
+        });
+        if (!resolvedItem) {
+          this.grabError = `Unable to prepare ${item.title} for an alternate release grab.`;
+          return;
+        }
+
+        grabItem = resolvedItem;
+        this.searchResults = this.searchResults.map((candidate) =>
+          candidate.id === item.id || candidate.id === resolvedItem.id ? resolvedItem : candidate,
+        );
+      } catch (error) {
+        this.grabError =
+          error instanceof Error ? error.message : 'Unable to prepare this title for grabbing.';
+        return;
+      } finally {
+        this.resolvingGrabItemId = null;
+      }
+    }
+
+    grabItem = this.canGrabWithConfirmation(grabItem) ? confirmedGrabItem(grabItem) : grabItem;
 
     if (!grabItem.canAdd) {
       return;
     }
 
     this.confirmAddItem = grabItem;
-    this.confirmPlexAvailability = usePlexConfirmation;
     this.confirmQualityProfileId = this.defaultQualityProfileId(grabItem);
     this.confirmPreferredLanguage = this.preferredLanguage;
     this.confirmSubtitleLanguage = this.subtitleLanguage;
     this.confirmSeasonNumbers = defaultSeasonNumbersForItem(grabItem);
-    this.grabError = null;
     this.closeMenus();
   }
 
@@ -684,7 +717,6 @@ export class AppState {
 
   resetAddConfirm(): void {
     this.confirmAddItem = null;
-    this.confirmPlexAvailability = false;
     this.confirmQualityProfileId = null;
     this.confirmPreferredLanguage = this.preferredLanguage;
     this.confirmSubtitleLanguage = this.subtitleLanguage;

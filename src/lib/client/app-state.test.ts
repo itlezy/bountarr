@@ -187,6 +187,8 @@ const manualReleaseResponse: ManualReleaseListResponse = {
       reason: 'matched proven releaser',
       canSelect: true,
       downloadAllowed: true,
+      identityReason: 'Structured movie title matched The Matrix',
+      identityStatus: 'exact-match',
       rejectedByArr: false,
       rejectionReasons: [],
       status: 'accepted',
@@ -242,6 +244,7 @@ function createDependencies(
       fetchDashboard: vi.fn().mockResolvedValue(dashboardResponse),
       refreshDashboard: vi.fn().mockResolvedValue(dashboardResponse),
       fetchRecentPlexItems: vi.fn().mockResolvedValue([]),
+      resolveGrabCandidate: vi.fn().mockResolvedValue(null),
       fetchSearchResults: vi.fn().mockResolvedValue([movieItem]),
       fetchQueue: vi.fn().mockResolvedValue(queueResponse),
       selectManualRelease: vi.fn(),
@@ -633,7 +636,7 @@ describe('app state', () => {
     expect(state.addSuccessToastMessage).toBeNull();
   });
 
-  it('opens a Plex operator override as a requestable Arr-backed item', () => {
+  it('opens a Plex-confirmed alternate release as a grabbable Arr-backed item', () => {
     const state = new AppState(pageData, createDependencies());
     const plexMergedItem: MediaItem = {
       ...movieItem,
@@ -647,15 +650,15 @@ describe('app state', () => {
 
     state.openAddConfirm(plexMergedItem);
 
-    expect(state.confirmPlexAvailability).toBe(true);
     expect(state.confirmAddItem).toMatchObject({
       canAdd: true,
+      inPlex: true,
       sourceService: 'radarr',
       origin: 'arr',
     });
   });
 
-  it('does not open the grab dialog for Plex-only items without Arr request context', () => {
+  it('does not open the grab dialog for Plex-only items without Arr request context', async () => {
     const state = new AppState(pageData, createDependencies());
     const plexOnlyItem: MediaItem = {
       ...movieItem,
@@ -667,10 +670,73 @@ describe('app state', () => {
       status: 'Available in Plex',
     };
 
-    state.openAddConfirm(plexOnlyItem);
+    await state.openAddConfirm(plexOnlyItem);
 
     expect(state.confirmAddItem).toBeNull();
-    expect(state.confirmPlexAvailability).toBe(false);
+  });
+
+  it('resolves Plex-only items into alternate-release grabs before opening the dialog', async () => {
+    const resolveGrabCandidate = vi.fn().mockResolvedValue({
+      ...movieItem,
+      sourceService: 'radarr',
+      origin: 'merged',
+      inPlex: true,
+      canAdd: false,
+      status: 'Available in Plex',
+      requestPayload: { id: 603, tmdbId: 603 },
+    } satisfies MediaItem);
+    const state = new AppState(
+      pageData,
+      createDependencies({
+        api: {
+          resolveGrabCandidate,
+        },
+      }),
+    );
+    const plexOnlyItem: MediaItem = {
+      ...movieItem,
+      sourceService: 'plex',
+      origin: 'plex',
+      inPlex: true,
+      canAdd: false,
+      status: 'Available in Plex',
+    };
+    state.searchResults = [plexOnlyItem];
+
+    await state.openAddConfirm(plexOnlyItem);
+
+    expect(resolveGrabCandidate).toHaveBeenCalledWith(plexOnlyItem, {
+      preferredLanguage: state.preferredLanguage,
+      subtitleLanguage: state.subtitleLanguage,
+    });
+    expect(state.confirmAddItem).toMatchObject({
+      canAdd: true,
+      inPlex: true,
+      sourceService: 'radarr',
+    });
+  });
+
+  it('opens tracked Arr items as alternate-release grabs', () => {
+    const state = new AppState(pageData, createDependencies());
+    const trackedItem: MediaItem = {
+      ...movieItem,
+      arrItemId: 603,
+      canAdd: false,
+      inArr: true,
+      isExisting: true,
+      isRequested: true,
+      status: 'Already in Arr',
+      requestPayload: { id: 603, tmdbId: 603 },
+    };
+
+    state.openAddConfirm(trackedItem);
+
+    expect(state.confirmAddItem).toMatchObject({
+      canAdd: true,
+      inArr: true,
+      arrItemId: 603,
+      sourceService: 'radarr',
+    });
   });
 
   it('passes selected seasons through the request submission flow for series', async () => {

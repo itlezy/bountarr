@@ -162,6 +162,8 @@ export interface ReleaseDecisionCandidate {
   reason: string;
 }
 
+export type ReleaseIdentityStatus = 'exact-match' | 'weak-match' | 'mismatch';
+
 export type ManualReleaseStatus =
   | 'selected'
   | 'accepted'
@@ -172,6 +174,8 @@ export type ManualReleaseStatus =
 export interface ManualReleaseResult extends ReleaseDecisionCandidate {
   canSelect: boolean;
   downloadAllowed: boolean;
+  identityReason: string;
+  identityStatus: ReleaseIdentityStatus;
   rejectedByArr: boolean;
   rejectionReasons: string[];
   status: ManualReleaseStatus;

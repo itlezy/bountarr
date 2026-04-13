@@ -14,6 +14,7 @@ import {
 
 type SearchResponseResolver = (url: URL) => unknown;
 type GrabResponseResolver = (body: Record<string, unknown>) => unknown;
+type ResolveGrabResponseResolver = (body: Record<string, unknown>) => unknown;
 type RequestAwareResolver = (request: Request, url: URL) => unknown;
 type ManualReleaseResponseResolver = (jobId: string, request: Request, url: URL) => unknown;
 type SelectManualReleaseResponseResolver = (
@@ -26,6 +27,7 @@ type SelectManualReleaseResponseResolver = (
 type MockApiOptions = {
   dashboard?: unknown | RequestAwareResolver;
   grabResponse?: GrabResponseResolver;
+  resolveGrabResponse?: ResolveGrabResponseResolver;
   manualReleaseResponse?: ManualReleaseResponseResolver;
   plexRecent?: unknown;
   queue?: unknown | RequestAwareResolver;
@@ -36,6 +38,7 @@ type MockApiOptions = {
 export type MockApiController = {
   dashboardRequests: string[];
   grabBodies: Record<string, unknown>[];
+  resolveGrabBodies: Record<string, unknown>[];
   manualReleaseRequests: string[];
   queueRequests: string[];
   searchUrls: string[];
@@ -134,6 +137,7 @@ export async function mockAppApi(
   const controller: MockApiController = {
     dashboardRequests: [],
     grabBodies: [],
+    resolveGrabBodies: [],
     manualReleaseRequests: [],
     queueRequests: [],
     searchUrls: [],
@@ -225,6 +229,13 @@ export async function mockAppApi(
             : undefined,
         );
       await fulfillResolvedRoute(route, payload);
+      return;
+    }
+
+    if (url.pathname === '/api/grab/resolve') {
+      const body = (request.postDataJSON() as Record<string, unknown> | null) ?? {};
+      controller.resolveGrabBodies.push(body);
+      await fulfillResolvedRoute(route, options.resolveGrabResponse?.(body) ?? null);
       return;
     }
 

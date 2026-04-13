@@ -36,6 +36,7 @@ describe('selectBestRelease', () => {
       defaultPreferences,
       {
         kind: 'movie',
+        targetTitle: 'Movie',
       },
     );
 
@@ -75,6 +76,7 @@ describe('selectBestRelease', () => {
       defaultPreferences,
       {
         kind: 'movie',
+        targetTitle: 'Movie',
       },
     );
 
@@ -101,6 +103,7 @@ describe('selectBestRelease', () => {
       defaultPreferences,
       {
         kind: 'movie',
+        targetTitle: 'Movie',
       },
     );
 
@@ -111,6 +114,7 @@ describe('selectBestRelease', () => {
   it('returns a non-fatal empty result when nothing is available', () => {
     const result = selectBestRelease([], defaultPreferences, {
       kind: 'movie',
+      targetTitle: 'Movie',
     });
 
     expect(result.decision.selected).toBeNull();
@@ -151,6 +155,7 @@ describe('selectBestRelease', () => {
       defaultPreferences,
       {
         kind: 'movie',
+        targetTitle: 'Movie',
       },
     );
 
@@ -191,10 +196,82 @@ describe('selectBestRelease', () => {
       {
         kind: 'movie',
         preferredReleaser: 'FLUX',
+        targetTitle: 'Movie',
       },
     );
 
     expect(result.decision.selected?.guid).toBe('b');
     expect(result.decision.reason).toContain('matched proven releaser FLUX');
+  });
+
+  it('rejects structured title mismatches before local scoring picks a winner', () => {
+    const result = selectBestRelease(
+      [
+        {
+          guid: 'wrong',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Who.Am.I.1998.1080p.WEBRip.DD2.0.x264-NTb',
+          movieTitles: 'Who Am I',
+          languages: [{ name: 'English' }],
+          qualityWeight: 1701,
+          releaseWeight: 220,
+          customFormatScore: 3,
+          size: 7_000_000_000,
+          protocol: 'usenet',
+          downloadAllowed: true,
+        },
+        {
+          guid: 'correct',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'American.History.X.1998.HEVC.1080p.BluRay.DTS-HD.MA.5.1.x265-LEGi0N',
+          movieTitles: 'American History X',
+          languages: [{ name: 'English' }],
+          qualityWeight: 1701,
+          releaseWeight: 180,
+          customFormatScore: 0,
+          size: 8_000_000_000,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+      ],
+      defaultPreferences,
+      {
+        kind: 'movie',
+        preferredReleaser: 'NTB',
+        targetTitle: 'American History X',
+      },
+    );
+
+    expect(result.decision.selected?.guid).toBe('correct');
+  });
+
+  it('marks sparse release titles as mismatches when the parsed title points elsewhere', () => {
+    const result = selectBestRelease(
+      [
+        {
+          guid: 'wrong',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Who.Am.I.1998.1080p.WEBRip.DD2.0.x264-NTb',
+          languages: [{ name: 'English' }],
+          qualityWeight: 1701,
+          releaseWeight: 220,
+          customFormatScore: 3,
+          size: 7_000_000_000,
+          protocol: 'usenet',
+          downloadAllowed: true,
+        },
+      ],
+      defaultPreferences,
+      {
+        kind: 'movie',
+        targetTitle: 'American History X',
+      },
+    );
+
+    expect(result.decision.selected).toBeNull();
+    expect(result.decision.reason).toContain('No acceptable release');
   });
 });

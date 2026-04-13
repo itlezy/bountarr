@@ -267,7 +267,7 @@ test('plex-available search results still use the normal grab dialog with confir
   const dialog = page.getByRole('dialog', { name: 'Grab title' });
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText(
-    'Plex already has this title. Confirm to send a managed grab to Arr anyway.',
+    'Plex already has this title. Confirm to download an alternate release anyway.',
   );
 
   await dialog.getByRole('button', { name: 'Grab', exact: true }).click();
@@ -278,4 +278,176 @@ test('plex-available search results still use the normal grab dialog with confir
     })
     .toBe(1);
   await expect(page.getByRole('dialog', { name: 'Grab title' })).toHaveCount(0);
+});
+
+test('plex-only search results resolve into the normal grab dialog', async ({ page }) => {
+  const api = await mockAppApi(page, {
+    searchResponse: () => [
+      {
+        id: 'plex:movie:2105',
+        kind: 'movie',
+        title: 'American Pie',
+        year: 1999,
+        rating: 7.0,
+        poster: null,
+        overview: 'Comedy',
+        status: 'Available in Plex',
+        isExisting: false,
+        isRequested: false,
+        auditStatus: 'pending',
+        audioLanguages: [],
+        subtitleLanguages: [],
+        sourceService: 'plex',
+        origin: 'plex',
+        inArr: false,
+        inPlex: true,
+        plexLibraries: ['Movies'],
+        canAdd: false,
+        detail: null,
+        requestPayload: { Guid: [{ id: 'tmdb://2105' }] },
+      },
+    ],
+    resolveGrabResponse: () => ({
+      id: 'movie:2105',
+      arrItemId: null,
+      kind: 'movie',
+      title: 'American Pie',
+      year: 1999,
+      rating: 7.0,
+      poster: null,
+      overview: 'Comedy',
+      status: 'Available in Plex',
+      isExisting: false,
+      isRequested: false,
+      auditStatus: 'pending',
+      audioLanguages: [],
+      subtitleLanguages: [],
+      sourceService: 'radarr',
+      origin: 'merged',
+      inArr: false,
+      inPlex: true,
+      plexLibraries: ['Movies'],
+      canAdd: false,
+      detail: null,
+      requestPayload: { tmdbId: 2105 },
+    }),
+  });
+  await openSearch(page, api, 'American', 'American Pie');
+
+  const resultCard = page.locator('article').filter({
+    has: page.getByRole('heading', { name: 'American Pie' }),
+  });
+  await resultCard.getByRole('button', { name: 'Grab' }).click();
+
+  await expect
+    .poll(() => api.resolveGrabBodies.length, {
+      message: 'plex-only result should be resolved before opening the grab dialog',
+    })
+    .toBe(1);
+
+  const dialog = page.getByRole('dialog', { name: 'Grab title' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText(
+    'Plex already has this title. Confirm to download an alternate release anyway.',
+  );
+});
+
+test('arr-tracked search results still use the normal grab dialog with alternate-release confirmation', async ({
+  page,
+}) => {
+  const api = await mockAppApi(page, {
+    searchResponse: () => [
+      {
+        id: 'movie:603',
+        arrItemId: 603,
+        kind: 'movie',
+        title: 'The Matrix',
+        year: 1999,
+        rating: 8.7,
+        poster: null,
+        overview: 'Sci-fi',
+        status: 'Already in Arr',
+        isExisting: true,
+        isRequested: true,
+        auditStatus: 'pending',
+        audioLanguages: [],
+        subtitleLanguages: [],
+        sourceService: 'radarr',
+        origin: 'arr',
+        inArr: true,
+        inPlex: false,
+        plexLibraries: [],
+        canAdd: false,
+        detail: null,
+        requestPayload: { id: 603, tmdbId: 603 },
+      },
+    ],
+    grabResponse: (body) =>
+      mockJson({
+        existing: true,
+        item: {
+          ...(body.item as Record<string, unknown>),
+          arrItemId: 603,
+          canAdd: false,
+          inArr: true,
+          isExisting: true,
+          isRequested: true,
+          status: 'Already in Arr',
+        },
+        message: 'The Matrix is already tracked in Radarr. Alternate-release acquisition started.',
+        releaseDecision: null,
+        job: {
+          id: 'job-movie-603-alt',
+          itemId: 'movie:603',
+          arrItemId: 603,
+          kind: 'movie',
+          title: 'The Matrix',
+          sourceService: 'radarr',
+          status: 'queued',
+          attempt: 1,
+          maxRetries: 3,
+          currentRelease: null,
+          selectedReleaser: null,
+          preferredReleaser: 'flux',
+          reasonCode: null,
+          failureReason: null,
+          validationSummary: null,
+          autoRetrying: false,
+          progress: null,
+          queueStatus: null,
+          preferences: {
+            preferredLanguage: 'English',
+            subtitleLanguage: 'English',
+          },
+          startedAt: '2026-04-13T12:00:00.000Z',
+          updatedAt: '2026-04-13T12:00:00.000Z',
+          completedAt: null,
+          attempts: [],
+        },
+      }),
+  });
+  await openSearch(page, api, 'Matrix', 'The Matrix');
+
+  const matrixCard = page.locator('article').filter({
+    has: page.getByRole('heading', { name: 'The Matrix' }),
+  });
+  await matrixCard.getByRole('button', { name: 'Grab' }).click();
+
+  const dialog = page.getByRole('dialog', { name: 'Grab title' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText(
+    'Arr is already tracking this title. Confirm to download an alternate release anyway.',
+  );
+
+  await dialog.getByRole('button', { name: 'Grab', exact: true }).click();
+
+  await expect
+    .poll(() => api.grabBodies.length, {
+      message: 'tracked Arr result should still submit through the standard grab flow',
+    })
+    .toBe(1);
+  await expect(page.getByRole('dialog', { name: 'Grab title' })).toHaveCount(0);
+  await expect(page.getByRole('status')).toContainText(
+    'Alternate-release acquisition started.',
+  );
 });

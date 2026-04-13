@@ -8,6 +8,8 @@ import {
   ensureMovieMissing,
   findMovieByTitleYear,
   getMovieById,
+  listMovies,
+  ensureMovieTracked,
 } from '../integration/support/live-radarr';
 import {
   ensureSeriesMissing,
@@ -301,6 +303,45 @@ async function findLiveSeriesTarget(): Promise<{ title: string; year: number } |
   return null;
 }
 
+async function findTrackedMovieTarget(): Promise<{ title: string; year: number } | null> {
+  const configuredDuplicate = await findMovieByTitleYear(config, config.duplicateMovie).catch(() => null);
+  if (configuredDuplicate && configuredDuplicate.year !== null) {
+    return {
+      title: configuredDuplicate.title,
+      year: configuredDuplicate.year,
+    };
+  }
+
+  const trackedMovies = await listMovies(config);
+
+  for (const candidate of trackedMovies) {
+    if (candidate.year === null) {
+      continue;
+    }
+
+    const results = await getJson<SearchResultItem[]>(
+      `${config.baseUrl}/api/search?q=${encodeURIComponent(candidate.title)}&kind=movie&availability=all`,
+    ).catch(() => []);
+    const match =
+      results.find(
+        (item) =>
+          item.kind === 'movie' &&
+          item.inArr &&
+          item.title.localeCompare(candidate.title, undefined, { sensitivity: 'accent' }) === 0 &&
+          item.year === candidate.year,
+      ) ?? null;
+
+    if (match && match.year !== null) {
+      return {
+        title: match.title,
+        year: match.year,
+      };
+    }
+  }
+
+  return null;
+}
+
 test.beforeAll(() => {
   assertLiveIntegrationEnabled(config);
 });
@@ -352,6 +393,45 @@ test('movie live UI covers search, grab, and cancel', async ({
     const tracked = await getMovieById(config, job.arrItemId);
     return tracked?.monitored === false ? tracked : null;
   }, 45_000);
+});
+
+test('tracked movie live UI still offers the normal grab confirmation flow', async ({ page }) => {
+  test.setTimeout(120_000);
+
+  const trackedMovie =
+    (await ensureMovieTracked(config, config.duplicateMovie).catch(() => null)) ??
+    (await findTrackedMovieTarget());
+  test.skip(
+    trackedMovie === null || trackedMovie.year === null,
+    'No searchable tracked Radarr movie is currently available for alternate-grab UI verification.',
+  );
+  if (!trackedMovie || trackedMovie.year === null) {
+    return;
+  }
+
+  await searchForTitle(page, trackedMovie.title, 'Movies');
+
+  const resultCard = page
+    .getByTestId('search-result-card')
+    .filter({ has: page.getByRole('heading', { name: trackedMovie.title, exact: true }) })
+    .filter({ hasText: trackedMovie.year.toString() })
+    .first();
+  await expect(resultCard).toBeVisible();
+  await expect(resultCard).toContainText(trackedMovie.year.toString());
+
+  const grabButton = resultCard.getByRole('button', { name: 'Grab', exact: true });
+  await expect(grabButton).toBeVisible();
+  await expect(grabButton).toBeEnabled();
+  await grabButton.click();
+
+  const dialog = page.getByRole('dialog', { name: 'Grab title' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText(
+    /Arr is already tracking this title|Plex already has this title and Arr is already tracking it/i,
+  );
+
+  await dialog.getByLabel('Close grab confirmation').click();
+  await expect(dialog).toHaveCount(0);
 });
 
 test('live UI shows actual download progress when Arr already has an active download', async ({

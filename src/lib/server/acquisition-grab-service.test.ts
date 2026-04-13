@@ -324,4 +324,75 @@ describe('acquisition grab service', () => {
     expect(result.job?.id).toBe(createdJob.id);
     expect(result.item.arrItemId).toBe(80);
   });
+
+  it('starts an alternate acquisition job for items already tracked in Arr', async () => {
+    const trackedSeriesItem: MediaItem = {
+      ...seriesItem,
+      arrItemId: 80,
+      canAdd: true,
+      inArr: true,
+      isExisting: true,
+      isRequested: true,
+      status: 'Already in Arr',
+    };
+    const fetchExistingSeries = vi.fn().mockResolvedValue({
+      ...trackedSeriesItem,
+      canAdd: false,
+      sourceService: 'sonarr',
+    } satisfies MediaItem);
+    const createJob = vi.fn().mockReturnValue(createdJob);
+    const arrFetch = vi.fn();
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      acquisitionMaxRetries: () => 4,
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/config-service', () => ({
+      fetchServiceDefaults: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        recordJobCreated: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        enqueue: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        createJob,
+        findActiveJob: vi.fn().mockReturnValue(null),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      findPreferredReleaser: vi.fn().mockReturnValue('flux'),
+    }));
+    vi.doMock('$lib/server/lookup-service', () => ({
+      fetchExistingMovie: vi.fn(),
+      fetchExistingSeries,
+    }));
+
+    const module = await import('$lib/server/acquisition-grab-service');
+    const result = await module.grabItem(trackedSeriesItem, {
+      preferredLanguage: 'English',
+      subtitleLanguage: 'Any',
+    });
+
+    expect(arrFetch).not.toHaveBeenCalled();
+    expect(fetchExistingSeries).toHaveBeenCalledWith(
+      80,
+      expect.objectContaining({
+        preferredLanguage: 'English',
+        subtitleLanguage: 'Any',
+      }),
+      null,
+      null,
+    );
+    expect(createJob).toHaveBeenCalledTimes(1);
+    expect(result.existing).toBe(true);
+    expect(result.job?.id).toBe(createdJob.id);
+    expect(result.message).toContain('Alternate-release acquisition started');
+  });
 });

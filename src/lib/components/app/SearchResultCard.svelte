@@ -94,15 +94,15 @@ let { feedback, item, state }: {
     </div>
   {/if}
 
-  {#if item.canAdd || state.canGrabWithPlexConfirmation(item)}
+  {#if state.canStartGrabFlow(item)}
     <div class="mt-3">
       <button
         class="control-primary min-h-11 w-full px-4 text-sm font-700 disabled:cursor-not-allowed disabled:opacity-50"
         type="button"
-        disabled={actionDisabled(item, state.grabbing)}
-        onclick={() => state.openAddConfirm(item)}
+        disabled={state.resolvingGrabItemId === item.id || actionDisabled(item, state.grabbing)}
+        onclick={() => void state.openAddConfirm(item)}
       >
-        {actionLabel(item, state.grabbing)}
+        {state.resolvingGrabItemId === item.id ? 'Preparing...' : actionLabel(item, state.grabbing)}
       </button>
     </div>
   {:else}

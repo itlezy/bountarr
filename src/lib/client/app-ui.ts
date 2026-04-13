@@ -54,7 +54,7 @@ export function actionLabel(item: MediaItem, grabbingId: string | null): string 
     return 'Grabbing...';
   }
 
-  if (item.canAdd || canGrabWithPlexConfirmation(item)) {
+  if (canStartGrabFlow(item)) {
     return 'Grab';
   }
 
@@ -70,7 +70,7 @@ export function actionLabel(item: MediaItem, grabbingId: string | null): string 
 }
 
 export function actionDisabled(item: MediaItem, grabbingId: string | null): boolean {
-  return grabbingId === item.id || (!item.canAdd && !canGrabWithPlexConfirmation(item));
+  return grabbingId === item.id || !canStartGrabFlow(item);
 }
 
 export function deleteActionLabel(item: MediaItem, deletingId: string | null): string {
@@ -121,13 +121,30 @@ export function resultMessage(item: MediaItem): string {
   return 'This title can be grabbed now.';
 }
 
-// Plex-backed merged results still need an explicit confirmation, but they use the same managed
-// grab flow when Arr can accept them.
-export function canGrabWithPlexConfirmation(item: MediaItem): boolean {
-  return item.inPlex && !item.inArr && item.origin === 'merged' && item.requestPayload !== null;
+// Already-available or already-tracked results still use the managed grab flow, but the user must
+// explicitly confirm that they want an alternate release.
+export function canGrabWithConfirmation(item: MediaItem): boolean {
+  if (item.requestPayload === null) {
+    return false;
+  }
+
+  if (item.inArr) {
+    return item.sourceService !== 'plex';
+  }
+
+  return item.inPlex && item.origin === 'merged';
 }
 
-export function plexConfirmedGrabItem(item: MediaItem): MediaItem {
+// Pure Plex results need one extra resolve step before the normal grab dialog can open.
+export function canResolveGrabCandidate(item: MediaItem): boolean {
+  return item.sourceService === 'plex' && item.requestPayload !== null;
+}
+
+export function canStartGrabFlow(item: MediaItem): boolean {
+  return item.canAdd || canGrabWithConfirmation(item) || canResolveGrabCandidate(item);
+}
+
+export function confirmedGrabItem(item: MediaItem): MediaItem {
   return {
     ...item,
     canAdd: true,

@@ -199,3 +199,23 @@ export async function submitGrab(
     'Grab failed.',
   );
 }
+
+export async function resolveGrabCandidate(
+  item: MediaItem,
+  preferences: UserPreferencesPayload,
+): Promise<MediaItem | null> {
+  return requestJson<MediaItem | null>(
+    '/api/grab/resolve',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        item,
+        preferences,
+      }),
+    },
+    'Unable to prepare this title for grabbing.',
+  );
+}

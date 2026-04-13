@@ -49,6 +49,7 @@ function releaseOptions(job: PersistedAcquisitionJob) {
   return {
     kind: job.kind,
     preferredReleaser: job.preferredReleaser,
+    targetTitle: job.title,
   } as const;
 }
 
@@ -95,7 +96,7 @@ function mapManualReleaseStatus(
     return 'arr-rejected';
   }
 
-  return release.acceptedByLocalRules ? 'accepted' : 'locally-rejected';
+  return release.autoSelectable ? 'accepted' : 'locally-rejected';
 }
 
 function toManualReleaseResult(
@@ -107,6 +108,8 @@ function toManualReleaseResult(
     ...release.candidate,
     canSelect: true,
     downloadAllowed: !release.arrRejected || release.rejectionReasons.length === 0,
+    identityReason: release.identityReason,
+    identityStatus: release.identityStatus,
     rejectedByArr: release.arrRejected,
     rejectionReasons: release.rejectionReasons,
     status: mapManualReleaseStatus(release, selectedGuid, failedGuids),
@@ -201,7 +204,7 @@ export async function findManualReleaseSelection(
   const selection = {
     payload: matched.payload,
     decision: {
-      accepted: inventory.evaluated.filter((release) => release.acceptedByLocalRules).length,
+      accepted: inventory.evaluated.filter((release) => release.autoSelectable).length,
       considered: inventory.mappedReleases,
       reason: `User selected ${matched.candidate.title}: ${matched.candidate.reason}`,
       selected: matched.candidate,

@@ -241,6 +241,86 @@ describe('API routes', () => {
     expect(payload.message).toContain('already tracked');
   });
 
+  it('returns resolved Arr-backed grab candidates for Plex-only items', async () => {
+    const resolveGrabCandidateFromPlexItem = vi.fn().mockResolvedValue(mediaItemFixture);
+    const route = await loadRouteModule<{
+      POST: (event: { request: Request }) => Promise<Response>;
+    }>('../../routes/api/grab/resolve/+server', {
+      '$lib/server/lookup-service': () => ({
+        resolveGrabCandidateFromPlexItem,
+      }),
+    });
+
+    const response = await route.POST(
+      createPostEvent('http://local.test/api/grab/resolve', {
+        item: {
+          ...mediaItemFixture,
+          sourceService: 'plex',
+          origin: 'plex',
+          inPlex: true,
+          canAdd: false,
+        },
+        preferences: {
+          preferredLanguage: 'English',
+          subtitleLanguage: 'English',
+        },
+      }),
+    );
+    const payload = await readJson<typeof mediaItemFixture>(response);
+
+    expect(resolveGrabCandidateFromPlexItem).toHaveBeenCalledTimes(1);
+    expect(payload).toEqual(mediaItemFixture);
+  });
+
+  it('accepts browser UI exception reports and returns ok', async () => {
+    const route = await loadRouteModule<{
+      POST: (event: {
+        getClientAddress: () => string;
+        request: Request;
+        url: URL;
+      }) => Promise<Response>;
+    }>('../../routes/api/client-errors/+server', {});
+
+    const response = await route.POST({
+      ...createPostEvent('http://local.test/api/client-errors', {
+        kind: 'window-error',
+        message: 'Boom',
+        stack: 'stack trace',
+        source: 'SearchView.svelte',
+        line: 14,
+        column: 6,
+      }),
+      getClientAddress: () => '127.0.0.1',
+      url: new URL('http://local.test/api/client-errors'),
+    });
+    const payload = await readJson<{ ok: boolean }>(response);
+
+    expect(response.status).toBe(200);
+    expect(payload).toEqual({ ok: true });
+  });
+
+  it('rejects browser UI exception reports without a message', async () => {
+    const route = await loadRouteModule<{
+      POST: (event: {
+        getClientAddress: () => string;
+        request: Request;
+        url: URL;
+      }) => Promise<Response>;
+    }>('../../routes/api/client-errors/+server', {});
+
+    await expect(
+      route.POST({
+        ...createPostEvent('http://local.test/api/client-errors', {
+          kind: 'window-error',
+        }),
+        getClientAddress: () => '127.0.0.1',
+        url: new URL('http://local.test/api/client-errors'),
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+    });
+  });
+
   it('rejects media delete calls without a deletable Arr item', async () => {
     const route = await loadRouteModule<{
       POST: (event: { request: Request }) => Promise<Response>;

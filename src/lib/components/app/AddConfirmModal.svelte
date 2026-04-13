@@ -101,9 +101,15 @@ function seasonLabel(seasonNumber: number): string {
           </select>
         </label>
 
-        {#if state.confirmPlexAvailability}
+        {#if confirmItem.inArr || confirmItem.inPlex}
           <div class="rounded-[14px] border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
-            Plex already has this title. Confirm to send a managed grab to Arr anyway.
+            {#if confirmItem.inArr && confirmItem.inPlex}
+              Plex already has this title and Arr is already tracking it. Confirm to download an alternate release anyway.
+            {:else if confirmItem.inArr}
+              Arr is already tracking this title. Confirm to download an alternate release anyway.
+            {:else}
+              Plex already has this title. Confirm to download an alternate release anyway.
+            {/if}
           </div>
         {/if}
 

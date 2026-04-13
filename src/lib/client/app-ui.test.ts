@@ -5,9 +5,10 @@ import {
   acquisitionReasonSummary,
   actionDisabled,
   actionLabel,
-  canGrabWithPlexConfirmation,
+  canGrabWithConfirmation,
+  canResolveGrabCandidate,
+  confirmedGrabItem,
   grabFeedbackMessage,
-  plexConfirmedGrabItem,
 } from '$lib/client/app-ui';
 import type { AcquisitionJob, GrabResponse, MediaItem } from '$lib/shared/types';
 
@@ -101,7 +102,7 @@ describe('app-ui acquisition helpers', () => {
     );
   });
 
-  it('allows a Plex-confirmed grab when a merged Plex result still has Arr request context', () => {
+  it('allows a confirmed grab when a merged Plex result still has Arr request context', () => {
     const item: MediaItem = {
       id: 'movie:603',
       kind: 'movie',
@@ -126,12 +127,78 @@ describe('app-ui acquisition helpers', () => {
       requestPayload: { tmdbId: 603 },
     };
 
-    expect(canGrabWithPlexConfirmation(item)).toBe(true);
-    expect(plexConfirmedGrabItem(item)).toMatchObject({
+    expect(canGrabWithConfirmation(item)).toBe(true);
+    expect(confirmedGrabItem(item)).toMatchObject({
       canAdd: true,
       sourceService: 'radarr',
       origin: 'arr',
     });
+    expect(actionLabel(item, null)).toBe('Grab');
+    expect(actionDisabled(item, null)).toBe(false);
+  });
+
+  it('allows a confirmed grab when Arr already tracks the title', () => {
+    const item: MediaItem = {
+      id: 'movie:603',
+      kind: 'movie',
+      title: 'The Matrix',
+      year: 1999,
+      rating: 8.7,
+      poster: null,
+      overview: 'Sci-fi',
+      status: 'Already in Arr',
+      isExisting: true,
+      isRequested: true,
+      auditStatus: 'pending',
+      audioLanguages: [],
+      subtitleLanguages: [],
+      sourceService: 'radarr',
+      origin: 'arr',
+      inArr: true,
+      inPlex: false,
+      plexLibraries: [],
+      canAdd: false,
+      detail: null,
+      requestPayload: { id: 603, tmdbId: 603 },
+    };
+
+    expect(canGrabWithConfirmation(item)).toBe(true);
+    expect(confirmedGrabItem(item)).toMatchObject({
+      canAdd: true,
+      inArr: true,
+      sourceService: 'radarr',
+    });
+    expect(actionLabel(item, null)).toBe('Grab');
+    expect(actionDisabled(item, null)).toBe(false);
+  });
+
+  it('shows Grab for Plex-only results that can be resolved to an Arr candidate', () => {
+    const item: MediaItem = {
+      id: 'plex:movie:2105',
+      kind: 'movie',
+      title: 'American Pie',
+      year: 1999,
+      rating: 7.0,
+      poster: null,
+      overview: 'Comedy',
+      status: 'Available in Plex',
+      isExisting: false,
+      isRequested: false,
+      auditStatus: 'pending',
+      audioLanguages: [],
+      subtitleLanguages: [],
+      sourceService: 'plex',
+      origin: 'plex',
+      inArr: false,
+      inPlex: true,
+      plexLibraries: ['Movies'],
+      canAdd: false,
+      detail: null,
+      requestPayload: { Guid: [{ id: 'tmdb://2105' }] },
+    };
+
+    expect(canResolveGrabCandidate(item)).toBe(true);
+    expect(canGrabWithConfirmation(item)).toBe(false);
     expect(actionLabel(item, null)).toBe('Grab');
     expect(actionDisabled(item, null)).toBe(false);
   });

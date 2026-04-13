@@ -793,4 +793,189 @@ describe('lookupItems', () => {
     expect(searchPlex).toHaveBeenCalledWith('Rambo 3', 'movie');
     expect(notAvailableResults.map((item) => item.title)).not.toContain('Rambo III');
   });
+
+  it('keeps tracked Arr titles visible in not-available-only when Plex also has them', async () => {
+    const arrFetch = vi
+      .fn()
+      .mockImplementation(
+        async (
+          service: string,
+          path: string,
+          _init: unknown,
+          query?: Record<string, string | number>,
+        ) => {
+          if (service === 'radarr' && path === '/api/v3/movie/lookup' && query?.term === 'Matrix') {
+            return [
+              {
+                title: 'The Matrix',
+                year: 1999,
+                id: 42,
+                tmdbId: 603,
+                monitored: true,
+                hasFile: true,
+                path: 'C:\\Media\\Movies\\The Matrix (1999)',
+                added: '2025-04-22T10:28:21Z',
+              },
+            ];
+          }
+
+          if (service === 'radarr' && path === '/api/v3/movie/42') {
+            return {
+              id: 42,
+              title: 'The Matrix',
+              year: 1999,
+              tmdbId: 603,
+              monitored: true,
+              hasFile: true,
+              path: 'C:\\Media\\Movies\\The Matrix (1999)',
+            };
+          }
+
+          if (service === 'radarr' && path === '/api/v3/moviefile/42') {
+            return {
+              id: 42,
+              path: 'C:\\Media\\Movies\\The Matrix (1999)\\The.Matrix.1999.mkv',
+            };
+          }
+
+          return [];
+        },
+      );
+
+    const searchPlex = vi.fn().mockResolvedValue([
+      {
+        id: 'plex:movie:603',
+        kind: 'movie',
+        title: 'The Matrix',
+        year: 1999,
+        rating: 8.7,
+        poster: null,
+        overview: 'Plex copy',
+        status: 'Already in Plex',
+        isExisting: false,
+        isRequested: false,
+        auditStatus: 'pending',
+        audioLanguages: [],
+        subtitleLanguages: [],
+        sourceService: 'plex',
+        origin: 'plex',
+        inArr: false,
+        inPlex: true,
+        plexLibraries: ['Movies'],
+        canAdd: false,
+        detail: null,
+        requestPayload: {
+          Guid: [{ id: 'tmdb://603' }],
+        },
+      },
+    ]);
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/plex-service', () => ({
+      searchPlex,
+    }));
+    vi.doMock('$lib/server/runtime', () => ({
+      getConfiguredServiceFlags: () => ({
+        configured: true,
+        plexConfigured: true,
+        radarrConfigured: true,
+        sonarrConfigured: false,
+      }),
+    }));
+
+    const module = await import('$lib/server/lookup-service');
+    const notAvailableResults = await module.lookupItems('Matrix', 'movie', undefined, {
+      availability: 'not-available-only',
+    });
+
+    expect(notAvailableResults).toHaveLength(1);
+    expect(notAvailableResults[0]).toMatchObject({
+      title: 'The Matrix',
+      inArr: true,
+      inPlex: true,
+    });
+  });
+
+  it('resolves Plex-only movie results into Arr-backed grab candidates', async () => {
+    const plexOnlyItem: MediaItem = {
+      id: 'plex:movie:2105',
+      kind: 'movie',
+      title: 'American Pie',
+      year: 1999,
+      rating: 7.0,
+      poster: null,
+      overview: 'Plex copy',
+      status: 'Already in Plex',
+      isExisting: false,
+      isRequested: false,
+      auditStatus: 'pending',
+      audioLanguages: [],
+      subtitleLanguages: [],
+      sourceService: 'plex',
+      origin: 'plex',
+      inArr: false,
+      inPlex: true,
+      plexLibraries: ['Movies'],
+      canAdd: false,
+      detail: null,
+      requestPayload: {
+        Guid: [{ id: 'tmdb://2105' }],
+      },
+    };
+
+    const arrFetch = vi
+      .fn()
+      .mockImplementation(
+        async (
+          service: string,
+          path: string,
+          _init: unknown,
+          query?: Record<string, string | number>,
+        ) => {
+          if (service === 'radarr' && path === '/api/v3/movie/lookup' && query?.term === 'American Pie') {
+            return [
+              {
+                title: 'American Pie',
+                year: 1999,
+                tmdbId: 2105,
+                imdbId: 'tt0163651',
+                status: 'released',
+                monitored: false,
+              },
+            ];
+          }
+
+          return [];
+        },
+      );
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/plex-service', () => ({
+      searchPlex: vi.fn().mockResolvedValue([]),
+    }));
+    vi.doMock('$lib/server/runtime', () => ({
+      getConfiguredServiceFlags: () => ({
+        configured: true,
+        plexConfigured: true,
+        radarrConfigured: true,
+        sonarrConfigured: false,
+      }),
+    }));
+
+    const module = await import('$lib/server/lookup-service');
+    const resolved = await module.resolveGrabCandidateFromPlexItem(plexOnlyItem);
+
+    expect(resolved).toMatchObject({
+      title: 'American Pie',
+      inPlex: true,
+      origin: 'merged',
+      requestPayload: expect.objectContaining({
+        tmdbId: 2105,
+      }),
+    });
+  });
 });
