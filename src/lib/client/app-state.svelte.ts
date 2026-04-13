@@ -143,6 +143,10 @@ function asRecord(value: unknown): Record<string, unknown> {
   return {};
 }
 
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
 function asNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value;
@@ -249,6 +253,36 @@ function sortSearchItems(
   });
 }
 
+function seasonNumbersFromItem(item: MediaItem | null): number[] {
+  if (!item || item.kind !== 'series') {
+    return [];
+  }
+
+  const unique = new Set<number>();
+  for (const season of asArray(asRecord(item.requestPayload).seasons)) {
+    const seasonNumber = asNumber(asRecord(season).seasonNumber);
+    if (seasonNumber !== null) {
+      unique.add(seasonNumber);
+    }
+  }
+
+  return [...unique].sort((left, right) => left - right);
+}
+
+function defaultSeasonNumbersForItem(item: MediaItem | null): number[] {
+  const seasonNumbers = seasonNumbersFromItem(item);
+  if (seasonNumbers.length === 0) {
+    return [];
+  }
+
+  if (seasonNumbers.includes(1)) {
+    return [1];
+  }
+
+  const firstPositiveSeason = seasonNumbers.find((seasonNumber) => seasonNumber > 0);
+  return [firstPositiveSeason ?? seasonNumbers[0]];
+}
+
 export type PageData = {
   config: ConfigStatus;
   recentPlex: MediaItem[];
@@ -257,10 +291,14 @@ export type PageData = {
 export class AppState {
   readonly dependencies: AppStateDependencies;
   readonly readData: () => PageData;
+  private static readonly addConfirmReopenCooldownMs = 500;
   private searchRequestSequence = 0;
   private latestSearchRequest = 0;
   private searchDebounceHandle: ReturnType<typeof globalThis.setTimeout> | null = null;
   private addSuccessToastHandle: ReturnType<typeof globalThis.setTimeout> | null = null;
+  private mobileMediaQuery: MediaQueryList | null = null;
+  private handleMobileMediaQueryChange: ((event: MediaQueryListEvent) => void) | null = null;
+  private suppressAddConfirmOpenUntil = 0;
 
   initialized = $state(false);
   activeView = $state<AppView>('search');
@@ -283,7 +321,6 @@ export class AppState {
   queueError = $state<string | null>(null);
   manualReleaseError = $state<Record<string, string | null>>({});
   manualReleaseLists = $state<Record<string, ManualReleaseListResponse | null>>({});
-  manualReleaseOpen = $state<Record<string, boolean>>({});
   manualSelectionError = $state<Record<string, string | null>>({});
   requestError = $state<string | null>(null);
   deleteError = $state<string | null>(null);
@@ -307,6 +344,9 @@ export class AppState {
   confirmQualityProfileId = $state<number | null>(null);
   confirmPreferredLanguage = $state<PreferredLanguage>(defaultPreferences.preferredLanguage);
   confirmSubtitleLanguage = $state<PreferredLanguage>(defaultPreferences.subtitleLanguage);
+  confirmSeasonNumbers = $state<number[]>([]);
+  activeManualReleaseJobId = $state<string | null>(null);
+  isMobileViewport = $state(false);
   operatorReveals = $state<Record<string, boolean>>({});
   guidedQueueJobId = $state<string | null>(null);
   guidedQueueTitle = $state<string | null>(null);
@@ -385,7 +425,70 @@ export class AppState {
   }
 
   manualReleaseListOpen(jobId: string): boolean {
-    return this.manualReleaseOpen[jobId] === true;
+    return this.activeManualReleaseJobId === jobId;
+  }
+
+  get activeManualReleaseJob(): AcquisitionJob | null {
+    if (!this.activeManualReleaseJobId) {
+      return null;
+    }
+
+    return (
+      this.queue?.acquisitionJobs.find((job) => job.id === this.activeManualReleaseJobId) ?? null
+    );
+  }
+
+  queueItemForAcquisitionJob(job: AcquisitionJob): QueueItem | null {
+    return (
+      this.queue?.items.find(
+        (item) => item.arrItemId === job.arrItemId && item.sourceService === job.sourceService,
+      ) ?? null
+    );
+  }
+
+  get hasOpenOverlay(): boolean {
+    return (
+      this.confirmAddItem !== null ||
+      this.activeManualReleaseJobId !== null ||
+      (this.isMobileViewport && this.kindMenuOpen)
+    );
+  }
+
+  get usesFullscreenDialogs(): boolean {
+    return this.isMobileViewport;
+  }
+
+  get confirmSeasonOptions(): number[] {
+    return seasonNumbersFromItem(this.confirmAddItem);
+  }
+
+  get confirmSeasonSelectionRequired(): boolean {
+    return this.confirmAddItem?.kind === 'series' && this.confirmSeasonOptions.length > 0;
+  }
+
+  get confirmCanSubmit(): boolean {
+    return !this.confirmSeasonSelectionRequired || this.confirmSeasonNumbers.length > 0;
+  }
+
+  confirmSeasonSelected(seasonNumber: number): boolean {
+    return this.confirmSeasonNumbers.includes(seasonNumber);
+  }
+
+  toggleConfirmSeason(seasonNumber: number): void {
+    if (!this.confirmSeasonOptions.includes(seasonNumber)) {
+      return;
+    }
+
+    if (this.confirmSeasonSelected(seasonNumber)) {
+      this.confirmSeasonNumbers = this.confirmSeasonNumbers.filter(
+        (selectedSeasonNumber) => selectedSeasonNumber !== seasonNumber,
+      );
+      return;
+    }
+
+    this.confirmSeasonNumbers = [...this.confirmSeasonNumbers, seasonNumber].sort(
+      (left, right) => left - right,
+    );
   }
 
   async loadManualReleaseResults(jobId: string, force = false): Promise<void> {
@@ -425,16 +528,33 @@ export class AppState {
     }
   }
 
-  async toggleManualReleaseList(jobId: string): Promise<void> {
-    const nextOpen = !this.manualReleaseListOpen(jobId);
-    this.manualReleaseOpen = {
-      ...this.manualReleaseOpen,
-      [jobId]: nextOpen,
+  async openManualReleaseList(jobId: string): Promise<void> {
+    this.activeManualReleaseJobId = jobId;
+    this.manualSelectionError = {
+      ...this.manualSelectionError,
+      [jobId]: null,
     };
+    await this.loadManualReleaseResults(jobId);
+  }
 
-    if (nextOpen) {
-      await this.loadManualReleaseResults(jobId);
+  closeManualReleaseList(): void {
+    if (
+      this.activeManualReleaseJobId &&
+      this.manualSelectingJobId === this.activeManualReleaseJobId
+    ) {
+      return;
     }
+
+    this.activeManualReleaseJobId = null;
+  }
+
+  async toggleManualReleaseList(jobId: string): Promise<void> {
+    if (this.manualReleaseListOpen(jobId)) {
+      this.closeManualReleaseList();
+      return;
+    }
+
+    await this.openManualReleaseList(jobId);
   }
 
   private clearPendingSearchDebounce(): void {
@@ -514,6 +634,10 @@ export class AppState {
   }
 
   openAddConfirm(item: MediaItem, options?: { operatorOverride?: boolean }): void {
+    if (Date.now() < this.suppressAddConfirmOpenUntil) {
+      return;
+    }
+
     const requestItem =
       options?.operatorOverride && this.canOperatorRequestFromPlex(item)
         ? operatorOverrideItem(item)
@@ -528,6 +652,7 @@ export class AppState {
     this.confirmQualityProfileId = this.defaultQualityProfileId(requestItem);
     this.confirmPreferredLanguage = this.preferredLanguage;
     this.confirmSubtitleLanguage = this.subtitleLanguage;
+    this.confirmSeasonNumbers = defaultSeasonNumbersForItem(requestItem);
     this.requestError = null;
     this.closeMenus();
   }
@@ -546,6 +671,7 @@ export class AppState {
     this.confirmQualityProfileId = null;
     this.confirmPreferredLanguage = this.preferredLanguage;
     this.confirmSubtitleLanguage = this.subtitleLanguage;
+    this.confirmSeasonNumbers = [];
   }
 
   async loadDashboard(force = false): Promise<void> {
@@ -674,10 +800,7 @@ export class AppState {
     try {
       const result = await this.dependencies.api.selectManualRelease(jobId, guid, indexerId);
       this.latestActionMessage = result.message;
-      this.manualReleaseOpen = {
-        ...this.manualReleaseOpen,
-        [jobId]: true,
-      };
+      this.activeManualReleaseJobId = jobId;
       await Promise.all([
         this.loadManualReleaseResults(jobId, true),
         this.loadQueue(),
@@ -806,11 +929,13 @@ export class AppState {
     item: MediaItem,
     qualityProfileId: number | null | undefined,
     preferencesOverride: Preferences,
+    seasonNumbers?: number[],
   ): Promise<void>;
   async submitRequest(
     item: MediaItem,
     qualityProfileId?: number | null,
     preferencesOverride?: Preferences,
+    seasonNumbers?: number[],
   ): Promise<void> {
     if (!item.canAdd) {
       return;
@@ -831,15 +956,18 @@ export class AppState {
         item,
         requestPreferences,
         qualityProfileId,
+        seasonNumbers,
       );
+
+      this.suppressAddConfirmOpenUntil = Date.now() + AppState.addConfirmReopenCooldownMs;
+      this.resetAddConfirm();
+      this.requesting = null;
+      this.activeView = 'queue';
 
       this.preferredLanguage = requestPreferences.preferredLanguage;
       this.subtitleLanguage = requestPreferences.subtitleLanguage;
       this.dependencies.storage.savePreferences(this.preferences);
       this.showAddSuccessToast(result.message);
-      this.latestActionMessage = result.job
-        ? `Request sent. ${result.item.title} is now in Queue.`
-        : result.message;
       this.requestFeedback = {
         ...this.requestFeedback,
         [item.id]: requestFeedbackMessage(result),
@@ -848,11 +976,9 @@ export class AppState {
       this.searchResults = this.searchResults.map((candidate) =>
         candidate.id === item.id ? mergeSearchItem(candidate, result.item) : candidate,
       );
-      this.resetAddConfirm();
       this.guidedQueueJobId = result.job?.id ?? null;
       this.guidedQueueTitle = result.item.title;
-      this.activeView = 'queue';
-      await Promise.all([this.loadDashboard(true), this.loadQueue()]);
+      void Promise.all([this.loadDashboard(true), this.loadQueue()]);
     } catch (error) {
       this.requestError = error instanceof Error ? error.message : 'Add failed.';
       this.dependencies.notifications.pushNotification('Bountarr add failed', this.requestError);
@@ -880,6 +1006,14 @@ export class AppState {
     this.cardsView = preferences.cardsView;
     this.theme = preferences.theme;
     this.dependencies.storage.applyTheme(this.theme, this.cardsView);
+    if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+      this.mobileMediaQuery = window.matchMedia('(max-width: 639px)');
+      this.isMobileViewport = this.mobileMediaQuery.matches;
+      this.handleMobileMediaQueryChange = (event: MediaQueryListEvent) => {
+        this.isMobileViewport = event.matches;
+      };
+      this.mobileMediaQuery.addEventListener('change', this.handleMobileMediaQueryChange);
+    }
     this.initialized = true;
 
     if (this.config.plexConfigured && this.data.recentPlex.length === 0) {
@@ -899,6 +1033,11 @@ export class AppState {
     return () => {
       this.dependencies.timers.clearInterval(dashboardInterval);
       this.dependencies.timers.clearInterval(queueInterval);
+      if (this.mobileMediaQuery && this.handleMobileMediaQueryChange) {
+        this.mobileMediaQuery.removeEventListener('change', this.handleMobileMediaQueryChange);
+      }
+      this.mobileMediaQuery = null;
+      this.handleMobileMediaQueryChange = null;
     };
   }
 

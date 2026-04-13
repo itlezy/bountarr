@@ -5,11 +5,15 @@ import {
   acquisitionNextStep,
   acquisitionReasonSummary,
   acquisitionStatusLabel,
+  queueEtaLabel,
 } from '$lib/client/app-ui';
 import type { AppState } from '$lib/client/app-state.svelte';
 import type { AcquisitionJob } from '$lib/shared/types';
 
 let { job, state }: { job: AcquisitionJob; state: AppState } = $props();
+
+const matchedQueueItem = $derived(state.queueItemForAcquisitionJob(job));
+const etaLabel = $derived(matchedQueueItem ? queueEtaLabel(matchedQueueItem) : null);
 </script>
 
 <article class={`card-shell p-3 ${state.isGuidedQueueJob(job.id) ? 'border-sky-400 shadow-[0_0_0_1px_rgba(56,189,248,0.35)]' : ''}`}>
@@ -49,6 +53,12 @@ let { job, state }: { job: AcquisitionJob; state: AppState } = $props();
       <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Queue check</div>
       <div>{job.queueStatus ?? job.validationSummary ?? 'Waiting for more progress'}</div>
     </div>
+    {#if etaLabel}
+      <div class="sm:col-span-2">
+        <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">ETA</div>
+        <div>{etaLabel}</div>
+      </div>
+    {/if}
   </div>
 
   {#if job.failureReason}

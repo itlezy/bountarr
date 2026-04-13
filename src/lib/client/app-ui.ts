@@ -257,6 +257,20 @@ export function queueItemNextStep(item: QueueItem): string {
   return 'Download progress is updating.';
 }
 
+export function queueEtaLabel(
+  item: Pick<QueueItem, 'timeLeft' | 'estimatedCompletionTime'>,
+): string | null {
+  if (item.timeLeft) {
+    return `${item.timeLeft} remaining`;
+  }
+
+  if (item.estimatedCompletionTime) {
+    return `Expected around ${new Date(item.estimatedCompletionTime).toLocaleTimeString()}.`;
+  }
+
+  return null;
+}
+
 export function manualReleaseStatusLabel(status: ManualReleaseResult['status']): string {
   switch (status) {
     case 'selected':

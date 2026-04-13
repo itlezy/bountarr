@@ -36,7 +36,7 @@ async function openQueue(page: Page, api: MockApiController) {
 
 function acquisitionCard(page: Page) {
   return page.locator('article').filter({
-    has: page.getByText(acquisitionJobFixture.title, { exact: true }),
+    has: page.getByRole('button', { name: /manual release options/i }),
   });
 }
 
@@ -60,6 +60,44 @@ test('queue view renders acquisition jobs and active downloads', async ({ page }
   await expect(page.getByRole('button', { name: 'Show operator tools' })).toHaveCount(0);
   await expect(page.getByText('Movie download · Downloading')).toBeVisible();
   await expect(page.getByText('Show grab · Looking for a release')).toBeVisible();
+});
+
+test('queue view shows explicit ETA for downloads and matched grab jobs', async ({ page }) => {
+  const matchingAcquisitionQueueItem = {
+    id: 'sonarr:queue:2',
+    arrItemId: acquisitionJobFixture.arrItemId,
+    canCancel: true,
+    kind: acquisitionJobFixture.kind,
+    title: acquisitionJobFixture.title,
+    year: 2022,
+    poster: 'https://img.example/andor.jpg',
+    sourceService: acquisitionJobFixture.sourceService,
+    status: 'Downloading',
+    progress: 58,
+    timeLeft: '18m',
+    estimatedCompletionTime: '2026-04-13T12:18:00.000Z',
+    size: 4_000_000_000,
+    sizeLeft: 1_200_000_000,
+    queueId: 2,
+    detail: 'Andor.S01.1080p.WEB-DL-FLUX',
+  } as const;
+  const api = await mockAppApi(page, {
+    queue: buildQueueResponse([acquisitionJobFixture], [queueItemFixture, matchingAcquisitionQueueItem]),
+  });
+
+  await openQueue(page, api);
+
+  const downloadCard = page.locator('article').filter({
+    has: page.getByText(queueItemFixture.title, { exact: true }),
+  });
+  await expect(downloadCard.getByText('75%', { exact: true })).toBeVisible();
+  await expect(downloadCard.getByText('ETA', { exact: true })).toBeVisible();
+  await expect(downloadCard.getByText('10m remaining', { exact: true })).toBeVisible();
+
+  const card = acquisitionCard(page);
+  await expect(card.getByText('42%', { exact: true })).toBeVisible();
+  await expect(card.getByText('ETA', { exact: true })).toBeVisible();
+  await expect(card.getByText('18m remaining', { exact: true })).toBeVisible();
 });
 
 test('manual release dialog uses responsive modal layout', async ({ page }, testInfo) => {

@@ -3,6 +3,7 @@ import { AppState } from '$lib/client/app-state.svelte';
 import type { AppStateDependencies } from '$lib/client/app-state.svelte';
 import type { PageData } from '$lib/client/app-state.svelte';
 import type {
+  AcquisitionJob,
   DashboardResponse,
   MediaItem,
   ManualReleaseListResponse,
@@ -104,11 +105,96 @@ const movieItem: MediaItem = {
   requestPayload: { tmdbId: 603 },
 };
 
+const seriesItem: MediaItem = {
+  id: 'series:1399',
+  kind: 'series',
+  title: 'Game of Thrones',
+  year: 2011,
+  rating: 9.2,
+  poster: null,
+  overview: 'Fantasy',
+  status: 'Ready to add',
+  isExisting: false,
+  isRequested: false,
+  auditStatus: 'pending',
+  audioLanguages: [],
+  subtitleLanguages: [],
+  sourceService: 'sonarr',
+  origin: 'arr',
+  inArr: false,
+  inPlex: false,
+  plexLibraries: [],
+  canAdd: true,
+  detail: null,
+  requestPayload: {
+    tvdbId: 121361,
+    seasons: [
+      { seasonNumber: 0, monitored: false },
+      { seasonNumber: 1, monitored: false },
+      { seasonNumber: 2, monitored: false },
+    ],
+  },
+};
+
 const queueResponse: QueueResponse = {
   updatedAt: '2026-04-02T10:05:00.000Z',
   items: [],
   acquisitionJobs: [],
   total: 0,
+};
+
+const acquisitionJob: AcquisitionJob = {
+  id: 'job-1',
+  itemId: movieItem.id,
+  arrItemId: 603,
+  kind: 'movie',
+  title: movieItem.title,
+  sourceService: 'radarr',
+  status: 'queued',
+  attempt: 1,
+  maxRetries: 4,
+  currentRelease: null,
+  selectedReleaser: null,
+  preferredReleaser: 'flux',
+  reasonCode: null,
+  failureReason: null,
+  validationSummary: null,
+  autoRetrying: false,
+  progress: null,
+  queueStatus: 'Queued',
+  preferences: {
+    preferredLanguage: 'English',
+    subtitleLanguage: 'English',
+  },
+  startedAt: '2026-04-02T10:05:00.000Z',
+  updatedAt: '2026-04-02T10:05:00.000Z',
+  completedAt: null,
+  attempts: [],
+};
+
+const manualReleaseResponse: ManualReleaseListResponse = {
+  jobId: 'job-1',
+  releases: [
+    {
+      title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      guid: 'guid-1',
+      indexer: 'Indexer',
+      indexerId: 11,
+      protocol: 'torrent',
+      size: 4_000_000_000,
+      languages: ['English'],
+      score: 160,
+      reason: 'matched proven releaser',
+      canSelect: true,
+      downloadAllowed: true,
+      rejectedByArr: false,
+      rejectionReasons: [],
+      status: 'accepted',
+    },
+  ],
+  selectedGuid: null,
+  summary: 'One manual-search release is available.',
+  updatedAt: '2026-04-02T10:05:00.000Z',
 };
 
 const dashboardResponse: DashboardResponse = {
@@ -215,6 +301,29 @@ describe('app state', () => {
     expect(state.confirmQualityProfileId).toBe(7);
   });
 
+  it('defaults series add confirmation to the first season only', () => {
+    const state = new AppState(pageData, createDependencies());
+
+    state.openAddConfirm(seriesItem);
+
+    expect(state.confirmAddItem).toEqual(seriesItem);
+    expect(state.confirmQualityProfileId).toBe(11);
+    expect(state.confirmSeasonOptions).toEqual([0, 1, 2]);
+    expect(state.confirmSeasonNumbers).toEqual([1]);
+    expect(state.confirmCanSubmit).toBe(true);
+  });
+
+  it('clears selected seasons when the add confirmation resets', () => {
+    const state = new AppState(pageData, createDependencies());
+
+    state.openAddConfirm(seriesItem);
+    state.toggleConfirmSeason(2);
+    state.resetAddConfirm();
+
+    expect(state.confirmAddItem).toBeNull();
+    expect(state.confirmSeasonNumbers).toEqual([]);
+  });
+
   it('updates the queue view and request feedback after a successful add', async () => {
     const requestResponse: RequestResponse = {
       existing: false,
@@ -271,7 +380,7 @@ describe('app state', () => {
     await state.submitRequest(movieItem, state.confirmQualityProfileId);
 
     expect(state.activeView).toBe('queue');
-    expect(state.latestActionMessage).toBe('Request sent. The Matrix is now in Queue.');
+    expect(state.latestActionMessage).toBeNull();
     expect(state.addSuccessToastMessage).toBe(requestResponse.message);
     expect(state.requestFeedback[movieItem.id]).toContain('Getting started');
     expect(state.searchResults[0]?.inArr).toBe(true);
@@ -280,6 +389,144 @@ describe('app state', () => {
     expect(state.queueGuidanceMessage).toContain('The Matrix');
     expect(dependencies.api.fetchQueue).toHaveBeenCalledTimes(1);
     expect(dependencies.api.refreshDashboard).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes the add dialog immediately after request success without waiting for refreshes', async () => {
+    const queueRefresh = createDeferred<QueueResponse>();
+    const dashboardRefresh = createDeferred<DashboardResponse>();
+    const requestResponse: RequestResponse = {
+      existing: false,
+      item: {
+        ...movieItem,
+        inArr: true,
+        canAdd: false,
+        status: 'Already in Arr',
+      },
+      message: 'The Matrix was added to Radarr.',
+      releaseDecision: null,
+      job: {
+        id: 'job-1',
+        itemId: movieItem.id,
+        arrItemId: 603,
+        kind: 'movie',
+        title: movieItem.title,
+        sourceService: 'radarr',
+        status: 'queued',
+        attempt: 1,
+        maxRetries: 4,
+        currentRelease: null,
+        selectedReleaser: null,
+        preferredReleaser: null,
+        reasonCode: null,
+        failureReason: null,
+        validationSummary: null,
+        autoRetrying: false,
+        progress: null,
+        queueStatus: 'Queued',
+        preferences: {
+          preferredLanguage: 'English',
+          subtitleLanguage: 'English',
+        },
+        startedAt: '2026-04-02T10:05:00.000Z',
+        updatedAt: '2026-04-02T10:05:00.000Z',
+        completedAt: null,
+        attempts: [],
+      },
+    };
+    const dependencies = createDependencies({
+      api: {
+        submitRequest: vi.fn().mockResolvedValue(requestResponse),
+        fetchQueue: vi.fn().mockImplementation(() => queueRefresh.promise),
+        refreshDashboard: vi.fn().mockImplementation(() => dashboardRefresh.promise),
+      },
+      timers: {
+        setTimeout: vi.fn().mockReturnValue(99) as unknown as typeof globalThis.setTimeout,
+        clearTimeout: vi.fn() as unknown as typeof globalThis.clearTimeout,
+      },
+    });
+    const state = new AppState(pageData, dependencies);
+    state.openAddConfirm(movieItem);
+
+    await state.submitRequest(movieItem, state.confirmQualityProfileId);
+
+    expect(state.confirmAddItem).toBeNull();
+    expect(state.requesting).toBeNull();
+    expect(state.activeView).toBe('queue');
+    expect(dependencies.api.fetchQueue).toHaveBeenCalledTimes(1);
+    expect(dependencies.api.refreshDashboard).toHaveBeenCalledTimes(1);
+
+    queueRefresh.resolve(queueResponse);
+    dashboardRefresh.resolve(dashboardResponse);
+    await Promise.all([queueRefresh.promise, dashboardRefresh.promise]);
+  });
+
+  it('ignores add-dialog reopen attempts for a short window after a successful request', async () => {
+    const nowSpy = vi.spyOn(Date, 'now');
+    nowSpy.mockReturnValue(1_000);
+    const dependencies = createDependencies({
+      api: {
+        submitRequest: vi.fn().mockResolvedValue({
+          existing: false,
+          item: {
+            ...movieItem,
+            inArr: true,
+            canAdd: false,
+            status: 'Already in Arr',
+          },
+          message: 'The Matrix was added to Radarr.',
+          releaseDecision: null,
+          job: null,
+        } satisfies RequestResponse),
+      },
+    });
+    const state = new AppState(pageData, dependencies);
+
+    state.openAddConfirm(movieItem);
+    await state.submitRequest(movieItem, state.confirmQualityProfileId);
+
+    expect(state.confirmAddItem).toBeNull();
+
+    state.openAddConfirm(movieItem);
+    expect(state.confirmAddItem).toBeNull();
+
+    nowSpy.mockReturnValue(1_600);
+    state.openAddConfirm(movieItem);
+    expect(state.confirmAddItem).toEqual(movieItem);
+
+    nowSpy.mockRestore();
+  });
+
+  it('still closes the add dialog when client preference persistence fails after a successful request', async () => {
+    const dependencies = createDependencies({
+      api: {
+        submitRequest: vi.fn().mockResolvedValue({
+          existing: false,
+          item: {
+            ...movieItem,
+            inArr: true,
+            canAdd: false,
+            status: 'Already in Arr',
+          },
+          message: 'The Matrix was added to Radarr.',
+          releaseDecision: null,
+          job: null,
+        } satisfies RequestResponse),
+      },
+      storage: {
+        savePreferences: vi.fn().mockImplementation(() => {
+          throw new Error('localStorage write failed');
+        }),
+      },
+    });
+    const state = new AppState(pageData, dependencies);
+
+    state.openAddConfirm(movieItem);
+    await state.submitRequest(movieItem, state.confirmQualityProfileId);
+
+    expect(state.confirmAddItem).toBeNull();
+    expect(state.requesting).toBeNull();
+    expect(state.activeView).toBe('queue');
+    expect(state.requestError).toBe('localStorage write failed');
   });
 
   it('auto clears the add success popup after three seconds', async () => {
@@ -344,6 +591,161 @@ describe('app state', () => {
       sourceService: 'radarr',
       origin: 'arr',
     });
+  });
+
+  it('passes selected seasons through the request submission flow for series', async () => {
+    const dependencies = createDependencies({
+      api: {
+        submitRequest: vi.fn().mockResolvedValue({
+          existing: false,
+          item: {
+            ...seriesItem,
+            inArr: true,
+            canAdd: false,
+            status: 'Already in Arr',
+          },
+          message: 'Added',
+          releaseDecision: null,
+          job: null,
+        } satisfies RequestResponse),
+      },
+    });
+    const state = new AppState(pageData, dependencies);
+
+    state.openAddConfirm(seriesItem);
+    state.toggleConfirmSeason(2);
+
+    await state.submitRequest(
+      seriesItem,
+      state.confirmQualityProfileId,
+      {
+        cardsView: state.cardsView,
+        preferredLanguage: state.confirmPreferredLanguage,
+        subtitleLanguage: state.confirmSubtitleLanguage,
+        theme: state.theme,
+      },
+      state.confirmSeasonNumbers,
+    );
+
+    expect(dependencies.api.submitRequest).toHaveBeenCalledWith(
+      seriesItem,
+      {
+        cardsView: state.cardsView,
+        preferredLanguage: state.confirmPreferredLanguage,
+        subtitleLanguage: state.confirmSubtitleLanguage,
+        theme: state.theme,
+      },
+      11,
+      [1, 2],
+    );
+  });
+
+  it('opens the manual release overlay, loads releases, and preserves cached results when closed', async () => {
+    const fetchManualReleaseResults = vi.fn().mockResolvedValue(manualReleaseResponse);
+    const state = new AppState(
+      pageData,
+      createDependencies({
+        api: {
+          fetchManualReleaseResults,
+        },
+      }),
+    );
+    state.queue = {
+      ...queueResponse,
+      acquisitionJobs: [acquisitionJob],
+      total: 1,
+    };
+
+    await state.openManualReleaseList(acquisitionJob.id);
+
+    expect(state.activeManualReleaseJobId).toBe(acquisitionJob.id);
+    expect(state.manualReleaseListOpen(acquisitionJob.id)).toBe(true);
+    expect(state.activeManualReleaseJob?.title).toBe(acquisitionJob.title);
+    expect(state.hasOpenOverlay).toBe(true);
+    expect(fetchManualReleaseResults).toHaveBeenCalledTimes(1);
+    expect(state.manualReleaseList(acquisitionJob.id)).toEqual(manualReleaseResponse);
+
+    state.closeManualReleaseList();
+
+    expect(state.activeManualReleaseJobId).toBeNull();
+    expect(state.manualReleaseListOpen(acquisitionJob.id)).toBe(false);
+    expect(state.manualReleaseList(acquisitionJob.id)).toEqual(manualReleaseResponse);
+    expect(state.hasOpenOverlay).toBe(false);
+  });
+
+  it('reuses cached manual release results when reopening the same overlay', async () => {
+    const fetchManualReleaseResults = vi.fn().mockResolvedValue(manualReleaseResponse);
+    const state = new AppState(
+      pageData,
+      createDependencies({
+        api: {
+          fetchManualReleaseResults,
+        },
+      }),
+    );
+    state.queue = {
+      ...queueResponse,
+      acquisitionJobs: [acquisitionJob],
+      total: 1,
+    };
+
+    await state.openManualReleaseList(acquisitionJob.id);
+    state.closeManualReleaseList();
+    await state.openManualReleaseList(acquisitionJob.id);
+
+    expect(fetchManualReleaseResults).toHaveBeenCalledTimes(1);
+    expect(state.activeManualReleaseJobId).toBe(acquisitionJob.id);
+  });
+
+  it('matches acquisition jobs to live queue items for derived ETA details', () => {
+    const state = new AppState(pageData, createDependencies());
+    const matchingQueueItem = {
+      id: 'radarr:queue:4',
+      arrItemId: acquisitionJob.arrItemId,
+      canCancel: true,
+      kind: acquisitionJob.kind,
+      title: acquisitionJob.title,
+      year: 1999,
+      poster: null,
+      sourceService: acquisitionJob.sourceService,
+      status: 'Downloading',
+      progress: 64,
+      timeLeft: '12m',
+      estimatedCompletionTime: '2026-04-02T10:17:00.000Z',
+      size: 4_000_000_000,
+      sizeLeft: 1_200_000_000,
+      queueId: 4,
+      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+    } as const;
+
+    state.queue = {
+      ...queueResponse,
+      acquisitionJobs: [acquisitionJob],
+      items: [
+        {
+          ...matchingQueueItem,
+          id: 'sonarr:queue:4',
+          sourceService: 'sonarr',
+        },
+        matchingQueueItem,
+      ],
+      total: 3,
+    };
+
+    expect(state.queueItemForAcquisitionJob(acquisitionJob)).toEqual(matchingQueueItem);
+  });
+
+  it('treats the filter UI as an overlay only on mobile viewports', () => {
+    const state = new AppState(pageData, createDependencies());
+
+    state.kindMenuOpen = true;
+    state.isMobileViewport = false;
+    expect(state.usesFullscreenDialogs).toBe(false);
+    expect(state.hasOpenOverlay).toBe(false);
+
+    state.isMobileViewport = true;
+    expect(state.usesFullscreenDialogs).toBe(true);
+    expect(state.hasOpenOverlay).toBe(true);
   });
 
   it('clears search results for short queries without hitting the API', async () => {

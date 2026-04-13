@@ -1,9 +1,16 @@
 <script lang="ts">
-import { downloadedSummary, queueItemNextStep, queueItemSummary } from '$lib/client/app-ui';
+import {
+  downloadedSummary,
+  queueEtaLabel,
+  queueItemNextStep,
+  queueItemSummary,
+} from '$lib/client/app-ui';
 import type { AppState } from '$lib/client/app-state.svelte';
 import type { QueueItem } from '$lib/shared/types';
 
 let { item, state }: { item: QueueItem; state: AppState } = $props();
+
+const etaLabel = $derived(queueEtaLabel(item));
 </script>
 
 <article class="card-shell p-3">
@@ -42,18 +49,21 @@ let { item, state }: { item: QueueItem; state: AppState } = $props();
           <div>{queueItemNextStep(item)}</div>
         </div>
         <div>
-          <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Download progress</div>
+          <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Downloaded</div>
           <div>{downloadedSummary(item)}</div>
         </div>
+        {#if etaLabel}
+          <div>
+            <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">ETA</div>
+            <div>{etaLabel}</div>
+          </div>
+        {/if}
         <div class="sm:col-span-2">
           <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Queue detail</div>
           <div>
             {item.status}
             {#if item.detail}
               · {item.detail}
-            {/if}
-            {#if item.estimatedCompletionTime}
-              · ETA {new Date(item.estimatedCompletionTime).toLocaleString()}
             {/if}
           </div>
         </div>
