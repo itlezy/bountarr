@@ -703,6 +703,13 @@ textarea:focus-visible {
   background: var(--progress-fill-bg);
 }
 
+.overflow-safe-text {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .spinner {
   display: inline-block;
   border: 2px solid color-mix(in srgb, var(--line-strong) 80%, transparent);

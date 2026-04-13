@@ -23,8 +23,8 @@ const etaLabel = $derived(matchedQueueItem ? queueEtaLabel(matchedQueueItem) : n
 <article class={`card-shell p-3 ${state.isGuidedQueueJob(job.id) ? 'border-sky-400 shadow-[0_0_0_1px_rgba(56,189,248,0.35)]' : ''}`}>
   <div class="flex flex-wrap items-center justify-between gap-2">
     <div class="min-w-0">
-      <div class="text-base font-800">{job.title}</div>
-      <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">
+      <div class="overflow-safe-text text-base font-800">{job.title}</div>
+      <div class="overflow-safe-text text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">
         {acquisitionJourneySummary(job)} · attempt {Math.min(job.attempt, job.maxRetries)}/{job.maxRetries}
       </div>
     </div>
@@ -41,32 +41,32 @@ const etaLabel = $derived(matchedQueueItem ? queueEtaLabel(matchedQueueItem) : n
   </div>
 
   <div class="mt-3 grid gap-2 text-sm sm:grid-cols-2">
-    <div>
+    <div class="min-w-0">
       <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Status</div>
-      <div>{acquisitionStatusLabel(job.status)}</div>
+      <div class="overflow-safe-text">{acquisitionStatusLabel(job.status)}</div>
     </div>
-    <div>
+    <div class="min-w-0">
       <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Last result</div>
-      <div>{acquisitionReasonSummary(job) ?? 'No completed attempts yet'}</div>
+      <div class="overflow-safe-text">{acquisitionReasonSummary(job) ?? 'No completed attempts yet'}</div>
     </div>
-    <div>
+    <div class="min-w-0">
       <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Next step</div>
-      <div>{acquisitionNextStep(job) ?? 'Waiting'}</div>
+      <div class="overflow-safe-text">{acquisitionNextStep(job) ?? 'Waiting'}</div>
     </div>
-    <div>
+    <div class="min-w-0">
       <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Queue check</div>
-      <div>{displayQueueStatus}</div>
+      <div class="overflow-safe-text">{displayQueueStatus}</div>
     </div>
     {#if etaLabel}
-      <div class="sm:col-span-2">
+      <div class="min-w-0 sm:col-span-2">
         <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">ETA</div>
-        <div>{etaLabel}</div>
+        <div class="overflow-safe-text">{etaLabel}</div>
       </div>
     {/if}
   </div>
 
   {#if job.failureReason}
-    <div class="mt-3 rounded-[14px] border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--muted)]">
+    <div class="mt-3 overflow-safe-text rounded-[14px] border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--muted)]">
       {job.failureReason}
     </div>
   {/if}
@@ -78,9 +78,9 @@ const etaLabel = $derived(matchedQueueItem ? queueEtaLabel(matchedQueueItem) : n
         {#each [...job.attempts].reverse() as attempt}
           <div class="rounded-[12px] border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-2">
             <div class="text-sm font-700">Attempt {attempt.attempt}</div>
-            <div class="mt-1 text-sm text-[var(--muted)]">{acquisitionAttemptSummary(attempt)}</div>
+            <div class="mt-1 overflow-safe-text text-sm text-[var(--muted)]">{acquisitionAttemptSummary(attempt)}</div>
             {#if attempt.releaseTitle}
-              <div class="mt-1 break-all text-sm text-[var(--muted)]">{attempt.releaseTitle}</div>
+              <div class="mt-1 overflow-safe-text text-sm text-[var(--muted)]">{attempt.releaseTitle}</div>
             {/if}
           </div>
         {/each}
@@ -90,17 +90,17 @@ const etaLabel = $derived(matchedQueueItem ? queueEtaLabel(matchedQueueItem) : n
 
   <div class="mt-3 space-y-3">
     <div class="grid gap-2 text-sm sm:grid-cols-2">
-      <div>
+      <div class="min-w-0">
         <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Release</div>
-        <div>{job.currentRelease ?? 'Waiting for selection'}</div>
+        <div class="overflow-safe-text">{job.currentRelease ?? 'Waiting for selection'}</div>
       </div>
-      <div>
+      <div class="min-w-0">
         <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Preferred releaser</div>
-        <div>{job.preferredReleaser ?? job.selectedReleaser ?? 'Not set'}</div>
+        <div class="overflow-safe-text">{job.preferredReleaser ?? job.selectedReleaser ?? 'Not set'}</div>
       </div>
-      <div class="sm:col-span-2">
+      <div class="min-w-0 sm:col-span-2">
         <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Validation detail</div>
-        <div>{job.validationSummary ?? 'Waiting for import'}</div>
+        <div class="overflow-safe-text">{job.validationSummary ?? 'Waiting for import'}</div>
       </div>
     </div>
 
@@ -111,12 +111,12 @@ const etaLabel = $derived(matchedQueueItem ? queueEtaLabel(matchedQueueItem) : n
         onclick={() => void state.deleteAcquisitionJob(job)}
         disabled={state.deletingItemId === job.id}
       >
-        {state.deletingItemId === job.id ? 'Removing...' : 'Remove from library system'}
+        {state.deletingItemId === job.id ? 'Removing...' : 'Remove from Library'}
       </button>
     {/if}
 
     {#if state.manualSelectionError[job.id]}
-      <div class="rounded-[14px] border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-200">
+      <div class="overflow-safe-text rounded-[14px] border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-200">
         {state.manualSelectionError[job.id]}
       </div>
     {/if}

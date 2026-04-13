@@ -25,8 +25,8 @@ function fileNameOnly(value: string): string {
     <div class="min-w-0 flex-1">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <div class="min-w-0">
-          <div class="text-base font-800">{item.title}</div>
-          <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">
+          <div class="overflow-safe-text text-base font-800">{item.title}</div>
+          <div class="overflow-safe-text text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">
             {item.kind} · {item.status}
           </div>
         </div>
@@ -35,25 +35,25 @@ function fileNameOnly(value: string): string {
         </span>
       </div>
 
-      <div class="mt-3 rounded-[14px] border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--muted)]">
+      <div class="mt-3 overflow-safe-text rounded-[14px] border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--muted)]">
         {auditDetailSummary(item)}
       </div>
 
       {#if item.detail}
         <div class="mt-3 rounded-[14px] border border-[var(--line)] bg-[var(--surface)] px-3 py-2">
           <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">File name</div>
-          <div class="mt-1 whitespace-normal break-all text-sm leading-5">{fileNameOnly(item.detail)}</div>
+          <div class="mt-1 overflow-safe-text text-sm leading-5">{fileNameOnly(item.detail)}</div>
         </div>
       {/if}
 
       <div class="mt-3 grid gap-2 text-sm sm:grid-cols-2">
-        <div>
+        <div class="min-w-0">
           <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Audio</div>
-          <div>{item.audioLanguages.length > 0 ? item.audioLanguages.join(', ') : 'No metadata'}</div>
+          <div class="overflow-safe-text">{item.audioLanguages.length > 0 ? item.audioLanguages.join(', ') : 'No metadata'}</div>
         </div>
-        <div>
+        <div class="min-w-0">
           <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Subtitles</div>
-          <div>{item.subtitleLanguages.length > 0 ? item.subtitleLanguages.join(', ') : 'None detected'}</div>
+          <div class="overflow-safe-text">{item.subtitleLanguages.length > 0 ? item.subtitleLanguages.join(', ') : 'None detected'}</div>
         </div>
       </div>
 

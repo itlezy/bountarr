@@ -101,6 +101,70 @@ test('queue view shows explicit ETA for downloads and matched grab jobs', async 
   await expect(card.getByText('18m remaining', { exact: true })).toBeVisible();
 });
 
+test('queue and manual release long text wraps without breaking layout', async ({ page }) => {
+  const longReleaseText = 'UltraExtendedReleaseName'.repeat(14);
+  const longReason = 'ThisReasonStringHasNoNaturalBreaks'.repeat(10);
+  const longReleaser = 'PreferredReleaser'.repeat(8);
+  const api = await mockAppApi(page, {
+    queue: buildQueueResponse(
+      [
+        {
+          ...acquisitionJobFixture,
+          currentRelease: longReleaseText,
+          preferredReleaser: longReleaser,
+          validationSummary: longReason,
+          attempts: acquisitionJobFixture.attempts.map((attempt, index) =>
+            index === acquisitionJobFixture.attempts.length - 1
+              ? {
+                  ...attempt,
+                  releaseTitle: longReleaseText,
+                }
+              : attempt,
+          ),
+        },
+      ],
+      [
+        {
+          ...queueItemFixture,
+          title: longReleaseText,
+          detail: longReleaseText,
+        },
+      ],
+    ),
+    manualReleaseResponse: () => ({
+      ...manualReleaseListFixture,
+      summary: longReason,
+      releases: manualReleaseListFixture.releases.map((release, index) =>
+        index === 0
+          ? {
+              ...release,
+              title: longReleaseText,
+              reason: longReason,
+              rejectionReasons: [longReason],
+            }
+          : release,
+      ),
+    }),
+  });
+
+  await openQueue(page, api);
+
+  await expect(page.getByText(longReleaseText).first()).toBeVisible();
+  const pageWidths = await page.evaluate(() => ({
+    clientWidth: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+  }));
+  expect(pageWidths.scrollWidth).toBeLessThanOrEqual(pageWidths.clientWidth);
+
+  const dialog = await openManualReleaseModal(page);
+  await expect(dialog.getByText(longReleaseText).first()).toBeVisible();
+  const dialogOverflow = await dialog.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+  }));
+  expect(dialogOverflow.scrollWidth).toBeLessThanOrEqual(dialogOverflow.clientWidth);
+});
+
 test('manual release dialog uses responsive modal layout', async ({ page }, testInfo) => {
   const api = await mockAppApi(page, {
     queue: buildQueueResponse(),

@@ -26,8 +26,8 @@ const etaLabel = $derived(queueEtaLabel(item));
     <div class="min-w-0 flex-1">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <div class="min-w-0">
-          <div class="text-base font-800">{item.title}</div>
-          <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">
+          <div class="overflow-safe-text text-base font-800">{item.title}</div>
+          <div class="overflow-safe-text text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">
             {queueItemSummary(item)}
           </div>
         </div>
@@ -44,23 +44,23 @@ const etaLabel = $derived(queueEtaLabel(item));
       </div>
 
       <div class="mt-3 grid gap-2 text-sm sm:grid-cols-2">
-        <div>
+        <div class="min-w-0">
           <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Next step</div>
-          <div>{queueItemNextStep(item)}</div>
+          <div class="overflow-safe-text">{queueItemNextStep(item)}</div>
         </div>
-        <div>
+        <div class="min-w-0">
           <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Downloaded</div>
-          <div>{downloadedSummary(item)}</div>
+          <div class="overflow-safe-text">{downloadedSummary(item)}</div>
         </div>
         {#if etaLabel}
-          <div>
+          <div class="min-w-0">
             <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">ETA</div>
-            <div>{etaLabel}</div>
+            <div class="overflow-safe-text">{etaLabel}</div>
           </div>
         {/if}
-        <div class="sm:col-span-2">
+        <div class="min-w-0 sm:col-span-2">
           <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Queue detail</div>
-          <div>
+          <div class="overflow-safe-text">
             {item.status}
             {#if item.detail}
               · {item.detail}
@@ -77,7 +77,7 @@ const etaLabel = $derived(queueEtaLabel(item));
             onclick={() => void state.deleteQueueArrItem(item)}
             disabled={state.deletingItemId === item.id}
           >
-            {state.deletingItemId === item.id ? 'Removing...' : 'Remove from library system'}
+            {state.deletingItemId === item.id ? 'Removing...' : 'Remove from Library'}
           </button>
         </div>
       {/if}

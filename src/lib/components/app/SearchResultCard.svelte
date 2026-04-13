@@ -29,7 +29,7 @@ let { feedback, item, state }: {
 
     <div class="min-w-0 flex-1">
       <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <h2 class="text-base font-800">{item.title}</h2>
+        <h2 class="min-w-0 overflow-safe-text text-base font-800">{item.title}</h2>
         {#if item.year}
           <span class="text-sm text-[var(--muted)]">{item.year}</span>
         {/if}
@@ -40,7 +40,7 @@ let { feedback, item, state }: {
         {/if}
       </div>
 
-      <div class="mt-1 text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">
+      <div class="overflow-safe-text mt-1 text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">
         {resultSummary(item)}
       </div>
 
@@ -62,19 +62,19 @@ let { feedback, item, state }: {
         {/if}
       </div>
 
-      <p class="mt-3 text-sm leading-5 text-[var(--muted)]">
+      <p class="overflow-safe-text mt-3 text-sm leading-5 text-[var(--muted)]">
         {item.overview || 'No overview available.'}
       </p>
 
       {#if item.inArr}
         <div class="mt-3 grid gap-2 text-sm sm:grid-cols-2">
-          <div>
+          <div class="min-w-0">
             <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Audio</div>
-            <div>{item.audioLanguages.length > 0 ? item.audioLanguages.join(', ') : 'No metadata'}</div>
+            <div class="overflow-safe-text">{item.audioLanguages.length > 0 ? item.audioLanguages.join(', ') : 'No metadata'}</div>
           </div>
-          <div>
+          <div class="min-w-0">
             <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Subtitles</div>
-            <div>{item.subtitleLanguages.length > 0 ? item.subtitleLanguages.join(', ') : 'None detected'}</div>
+            <div class="overflow-safe-text">{item.subtitleLanguages.length > 0 ? item.subtitleLanguages.join(', ') : 'None detected'}</div>
           </div>
         </div>
       {/if}
@@ -82,14 +82,14 @@ let { feedback, item, state }: {
       {#if item.plexLibraries.length > 0}
         <div class="mt-3 text-sm">
           <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Plex libraries</div>
-          <div>{item.plexLibraries.join(', ')}</div>
+          <div class="overflow-safe-text">{item.plexLibraries.join(', ')}</div>
         </div>
       {/if}
     </div>
   </div>
 
   {#if feedback}
-    <div class="mt-3 rounded-[14px] border border-[var(--line)] bg-[var(--surface)] p-3 text-sm text-[var(--muted)]">
+    <div class="mt-3 overflow-safe-text rounded-[14px] border border-[var(--line)] bg-[var(--surface)] p-3 text-sm text-[var(--muted)]">
       {feedback}
     </div>
   {/if}
@@ -106,7 +106,7 @@ let { feedback, item, state }: {
       </button>
     </div>
   {:else}
-    <div class="mt-3 rounded-[14px] border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--muted)]">
+    <div class="mt-3 overflow-safe-text rounded-[14px] border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--muted)]">
       {resultMessage(item)}
     </div>
   {/if}
@@ -114,7 +114,7 @@ let { feedback, item, state }: {
   {#if state.hasSearchOperatorActions(item)}
     <div class="mt-3 space-y-2">
       {#if state.canOperatorRequestFromPlex(item)}
-        <div class="text-sm text-[var(--muted)]">
+        <div class="overflow-safe-text text-sm text-[var(--muted)]">
           Plex already has this title, but you can still grab a managed copy from Arr if you want a different version.
         </div>
         <button

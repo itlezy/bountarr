@@ -93,7 +93,7 @@ function uptimeLabel(totalSeconds: number): string {
       <div class="mt-3 grid gap-3 sm:grid-cols-2">
         <div>
           <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Host</div>
-          <div class="mt-1 break-all text-sm text-[var(--muted)]">{state.config.runtime.hostName}</div>
+          <div class="mt-1 overflow-safe-text text-sm text-[var(--muted)]">{state.config.runtime.hostName}</div>
         </div>
         <div>
           <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Node</div>
@@ -117,7 +117,7 @@ function uptimeLabel(totalSeconds: number): string {
         </div>
         <div>
           <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Storage path</div>
-          <div class="mt-1 break-all text-sm text-[var(--muted)]">{state.config.runtime.storagePath}</div>
+          <div class="mt-1 overflow-safe-text text-sm text-[var(--muted)]">{state.config.runtime.storagePath}</div>
         </div>
         <div>
           <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Checked</div>
@@ -174,7 +174,7 @@ function uptimeLabel(totalSeconds: number): string {
         </div>
         <div class="sm:col-span-2">
           <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">DB path</div>
-          <div class="mt-1 break-all text-sm text-[var(--muted)]">{state.config.runtime.databasePath}</div>
+          <div class="mt-1 overflow-safe-text text-sm text-[var(--muted)]">{state.config.runtime.databasePath}</div>
         </div>
       </div>
     </article>
@@ -195,11 +195,11 @@ function uptimeLabel(totalSeconds: number): string {
         </div>
         <div>
           <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Default profile</div>
-          <div class="mt-1 break-all text-sm text-[var(--muted)]">{state.config.radarrStats.defaultQualityProfileName ?? 'Unknown'}</div>
+          <div class="mt-1 overflow-safe-text text-sm text-[var(--muted)]">{state.config.radarrStats.defaultQualityProfileName ?? 'Unknown'}</div>
         </div>
         <div class="sm:col-span-2">
           <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Primary root</div>
-          <div class="mt-1 break-all text-sm text-[var(--muted)]">{state.config.radarrStats.primaryRootFolderPath ?? 'Unknown'}</div>
+          <div class="mt-1 overflow-safe-text text-sm text-[var(--muted)]">{state.config.radarrStats.primaryRootFolderPath ?? 'Unknown'}</div>
         </div>
       </div>
     </article>
@@ -220,11 +220,11 @@ function uptimeLabel(totalSeconds: number): string {
         </div>
         <div>
           <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Default profile</div>
-          <div class="mt-1 break-all text-sm text-[var(--muted)]">{state.config.sonarrStats.defaultQualityProfileName ?? 'Unknown'}</div>
+          <div class="mt-1 overflow-safe-text text-sm text-[var(--muted)]">{state.config.sonarrStats.defaultQualityProfileName ?? 'Unknown'}</div>
         </div>
         <div class="sm:col-span-2">
           <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Primary root</div>
-          <div class="mt-1 break-all text-sm text-[var(--muted)]">{state.config.sonarrStats.primaryRootFolderPath ?? 'Unknown'}</div>
+          <div class="mt-1 overflow-safe-text text-sm text-[var(--muted)]">{state.config.sonarrStats.primaryRootFolderPath ?? 'Unknown'}</div>
         </div>
       </div>
     </article>
@@ -252,7 +252,7 @@ function uptimeLabel(totalSeconds: number): string {
           <div class="mt-2 flex flex-wrap gap-2">
             {#if state.config.plexStats.libraryTitles.length > 0}
               {#each state.config.plexStats.libraryTitles as title}
-                <span class="max-w-full break-all rounded-[14px] border border-[var(--line)] bg-[var(--surface)] px-3 py-1 text-sm text-[var(--muted)]">
+                <span class="max-w-full overflow-safe-text rounded-[14px] border border-[var(--line)] bg-[var(--surface)] px-3 py-1 text-sm text-[var(--muted)]">
                   {title}
                 </span>
               {/each}
@@ -268,7 +268,7 @@ function uptimeLabel(totalSeconds: number): string {
       {#if state.config.runtime.issues.length > 0}
         <ul class="mt-2 space-y-2 text-sm">
           {#each state.config.runtime.issues as issue}
-            <li class="break-all rounded-[14px] border border-[var(--line)] bg-[var(--surface)] px-3 py-2">{issue}</li>
+            <li class="overflow-safe-text rounded-[14px] border border-[var(--line)] bg-[var(--surface)] px-3 py-2">{issue}</li>
           {/each}
         </ul>
       {:else}
@@ -280,7 +280,7 @@ function uptimeLabel(totalSeconds: number): string {
       {#if state.config.runtime.warnings.length > 0}
         <ul class="mt-2 space-y-2 text-sm">
           {#each state.config.runtime.warnings as warning}
-            <li class="break-all rounded-[14px] border border-[var(--line)] bg-[var(--surface)] px-3 py-2">{warning}</li>
+            <li class="overflow-safe-text rounded-[14px] border border-[var(--line)] bg-[var(--surface)] px-3 py-2">{warning}</li>
           {/each}
         </ul>
       {:else}
