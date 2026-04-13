@@ -1,4 +1,4 @@
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import type { HealthResponse } from '$lib/shared/types';
@@ -10,12 +10,17 @@ export type RunningLiveApp = {
   stop: () => Promise<void>;
 };
 
+function integrationDatabasePath(repoRoot: string): string {
+  return path.join(repoRoot, 'data', 'runtime', 'integration', 'acquisition.db');
+}
+
 function databasePaths(repoRoot: string): string[] {
-  const basePath = path.join(repoRoot, 'data', 'acquisition.db');
+  const basePath = integrationDatabasePath(repoRoot);
   return [basePath, `${basePath}-shm`, `${basePath}-wal`];
 }
 
 export function resetBountarrStateFiles(repoRoot = process.cwd()): void {
+  mkdirSync(path.dirname(integrationDatabasePath(repoRoot)), { recursive: true });
   for (const candidatePath of databasePaths(repoRoot)) {
     if (existsSync(candidatePath)) {
       rmSync(candidatePath, { force: true });
@@ -50,13 +55,16 @@ async function waitForHealthy(baseUrl: string): Promise<HealthResponse> {
 export async function startLiveApp(config: LiveIntegrationConfig): Promise<RunningLiveApp> {
   const repoRoot = process.cwd();
   const buildEntryPoint = path.join(repoRoot, 'build', 'index.js');
+  const acquisitionDatabasePath = integrationDatabasePath(repoRoot);
   if (!existsSync(buildEntryPoint)) {
     throw new Error(`Build output was not found at ${buildEntryPoint}. Run npm run build first.`);
   }
 
+  mkdirSync(path.dirname(acquisitionDatabasePath), { recursive: true });
   const child = spawn('node', ['--env-file-if-exists=.env', buildEntryPoint], {
     cwd: repoRoot,
     env: {
+      ACQUISITION_DB_PATH: acquisitionDatabasePath,
       ...process.env,
       ORIGIN: config.baseUrl,
       PORT: String(config.appPort),

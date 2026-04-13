@@ -22,3 +22,5 @@
 - Running Playwright `webServer` through `npm run dev` was unreliable on Windows because the batch wrapper could exit early under process supervision. Launch the Vite Node entrypoint from a dedicated PowerShell helper instead.
 - Hash literals are case-insensitive in PowerShell; keys like 'sizeleft' and 'sizeLeft' collide. Use distinct output names when inspecting case-variant API fields.
 - Running two `git commit` commands in parallel in the same repository raced on `.git/index.lock` and mis-associated one commit message with the other batch. Serialize Git writes; do not wrap same-repo commit operations in `multi_tool_use.parallel`.
+- `npm run test -- tests/integration/live-stack.test.ts` did not run the live suite because this repo's default Vitest config only includes `src/**/*.test.ts`. Use the dedicated integration config/helper instead of passing an integration path to the default test script.
+- The original `helper-test-integration.ps1` invoked `vitest run tests/integration`, which still loaded the default Vitest include pattern and found no tests. The integration helper must pass a dedicated config that includes `tests/integration/**/*.test.ts`.

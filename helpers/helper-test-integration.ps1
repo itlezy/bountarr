@@ -36,7 +36,7 @@ try {
         throw "npm run build failed with exit code $LASTEXITCODE."
     }
 
-    & npm exec -- vitest run tests/integration
+    & npm exec -- vitest run --config vitest.integration.config.ts
     if ($LASTEXITCODE -ne 0) {
         throw "Vitest integration run failed with exit code $LASTEXITCODE."
     }

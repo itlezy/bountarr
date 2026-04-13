@@ -41,7 +41,7 @@ async function radarrRequest<T>(
   return (await response.json()) as T;
 }
 
-async function listMovies(config: LiveIntegrationConfig): Promise<RadarrMovieRecord[]> {
+export async function listMovies(config: LiveIntegrationConfig): Promise<RadarrMovieRecord[]> {
   const records = await radarrRequest<Array<Record<string, unknown>>>(config, '/api/v3/movie');
   return records
     .map((record) => ({

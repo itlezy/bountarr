@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { ConfigStatus, GrabResponse, MediaItem, QueueResponse } from '$lib/shared/types';
+import type { ConfigStatus, GrabResponse, MediaItem, QueueItem, QueueResponse } from '$lib/shared/types';
 import {
   assertLiveIntegrationEnabled,
   loadLiveIntegrationConfig,
@@ -7,7 +7,7 @@ import {
 } from './support/live-config';
 import { getJson, pollUntil, postJson } from './support/live-http';
 import { resetBountarrStateFiles, startLiveApp, type RunningLiveApp } from './support/live-app';
-import { ensureMovieMissing, ensureMovieTracked } from './support/live-radarr';
+import { ensureMovieMissing, findMovieByTitleYear, listMovies } from './support/live-radarr';
 
 type DeleteTarget = {
   arrItemId: number;
@@ -44,6 +44,67 @@ function asDeleteTarget(item: MediaItem): DeleteTarget {
   };
 }
 
+function matchingQueueItem(
+  queue: QueueResponse,
+  arrItemId: number | null | undefined,
+): QueueItem | null {
+  if (arrItemId == null) {
+    return null;
+  }
+
+  return (
+    queue.items.find(
+      (item) => item.sourceService === 'radarr' && item.kind === 'movie' && item.arrItemId === arrItemId,
+    ) ?? null
+  );
+}
+
+function matchingAcquisitionJob(
+  queue: QueueResponse,
+  request: GrabResponse,
+) {
+  return (
+    queue.acquisitionJobs.find(
+      (job) =>
+        job.id === request.job?.id ||
+        (job.arrItemId !== null && job.arrItemId === request.item.arrItemId),
+    ) ?? null
+  );
+}
+
+async function waitForAcquisitionVisibility(
+  config: LiveIntegrationConfig,
+  request: GrabResponse,
+  timeoutMs = 45_000,
+): Promise<QueueResponse> {
+  return pollUntil(async () => {
+    const result = await getJson<QueueResponse>(`${config.baseUrl}/api/queue`);
+    return matchingAcquisitionJob(result, request) || matchingQueueItem(result, request.item.arrItemId)
+      ? result
+      : null;
+  }, timeoutMs);
+}
+
+async function findTrackedSearchCandidate(config: LiveIntegrationConfig): Promise<MediaItem> {
+  const trackedMovies = await listMovies(config);
+
+  for (const candidate of trackedMovies) {
+    if (candidate.year === null) {
+      continue;
+    }
+
+    const search = await getJson<MediaItem[]>(
+      `${config.baseUrl}/api/search?q=${encodeURIComponent(candidate.title)}&kind=movie&availability=all`,
+    );
+    const match = exactMovieMatch(search, candidate.title, candidate.year);
+    if (match?.inArr) {
+      return match;
+    }
+  }
+
+  throw new Error('Could not find a searchable tracked Radarr movie for duplicate-path verification.');
+}
+
 async function verifyPreflight(config: LiveIntegrationConfig): Promise<void> {
   const health = await getJson<{ status: string }>(`${config.baseUrl}/api/health`);
   expect(health.status).toBe('ok');
@@ -60,7 +121,7 @@ async function verifyPreflight(config: LiveIntegrationConfig): Promise<void> {
 
 describe.sequential('live stack integration', () => {
   let app: RunningLiveApp | null = null;
-  let cleanupTarget: DeleteTarget | null = null;
+  let cleanupTargets: DeleteTarget[] = [];
   let config: LiveIntegrationConfig;
 
   beforeEach(async () => {
@@ -68,20 +129,21 @@ describe.sequential('live stack integration', () => {
     assertLiveIntegrationEnabled(config);
 
     await ensureMovieMissing(config, config.untrackedMovie);
-    await ensureMovieTracked(config, config.duplicateMovie);
     resetBountarrStateFiles();
 
     app = await startLiveApp(config);
     await verifyPreflight(config);
-    cleanupTarget = null;
+    cleanupTargets = [];
   }, 120_000);
 
   afterEach(async () => {
-    if (app && cleanupTarget) {
-      try {
-        await postJson(`${config.baseUrl}/api/media/delete`, cleanupTarget);
-      } catch {
-        // Fall through to direct Arr cleanup below.
+    if (app && cleanupTargets.length > 0) {
+      for (const cleanupTarget of cleanupTargets.splice(0)) {
+        try {
+          await postJson(`${config.baseUrl}/api/media/delete`, cleanupTarget);
+        } catch {
+          // Fall through to direct Arr cleanup below.
+        }
       }
     }
 
@@ -92,7 +154,7 @@ describe.sequential('live stack integration', () => {
 
     await ensureMovieMissing(config, config.untrackedMovie);
     resetBountarrStateFiles();
-    cleanupTarget = null;
+    cleanupTargets = [];
   }, 120_000);
 
   it('searches, adds, and exposes the acquisition lifecycle for Dredd (2012)', async () => {
@@ -117,39 +179,73 @@ describe.sequential('live stack integration', () => {
     expect(request.job).not.toBeNull();
     expect(request.item.arrItemId).not.toBeNull();
 
-    cleanupTarget = asDeleteTarget(request.item);
+    cleanupTargets.push(asDeleteTarget(request.item));
 
-    const queue = await pollUntil(async () => {
-      const result = await getJson<QueueResponse>(`${config.baseUrl}/api/queue`);
-      const jobVisible = result.acquisitionJobs.some(
-        (job) =>
-          job.id === request.job?.id ||
-          (job.arrItemId !== null && job.arrItemId === request.item.arrItemId),
-      );
-
-      return jobVisible ? result : null;
-    }, 30_000);
-
-    const acquisitionJob = queue.acquisitionJobs.find(
-      (job) =>
-        job.id === request.job?.id ||
-        (job.arrItemId !== null && job.arrItemId === request.item.arrItemId),
-    );
+    const queue = await waitForAcquisitionVisibility(config, request);
+    const acquisitionJob = matchingAcquisitionJob(queue, request);
+    const queueItem = matchingQueueItem(queue, request.item.arrItemId);
 
     expect(acquisitionJob).toBeDefined();
     expect(acquisitionJob?.title).toBe(config.untrackedMovie.title);
     expect(acquisitionJob?.kind).toBe('movie');
+    if (queueItem) {
+      expect(queueItem.status.length).toBeGreaterThan(0);
+      if (queueItem.progress !== null) {
+        expect(queueItem.progress).toBeGreaterThanOrEqual(0);
+      }
+    }
   }, 120_000);
 
-  it('returns the duplicate path for The Matrix (1999)', async () => {
+  it('removes a newly grabbed movie cleanly from Radarr and the acquisition queue', async () => {
     const search = await getJson<MediaItem[]>(
-      `${config.baseUrl}/api/search?q=Matrix&kind=movie&availability=all`,
+      `${config.baseUrl}/api/search?q=Dredd&kind=movie&availability=all`,
     );
-    const item = exactMovieMatch(search, config.duplicateMovie.title, config.duplicateMovie.year);
+    const item = exactMovieMatch(search, config.untrackedMovie.title, config.untrackedMovie.year);
 
     expect(item).not.toBeNull();
-    expect(item?.inArr).toBe(true);
-    expect(item?.canAdd).toBe(false);
+    expect(item?.inArr).toBe(false);
+
+    const request = await postJson<GrabResponse>(`${config.baseUrl}/api/grab`, {
+      item,
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+    });
+
+    expect(request.existing).toBe(false);
+    expect(request.item.arrItemId).not.toBeNull();
+
+    cleanupTargets.push(asDeleteTarget(request.item));
+    await waitForAcquisitionVisibility(config, request);
+
+    const deleteResponse = await postJson<{ itemId: string; message: string }>(
+      `${config.baseUrl}/api/media/delete`,
+      cleanupTargets[cleanupTargets.length - 1],
+    );
+
+    expect(deleteResponse.message).toContain('deleted from Radarr');
+    cleanupTargets.pop();
+
+    await pollUntil(async () => {
+      const queue = await getJson<QueueResponse>(`${config.baseUrl}/api/queue`);
+      return matchingAcquisitionJob(queue, request) || matchingQueueItem(queue, request.item.arrItemId)
+        ? null
+        : queue;
+    }, 45_000);
+
+    await pollUntil(
+      async () =>
+        ((await findMovieByTitleYear(config, config.untrackedMovie)) === null ? true : null),
+      45_000,
+    );
+  }, 120_000);
+
+  it('returns the duplicate path for an already tracked Radarr movie', async () => {
+    const item = await findTrackedSearchCandidate(config);
+
+    expect(item.inArr).toBe(true);
+    expect(item.canAdd).toBe(false);
 
     const request = await postJson<GrabResponse>(`${config.baseUrl}/api/grab`, {
       item,
