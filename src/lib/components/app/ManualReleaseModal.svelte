@@ -100,9 +100,19 @@ const isLoading = $derived(activeJobId ? state.manualReleaseLoading[activeJobId]
                       class="control-primary min-h-10 w-full px-4 text-sm font-700 disabled:cursor-not-allowed disabled:opacity-50"
                       type="button"
                       onclick={() => void state.selectManualRelease(activeJobId, release.guid, release.indexerId)}
-                      disabled={state.manualSelectingJobId === activeJobId || state.deletingItemId === activeJobId}
+                      disabled={
+                        !release.canSelect ||
+                        state.manualSelectingJobId === activeJobId ||
+                        state.deletingItemId === activeJobId
+                      }
                     >
-                      {state.manualSelectingJobId === activeJobId ? 'Selecting...' : 'Select release'}
+                      {#if state.manualSelectingJobId === activeJobId}
+                        Selecting...
+                      {:else if !release.canSelect}
+                        {release.status === 'selected' ? 'Selected' : 'Not downloadable'}
+                      {:else}
+                        Select release
+                      {/if}
                     </button>
                   </div>
                 </article>

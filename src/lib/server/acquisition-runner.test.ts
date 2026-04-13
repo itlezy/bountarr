@@ -561,4 +561,68 @@ describe('AcquisitionRunner', () => {
     expect(failed?.progress).toBe(67);
     expect(failed?.queueStatus).toBe('Downloading');
   });
+
+  it('prefers a manual selection that arrives while auto-search results are being processed', async () => {
+    const harness = createHarness();
+    const job = harness.jobs.createJob({
+      arrItemId: 891,
+      itemId: 'movie:891',
+      kind: 'movie',
+      maxRetries: 2,
+      preferredReleaser: 'flux',
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      sourceService: 'radarr',
+      title: 'Race Condition Title',
+    });
+
+    const automaticSelection = createSelectionResult(
+      'guid-auto',
+      'Race.Condition.Title.2026.1080p.WEB-DL-AUTO',
+    );
+    const manualSelection = createSelectionResult(
+      'guid-manual',
+      'Race.Condition.Title.2026.1080p.WEB-DL-MANUAL',
+    );
+    let runner!: AcquisitionRunner;
+    const submitSelectedRelease = vi.fn().mockResolvedValue(undefined);
+
+    runner = new AcquisitionRunner(harness.jobs, harness.lifecycle, {
+      findReleaseSelection: vi.fn().mockImplementation(async () => {
+        const queuedForManual = harness.jobs.updateJob(job.id, {
+          queueStatus: manualSelectionQueuedStatus,
+          status: 'queued',
+        });
+        runner.enqueueSelectedRelease(queuedForManual.id, manualSelection);
+        return automaticSelection;
+      }),
+      probeAttempt: vi.fn(),
+      submitSelectedRelease,
+      waitForAttemptOutcome: vi.fn().mockResolvedValue({
+        outcome: 'success',
+        preferredReleaser: 'manual',
+        progress: 100,
+        queueStatus: 'Imported',
+        reasonCode: 'validated',
+        summary: 'Imported and validated',
+      }),
+    });
+
+    runner.enqueue(job.id);
+
+    await vi.waitFor(() => {
+      expect(harness.jobs.getJob(job.id)?.status).toBe('completed');
+    });
+
+    expect(submitSelectedRelease).toHaveBeenCalledTimes(1);
+    expect(submitSelectedRelease).toHaveBeenCalledWith(
+      expect.objectContaining({ id: job.id }),
+      manualSelection.selection,
+    );
+    expect(harness.jobs.getJob(job.id)?.currentRelease).toBe(
+      'Race.Condition.Title.2026.1080p.WEB-DL-MANUAL',
+    );
+  });
 });

@@ -99,6 +99,13 @@ function mapManualReleaseStatus(
   return release.autoSelectable ? 'accepted' : 'locally-rejected';
 }
 
+function canSelectManualRelease(
+  release: EvaluatedRelease,
+  selectedGuid: string | null,
+): boolean {
+  return !release.arrRejected && release.candidate.guid !== selectedGuid;
+}
+
 function toManualReleaseResult(
   release: EvaluatedRelease,
   selectedGuid: string | null,
@@ -106,7 +113,7 @@ function toManualReleaseResult(
 ): ManualReleaseResult {
   return {
     ...release.candidate,
-    canSelect: true,
+    canSelect: canSelectManualRelease(release, selectedGuid),
     downloadAllowed: !release.arrRejected || release.rejectionReasons.length === 0,
     identityReason: release.identityReason,
     identityStatus: release.identityStatus,
@@ -199,6 +206,18 @@ export async function findManualReleaseSelection(
 
   if (!matched) {
     throw new Error('The selected manual-search release is no longer available.');
+  }
+
+  if (matched.arrRejected) {
+    const rejectionReason =
+      matched.rejectionReasons.find(
+        (reason) => reason !== 'Arr marked this release as not downloadable',
+      ) ??
+      matched.rejectionReasons[0] ??
+      'Arr marked the selected release as not downloadable.';
+    throw new Error(
+      rejectionReason,
+    );
   }
 
   const selection = {

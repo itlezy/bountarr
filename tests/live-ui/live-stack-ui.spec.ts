@@ -119,6 +119,26 @@ async function searchForTitle(
   await page.keyboard.press('Enter');
 }
 
+async function waitForManualReleaseDialogState(
+  dialog: import('@playwright/test').Locator,
+): Promise<'empty' | 'loaded'> {
+  return pollUntil(async () => {
+    if (await dialog.getByText('No manual-search releases are currently available.').count()) {
+      return 'empty';
+    }
+
+    if (
+      (await dialog.getByRole('button', { name: 'Select release' }).count()) > 0 ||
+      (await dialog.getByRole('button', { name: 'Not downloadable' }).count()) > 0 ||
+      (await dialog.getByRole('button', { name: 'Selected' }).count()) > 0
+    ) {
+      return 'loaded';
+    }
+
+    return null;
+  }, 45_000);
+}
+
 async function queueResponse(): Promise<QueueResponse> {
   return getJson<QueueResponse>(`${config.baseUrl}/api/queue`);
 }
@@ -390,9 +410,46 @@ test('movie live UI covers search, grab, and cancel', async ({
   await jobCard.getByRole('button', { name: 'Cancel download' }).click();
   await expect(page.getByText(/download was cancelled and unmonitored/i)).toBeVisible();
   await pollUntil(async () => {
-    const tracked = await getMovieById(config, job.arrItemId);
-    return tracked?.monitored === false ? tracked : null;
+      const tracked = await getMovieById(config, job.arrItemId);
+      return tracked?.monitored === false ? tracked : null;
   }, 45_000);
+});
+
+test('movie live UI opens manual release options and removes the tracked item cleanly', async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+
+  await searchForTitle(page, config.untrackedMovie.title, 'Movies');
+
+  const resultCard = searchResultCard(page, config.untrackedMovie.title);
+  await expect(resultCard).toContainText(config.untrackedMovie.year.toString());
+  await resultCard.getByRole('button', { name: 'Grab', exact: true }).click();
+
+  const dialog = page.getByRole('dialog', { name: 'Grab title' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Grab', exact: true }).click();
+
+  await expect(page.getByRole('heading', { name: 'Grab Progress' })).toBeVisible();
+  const jobCard = acquisitionJobCard(page, config.untrackedMovie.title);
+  await expect(jobCard).toBeVisible();
+
+  await jobCard.getByRole('button', { name: 'Show manual release options' }).click();
+  const manualReleaseDialog = page.getByRole('dialog', { name: 'Manual release options' });
+  await expect(manualReleaseDialog).toBeVisible();
+  await waitForManualReleaseDialogState(manualReleaseDialog);
+  await manualReleaseDialog.getByRole('button', { name: 'Close manual release options' }).click();
+  await expect(manualReleaseDialog).toHaveCount(0);
+
+  page.once('dialog', (dialogEvent) => dialogEvent.accept());
+  await jobCard.getByRole('button', { name: 'Remove from Library' }).click();
+  await expect(page.getByText(/was deleted from Radarr/i)).toBeVisible();
+
+  await pollUntil(async () => {
+    const tracked = await findMovieByTitleYear(config, config.untrackedMovie);
+    return tracked === null ? true : null;
+  }, 45_000);
+  await waitForQueueToClear(config.untrackedMovie.title, 'movie', 'radarr');
 });
 
 test('tracked movie live UI still offers the normal grab confirmation flow', async ({ page }) => {

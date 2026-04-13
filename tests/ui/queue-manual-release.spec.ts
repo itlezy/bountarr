@@ -245,7 +245,7 @@ test('manual release selection refreshes queue and release state', async ({ page
   });
 
   await expect(dialog.getByText('One manual-search release was selected.')).toBeVisible();
-  await expect(dialog.getByText('Selected', { exact: true })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Selected' })).toBeDisabled();
   await expect(page.getByText('Manual release selected. Sending Andor to the downloader.')).toBeVisible();
   await expect(
     acquisitionCard(page)
@@ -280,4 +280,19 @@ test('manual release selection errors stay inline and keep the dialog open', asy
   await expect(dialog.getByText('Unable to select the requested release.')).toBeVisible();
   await expect(page.getByRole('dialog', { name: 'Manual release options' })).toBeVisible();
   await expect(page.getByText(manualReleaseFixture.title)).toBeVisible();
+});
+
+test('manual release dialog disables releases that Arr already marked as not downloadable', async ({
+  page,
+}) => {
+  const api = await mockAppApi(page, {
+    queue: buildQueueResponse(),
+    manualReleaseResponse: () => manualReleaseListFixture,
+  });
+
+  await openQueue(page, api);
+  const dialog = await openManualReleaseModal(page);
+
+  await expect(dialog.getByRole('button', { name: 'Select release' }).first()).toBeEnabled();
+  await expect(dialog.getByRole('button', { name: 'Not downloadable' })).toBeDisabled();
 });

@@ -157,6 +157,21 @@ export class AcquisitionRunner {
           job = this.lifecycle.startSearch(job);
           releaseSelection = await this.dependencies.findReleaseSelection(job);
           this.lifecycle.recordSearchCompleted(job, releaseSelection);
+          const refreshedAfterSearch = this.jobs.getJob(job.id);
+          if (!refreshedAfterSearch || isTerminalJobStatus(refreshedAfterSearch.status)) {
+            return;
+          }
+
+          if (
+            this.manualSelectionOverrides.has(job.id) ||
+            (refreshedAfterSearch.status === 'queued' &&
+              refreshedAfterSearch.queueStatus === manualSelectionQueuedStatus)
+          ) {
+            job = refreshedAfterSearch;
+            continue;
+          }
+
+          job = refreshedAfterSearch;
         }
 
         if (
