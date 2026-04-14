@@ -44,6 +44,24 @@ const runtime = {
   heapUsedBytes: 26_000_000,
   systemTotalMemoryBytes: 34_359_738_368,
   systemFreeMemoryBytes: 12_884_901_888,
+  volumes: [
+    {
+      driveLetter: 'C:',
+      mountPoint: 'C:\\',
+      label: 'SYSC',
+      fileSystem: 'NTFS',
+      freeSpaceBytes: 512_000_000_000,
+      totalSpaceBytes: 1_024_000_000_000,
+    },
+    {
+      driveLetter: null,
+      mountPoint: 'C:\\M\\Archive\\',
+      label: 'Archive',
+      fileSystem: 'NTFS',
+      freeSpaceBytes: 4_487_500_000_000,
+      totalSpaceBytes: 18_627_000_000_000,
+    },
+  ],
 };
 
 const pageData: PageData = {
@@ -523,6 +541,47 @@ describe('app state', () => {
     await vi.waitFor(() => {
       expect(state.latestActionMessage).toContain('refresh is still catching up');
     });
+  });
+
+  it('ignores duplicate in-flight grab submissions for the same item', async () => {
+    const submitGrabResult = createDeferred<GrabResponse>();
+    const submitGrab = vi.fn().mockImplementation(() => submitGrabResult.promise);
+    const state = new AppState(
+      pageData,
+      createDependencies({
+        api: {
+          submitGrab,
+        },
+      }),
+    );
+
+    state.openAddConfirm(movieItem);
+
+    const firstSubmit = state.submitGrab(movieItem, state.confirmQualityProfileId);
+    const secondSubmit = state.submitGrab(movieItem, state.confirmQualityProfileId);
+
+    expect(submitGrab).toHaveBeenCalledTimes(1);
+    expect(state.grabbing).toBe(movieItem.id);
+
+    submitGrabResult.resolve({
+      existing: false,
+      item: {
+        ...movieItem,
+        arrItemId: 603,
+        inArr: true,
+        canAdd: false,
+        status: 'Already in Arr',
+      },
+      message: 'The Matrix was added to Radarr.',
+      releaseDecision: null,
+      job: acquisitionJob,
+    });
+
+    await Promise.all([firstSubmit, secondSubmit]);
+
+    expect(submitGrab).toHaveBeenCalledTimes(1);
+    expect(state.grabbing).toBeNull();
+    expect(state.activeView).toBe('queue');
   });
 
   it('ignores add-dialog reopen attempts for a short window after a successful request', async () => {

@@ -1,5 +1,9 @@
 # PowerShell Mistakes
 
+## 2026-04-14
+
+- `pwsh -NoLogo -NoProfile -File 'C:\bin\zscripts\U52_diskfree.ps1'` failed because the script still uses `Get-WmiObject`, which is not available in PowerShell 7. For volume queries in this environment, use `Get-CimInstance -ClassName Win32_Volume` instead.
+
 ## 2026-04-01
 
 - `git status --short --branch` failed because `C:\prj\p2p\bountarr` is not a Git repository. Check for a `.git` directory before assuming Git commands are available.

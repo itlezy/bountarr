@@ -47,9 +47,7 @@ test('desktop filter menu stays interactive above results', async ({ page }, tes
       message: 'availability change should trigger another search request',
     })
     .toBeGreaterThan(initialSearchCount);
-  await expect
-    .poll(() => api.searchUrls.at(-1) ?? '')
-    .toContain('availability=available-only');
+  await expect.poll(() => api.searchUrls.at(-1) ?? '').toContain('availability=available-only');
 });
 
 test('mobile filter opens as a full-screen dialog', async ({ page }, testInfo) => {
@@ -76,9 +74,7 @@ test('mobile filter opens as a full-screen dialog', async ({ page }, testInfo) =
       message: 'mobile filter change should trigger another search request',
     })
     .toBeGreaterThan(initialSearchCount);
-  await expect
-    .poll(() => api.searchUrls.at(-1) ?? '')
-    .toContain('availability=available-only');
+  await expect.poll(() => api.searchUrls.at(-1) ?? '').toContain('availability=available-only');
 });
 
 test('selected filter options keep the active styling marker', async ({ page }) => {
@@ -95,7 +91,9 @@ test('selected filter options keep the active styling marker', async ({ page }) 
   await expect(activeSort.locator('.filter-option__marker')).toBeVisible();
 });
 
-test('movie grab submits through the grab dialog and moves to queue view', async ({ page }, testInfo) => {
+test('movie grab submits through the grab dialog and moves to queue view', async ({
+  page,
+}, testInfo) => {
   const api = await mockAppApi(page, {
     grabResponse: (body) =>
       mockJson(
@@ -187,9 +185,82 @@ test('movie grab submits through the grab dialog and moves to queue view', async
   }
   expect(api.grabBodies[0]?.seasonNumbers).toBeUndefined();
   await expect(page.getByRole('heading', { name: 'Grab Progress' })).toBeVisible();
-  await expect(page.getByText('Tracking The Matrix below so you can see what happens next.')).toBeVisible();
+  await expect(
+    page.getByText('Tracking The Matrix below so you can see what happens next.'),
+  ).toBeVisible();
   await page.waitForTimeout(3_200);
   await expect(confirmation).toHaveCount(0);
+});
+
+test('movie grab confirmation ignores a rapid double submit', async ({ page }) => {
+  const api = await mockAppApi(page, {
+    grabResponse: (body) =>
+      mockJson(
+        {
+          existing: false,
+          item: {
+            ...(body.item as Record<string, unknown>),
+            arrItemId: 603,
+            canAdd: false,
+            inArr: true,
+            isExisting: true,
+            isRequested: true,
+            status: 'Queued in Radarr',
+          },
+          message: 'The Matrix was added to Radarr.',
+          releaseDecision: null,
+          job: {
+            id: 'job-movie-603',
+            itemId: 'movie:603',
+            arrItemId: 603,
+            kind: 'movie',
+            title: 'The Matrix',
+            sourceService: 'radarr',
+            status: 'queued',
+            attempt: 1,
+            maxRetries: 3,
+            currentRelease: null,
+            selectedReleaser: null,
+            preferredReleaser: null,
+            reasonCode: null,
+            failureReason: null,
+            validationSummary: null,
+            autoRetrying: false,
+            progress: null,
+            queueStatus: null,
+            preferences: {
+              preferredLanguage: 'English',
+              subtitleLanguage: 'English',
+            },
+            startedAt: '2026-04-13T12:00:00.000Z',
+            updatedAt: '2026-04-13T12:00:00.000Z',
+            completedAt: null,
+            attempts: [],
+          },
+        },
+        600,
+      ),
+  });
+  await openSearch(page, api, 'Matrix', 'The Matrix');
+
+  const matrixCard = page.locator('article').filter({
+    has: page.getByRole('heading', { name: 'The Matrix' }),
+  });
+  await matrixCard.getByRole('button', { name: 'Grab' }).click();
+
+  const dialog = page.getByRole('dialog', { name: 'Grab title' });
+  await expect(dialog).toBeVisible();
+
+  await dialog.getByRole('button', { name: 'Grab', exact: true }).dblclick();
+
+  await expect(dialog.getByRole('button', { name: 'Grabbing...' })).toBeDisabled();
+  await expect
+    .poll(() => api.grabBodies.length, {
+      message: 'rapid double-submit should still send a single grab request',
+    })
+    .toBe(1);
+  await expect(page.getByRole('dialog', { name: 'Grab title' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Grab Progress' })).toBeVisible();
 });
 
 test('series grab defaults to season 1 and allows changing seasons', async ({ page }) => {
@@ -224,7 +295,9 @@ test('series grab defaults to season 1 and allows changing seasons', async ({ pa
   await expect(page.getByRole('dialog', { name: 'Grab title' })).toHaveCount(0);
   await expect(page.getByRole('status')).toContainText('Andor was added to Sonarr.');
   expect(api.grabBodies[0]?.seasonNumbers).toEqual([1, 2]);
-  await expect(page.getByText('Tracking Andor below so you can see what happens next.')).toBeVisible();
+  await expect(
+    page.getByText('Tracking Andor below so you can see what happens next.'),
+  ).toBeVisible();
 });
 
 test('plex-available search results still use the normal grab dialog with confirmation', async ({
@@ -447,7 +520,116 @@ test('arr-tracked search results still use the normal grab dialog with alternate
     })
     .toBe(1);
   await expect(page.getByRole('dialog', { name: 'Grab title' })).toHaveCount(0);
-  await expect(page.getByRole('status')).toContainText(
-    'Alternate-release acquisition started.',
+  await expect(page.getByRole('status')).toContainText('Alternate-release acquisition started.');
+});
+
+test('duplicate tracked movie submit still moves to queue and keeps alternate-release guidance', async ({
+  page,
+}) => {
+  const duplicateJob = {
+    id: 'job-movie-603-duplicate',
+    itemId: 'movie:603',
+    arrItemId: 603,
+    kind: 'movie',
+    title: 'The Matrix',
+    sourceService: 'radarr',
+    status: 'queued',
+    attempt: 1,
+    maxRetries: 3,
+    currentRelease: null,
+    selectedReleaser: null,
+    preferredReleaser: 'flux',
+    reasonCode: null,
+    failureReason: null,
+    validationSummary: null,
+    autoRetrying: false,
+    progress: null,
+    queueStatus: null,
+    preferences: {
+      preferredLanguage: 'English',
+      subtitleLanguage: 'English',
+    },
+    startedAt: '2026-04-13T12:00:00.000Z',
+    updatedAt: '2026-04-13T12:00:00.000Z',
+    completedAt: null,
+    attempts: [],
+  } as const;
+  const api = await mockAppApi(page, {
+    queue: {
+      updatedAt: '2026-04-13T12:00:00.000Z',
+      items: [],
+      acquisitionJobs: [duplicateJob],
+      total: 1,
+    },
+    searchResponse: () => [
+      {
+        id: 'movie:603',
+        arrItemId: 603,
+        kind: 'movie',
+        title: 'The Matrix',
+        year: 1999,
+        rating: 8.7,
+        poster: null,
+        overview: 'Sci-fi',
+        status: 'Already in Arr',
+        isExisting: true,
+        isRequested: true,
+        auditStatus: 'pending',
+        audioLanguages: ['English'],
+        subtitleLanguages: ['English'],
+        sourceService: 'radarr',
+        origin: 'arr',
+        inArr: true,
+        inPlex: false,
+        plexLibraries: [],
+        canAdd: false,
+        detail: null,
+        requestPayload: { id: 603, tmdbId: 603 },
+      },
+    ],
+    grabResponse: (body) =>
+      mockJson({
+        existing: true,
+        item: {
+          ...(body.item as Record<string, unknown>),
+          arrItemId: 603,
+          canAdd: false,
+          inArr: true,
+          isExisting: true,
+          isRequested: true,
+          status: 'Already in Arr',
+        },
+        message: 'The Matrix is already tracked in Radarr. Alternate-release acquisition started.',
+        releaseDecision: null,
+        job: duplicateJob,
+      }),
+  });
+  await openSearch(page, api, 'Matrix', 'The Matrix');
+
+  const matrixCard = page.locator('article').filter({
+    has: page.getByRole('heading', { name: 'The Matrix' }),
+  });
+  await matrixCard.getByRole('button', { name: 'Grab' }).click();
+
+  const dialog = page.getByRole('dialog', { name: 'Grab title' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText(
+    'Arr is already tracking this title. Confirm to download an alternate release anyway.',
   );
+
+  await dialog.getByRole('button', { name: 'Grab', exact: true }).click();
+
+  await expect
+    .poll(() => api.grabBodies.length, {
+      message: 'duplicate tracked movie should still submit through the managed grab flow',
+    })
+    .toBe(1);
+  await expect(page.getByRole('heading', { name: 'Grab Progress' })).toBeVisible();
+  await expect(page.getByRole('status')).toContainText('Alternate-release acquisition started.');
+  await expect(
+    page.getByText('Tracking The Matrix below so you can see what happens next.'),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId('acquisition-job-card').filter({ hasText: 'The Matrix' }).first(),
+  ).toBeVisible();
 });

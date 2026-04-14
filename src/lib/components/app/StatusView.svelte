@@ -3,11 +3,16 @@ import type { AppState } from '$lib/client/app-state.svelte';
 import { formatBytes } from '$lib/client/app-ui';
 
 let { state }: { state: AppState } = $props();
+type RuntimeVolume = AppState['config']['runtime']['volumes'][number];
 
 const checkedAtFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: 'medium',
   timeStyle: 'short',
 });
+
+function byteLabel(value: number | null): string {
+  return value !== null && Number.isFinite(value) && value >= 0 ? formatBytes(value) : 'Unknown';
+}
 
 function storageUsageLabel(totalBytes: number | null, freeBytes: number | null): string {
   if (
@@ -23,6 +28,26 @@ function storageUsageLabel(totalBytes: number | null, freeBytes: number | null):
   const usedBytes = Math.max(0, totalBytes - freeBytes);
   const usedPercent = Math.round((usedBytes / totalBytes) * 100);
   return `${usedPercent}% used`;
+}
+
+function storageCapacityLabel(totalBytes: number | null, freeBytes: number | null): string {
+  if (
+    totalBytes === null ||
+    freeBytes === null ||
+    !Number.isFinite(totalBytes) ||
+    !Number.isFinite(freeBytes) ||
+    totalBytes <= 0
+  ) {
+    return 'Unknown';
+  }
+
+  return `${formatBytes(freeBytes)} free / ${formatBytes(totalBytes)} total`;
+}
+
+function volumeLabelParts(volume: RuntimeVolume): string[] {
+  return [volume.label, volume.fileSystem].filter(
+    (part): part is string => typeof part === 'string' && part.length > 0,
+  );
 }
 
 function uptimeLabel(totalSeconds: number): string {
@@ -82,7 +107,7 @@ function uptimeLabel(totalSeconds: number): string {
       <div class="mt-2 space-y-1 text-sm text-[var(--muted)]">
         <div>Uptime {uptimeLabel(state.config.runtime.uptimeSeconds)}</div>
         <div>{state.config.runtime.platform} / {state.config.runtime.arch}</div>
-        <div>{formatBytes(state.config.runtime.freeSpaceBytes ?? 0)} free disk</div>
+        <div>{byteLabel(state.config.runtime.freeSpaceBytes)} free disk</div>
       </div>
     </article>
   </div>
@@ -109,11 +134,11 @@ function uptimeLabel(totalSeconds: number): string {
         </div>
         <div>
           <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Free space</div>
-          <div class="mt-1 text-base font-700">{formatBytes(state.config.runtime.freeSpaceBytes ?? 0)}</div>
+          <div class="mt-1 text-base font-700">{byteLabel(state.config.runtime.freeSpaceBytes)}</div>
         </div>
         <div>
           <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Total space</div>
-          <div class="mt-1 text-base font-700">{formatBytes(state.config.runtime.totalSpaceBytes ?? 0)}</div>
+          <div class="mt-1 text-base font-700">{byteLabel(state.config.runtime.totalSpaceBytes)}</div>
         </div>
         <div>
           <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Storage path</div>
@@ -177,6 +202,60 @@ function uptimeLabel(totalSeconds: number): string {
           <div class="mt-1 overflow-safe-text text-sm text-[var(--muted)]">{state.config.runtime.databasePath}</div>
         </div>
       </div>
+    </article>
+    <article class="card-shell p-3 xl:col-span-2">
+      <div class="flex items-center justify-between gap-3">
+        <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Local volumes</div>
+        <div class="text-sm text-[var(--muted)]">{state.config.runtime.volumes.length} tracked</div>
+      </div>
+      {#if state.config.runtime.volumes.length > 0}
+        <div class="mt-3 space-y-3">
+          {#each state.config.runtime.volumes as volume}
+            <div class="rounded-[16px] border border-[var(--line)] bg-[var(--surface)] p-3">
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="rounded-full border border-[var(--line)] bg-[var(--panel)] px-3 py-1 text-sm font-700">
+                      {volume.driveLetter ?? 'Mounted path'}
+                    </span>
+                    {#each volumeLabelParts(volume) as part}
+                      <span class="rounded-full border border-[var(--line)] bg-[var(--panel)] px-3 py-1 text-xs text-[var(--muted)]">
+                        {part}
+                      </span>
+                    {/each}
+                  </div>
+                  <div class="mt-2 text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Mount point</div>
+                  <div class="mt-1 overflow-safe-text text-sm text-[var(--muted)]">{volume.mountPoint}</div>
+                </div>
+                <div class="text-right">
+                  <div class="text-base font-700">
+                    {storageUsageLabel(volume.totalSpaceBytes, volume.freeSpaceBytes)}
+                  </div>
+                  <div class="mt-1 text-sm text-[var(--muted)]">
+                    {storageCapacityLabel(volume.totalSpaceBytes, volume.freeSpaceBytes)}
+                  </div>
+                </div>
+              </div>
+              <div class="mt-3 grid gap-3 sm:grid-cols-3">
+                <div>
+                  <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Drive</div>
+                  <div class="mt-1 text-sm text-[var(--muted)]">{volume.driveLetter ?? 'None'}</div>
+                </div>
+                <div>
+                  <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Free</div>
+                  <div class="mt-1 text-sm text-[var(--muted)]">{byteLabel(volume.freeSpaceBytes)}</div>
+                </div>
+                <div>
+                  <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Total</div>
+                  <div class="mt-1 text-sm text-[var(--muted)]">{byteLabel(volume.totalSpaceBytes)}</div>
+                </div>
+              </div>
+            </div>
+          {/each}
+        </div>
+      {:else}
+        <div class="mt-2 text-sm text-[var(--muted)]">No local volume details are available.</div>
+      {/if}
     </article>
     <article class="card-shell p-3">
       <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Radarr</div>

@@ -32,6 +32,7 @@ type GrabSpec = {
   ) => Record<string, unknown>;
   buildFallbackItem: (created: Record<string, unknown>, preferences: Preferences) => MediaItem;
   createPath: '/api/v3/movie' | '/api/v3/series';
+  listPath: '/api/v3/movie' | '/api/v3/series';
   fetchExisting: (id: number, preferences: Preferences, item: MediaItem) => Promise<MediaItem>;
 };
 
@@ -57,6 +58,11 @@ function ensureAddable(item: MediaItem): void {
 
 function trackedArrItemId(item: MediaItem): number | null {
   return item.arrItemId ?? asNumber(asRecord(item.requestPayload).id);
+}
+
+function normalizedIdentityValue(value: string | null): string | null {
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed.toLowerCase() : null;
 }
 
 function grabIdentity(item: MediaItem): string {
@@ -104,9 +110,7 @@ function buildSeriesPayload(
       ?.filter((seasonNumber) => Number.isFinite(seasonNumber) && seasonNumber >= 0)
       .map((seasonNumber) => Math.trunc(seasonNumber)) ?? [];
   const selectedSeasonNumbers =
-    normalizedSeasonNumbers.length > 0
-      ? new Set(normalizedSeasonNumbers)
-      : null;
+    normalizedSeasonNumbers.length > 0 ? new Set(normalizedSeasonNumbers) : null;
 
   return {
     ...raw,
@@ -146,6 +150,7 @@ function movieGrabSpec(): GrabSpec {
         canAdd: false,
       }),
     createPath: '/api/v3/movie',
+    listPath: '/api/v3/movie',
     fetchExisting: (id, preferences) => fetchExistingMovie(id, preferences),
   };
 }
@@ -163,24 +168,114 @@ function seriesGrabSpec(): GrabSpec {
         canAdd: false,
       }),
     createPath: '/api/v3/series',
+    listPath: '/api/v3/series',
     fetchExisting: (id, preferences, item) =>
       fetchExistingSeries(id, preferences, null, item.detail),
   };
 }
 
-function existingResponse(
+function trackedResponse(
+  spec: GrabSpec,
   item: MediaItem,
-  trackedName: string,
   existingItem: MediaItem,
-  activeJob: AcquisitionJob | null,
+  preferences: Preferences,
 ): GrabResponse {
+  const existingArrItemId =
+    typeof existingItem.arrItemId === 'number' ? existingItem.arrItemId : null;
+  if (existingArrItemId === null) {
+    return {
+      existing: true,
+      item: existingItem,
+      job: null,
+      message: `${item.title} is already tracked in ${spec.trackedName}`,
+      releaseDecision: null,
+    };
+  }
+
+  const activeJob = getAcquisitionJobRepository().findActiveJob(
+    existingArrItemId,
+    item.kind,
+    spec.service,
+  );
+  if (activeJob) {
+    return {
+      existing: true,
+      item: existingItem,
+      job: cloneJob(activeJob),
+      message: `${item.title} is already tracked in ${spec.trackedName}. Reusing the active alternate-release grab.`,
+      releaseDecision: null,
+    };
+  }
+
+  const job = createOrReuseJob(existingItem, existingArrItemId, spec.service, preferences);
   return {
     existing: true,
     item: existingItem,
-    job: activeJob,
-    message: `${item.title} is already tracked in ${trackedName}`,
+    job,
+    message: `${item.title} is already tracked in ${spec.trackedName}. Alternate-release acquisition started.`,
     releaseDecision: null,
   };
+}
+
+function findExistingRecordId(item: MediaItem, records: Record<string, unknown>[]): number | null {
+  const payload = asRecord(item.requestPayload);
+  const expectedTmdbId = asNumber(payload.tmdbId);
+  const expectedTvdbId = asNumber(payload.tvdbId);
+  const expectedImdbId = normalizedIdentityValue(asString(payload.imdbId));
+  const expectedTitle = normalizedIdentityValue(item.title);
+  const expectedYear = item.year;
+
+  for (const record of records) {
+    const recordId = asNumber(record.id);
+    if (!recordId) {
+      continue;
+    }
+
+    if (expectedTmdbId !== null && asNumber(record.tmdbId) === expectedTmdbId) {
+      return recordId;
+    }
+
+    if (expectedTvdbId !== null && asNumber(record.tvdbId) === expectedTvdbId) {
+      return recordId;
+    }
+
+    if (
+      expectedImdbId !== null &&
+      normalizedIdentityValue(asString(record.imdbId)) === expectedImdbId
+    ) {
+      return recordId;
+    }
+
+    if (
+      expectedTitle !== null &&
+      normalizedIdentityValue(asString(record.title)) === expectedTitle &&
+      asNumber(record.year) === expectedYear
+    ) {
+      return recordId;
+    }
+  }
+
+  return null;
+}
+
+async function findExistingTrackedItem(
+  spec: GrabSpec,
+  item: MediaItem,
+  preferences: Preferences,
+): Promise<MediaItem | null> {
+  if (typeof item.arrItemId === 'number') {
+    return spec.fetchExisting(item.arrItemId, preferences, item).catch(() => null);
+  }
+
+  const records = (await arrFetch<unknown[]>(spec.service, spec.listPath).catch(() => [])).map(
+    asRecord,
+  );
+  const existingId = findExistingRecordId(item, records);
+  if (!existingId) {
+    return null;
+  }
+
+  return spec.fetchExisting(existingId, preferences, item).catch(() => null);
 }
 
 function createOrReuseJob(
@@ -235,38 +330,38 @@ async function grabTrackedItem(
 
   const sourceId = trackedArrItemId(item);
   if (item.inArr && sourceId) {
-    const activeJob = getAcquisitionJobRepository().findActiveJob(sourceId, item.kind, spec.service);
     const existingItem = await spec.fetchExisting(sourceId, preferences, item);
-    if (activeJob) {
-      return {
-        existing: true,
-        item: existingItem,
-        job: cloneJob(activeJob),
-        message: `${item.title} is already tracked in ${spec.trackedName}. Reusing the active alternate-release grab.`,
-        releaseDecision: null,
-      };
-    }
-
-    const job = createOrReuseJob(existingItem, sourceId, spec.service, preferences);
-    return {
-      existing: true,
-      item: existingItem,
-      job,
-      message: `${item.title} is already tracked in ${spec.trackedName}. Alternate-release acquisition started.`,
-      releaseDecision: null,
-    };
+    return trackedResponse(spec, item, existingItem, preferences);
   }
 
   ensureAddable(item);
   const defaults = await fetchServiceDefaults(spec.service);
   ensureRootFolder(defaults, spec.service);
 
-  const created = asRecord(
-    await arrFetch<unknown>(spec.service, spec.createPath, {
-      method: 'POST',
-      body: JSON.stringify(spec.buildPayload(item, defaults, options)),
-    }),
-  );
+  let created: Record<string, unknown>;
+  try {
+    created = asRecord(
+      await arrFetch<unknown>(spec.service, spec.createPath, {
+        method: 'POST',
+        body: JSON.stringify(spec.buildPayload(item, defaults, options)),
+      }),
+    );
+  } catch (createError) {
+    const existingItem = await findExistingTrackedItem(spec, item, preferences);
+    if (existingItem) {
+      logger.warn(
+        'Arr create reported an already-tracked item; converting to tracked grab response',
+        {
+          itemTitle: item.title,
+          kind: item.kind,
+          service: spec.service,
+        },
+      );
+      return trackedResponse(spec, item, existingItem, preferences);
+    }
+
+    throw createError;
+  }
   const createdId = asNumber(created.id);
   let createdItem: MediaItem = spec.buildFallbackItem(created, preferences);
   let job: AcquisitionJob | null = null;
@@ -275,9 +370,7 @@ async function grabTrackedItem(
     createdItem = createdId
       ? await spec.fetchExisting(createdId, preferences, item)
       : spec.buildFallbackItem(created, preferences);
-    job = createdId
-      ? createOrReuseJob(createdItem, createdId, spec.service, preferences)
-      : null;
+    job = createdId ? createOrReuseJob(createdItem, createdId, spec.service, preferences) : null;
   } catch (trackingError) {
     if (!createdId) {
       throw trackingError;
@@ -295,11 +388,14 @@ async function grabTrackedItem(
         spec.buildFallbackItem(created, preferences);
       job = createOrReuseJob(createdItem, createdId, spec.service, preferences);
     } catch (recoveryError) {
-      logger.error('Tracked item was created in Arr but acquisition tracking could not be recovered', {
-        arrItemId: createdId,
-        itemTitle: item.title,
-        service: spec.service,
-      });
+      logger.error(
+        'Tracked item was created in Arr but acquisition tracking could not be recovered',
+        {
+          arrItemId: createdId,
+          itemTitle: item.title,
+          service: spec.service,
+        },
+      );
       throw new AcquisitionGrabError(
         500,
         `${item.title} was added to ${spec.trackedName}, but acquisition tracking could not be started.`,

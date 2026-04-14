@@ -170,7 +170,10 @@ function optimisticQueueResponse(
   currentQueue: QueueResponse | null,
   job: AcquisitionJob,
 ): QueueResponse {
-  const acquisitionJobs = [job, ...(currentQueue?.acquisitionJobs ?? []).filter((entry) => entry.id !== job.id)];
+  const acquisitionJobs = [
+    job,
+    ...(currentQueue?.acquisitionJobs ?? []).filter((entry) => entry.id !== job.id),
+  ];
   const items = currentQueue?.items ?? [];
 
   return {
@@ -998,6 +1001,10 @@ export class AppState {
       return;
     }
 
+    if (this.grabbing === item.id) {
+      return;
+    }
+
     const requestPreferences = preferencesOverride ?? {
       cardsView: this.cardsView,
       preferredLanguage: this.preferredLanguage,
@@ -1041,8 +1048,7 @@ export class AppState {
       void (async () => {
         await Promise.all([this.loadDashboard(true), this.loadQueue()]);
         if (this.dashboardError || this.queueError) {
-          this.latestActionMessage =
-            `${result.item.title} was grabbed, but refresh is still catching up. Showing the latest known state.`;
+          this.latestActionMessage = `${result.item.title} was grabbed, but refresh is still catching up. Showing the latest known state.`;
         }
       })();
     } catch (error) {

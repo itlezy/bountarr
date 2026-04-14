@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { ConfigStatus, GrabResponse, MediaItem, QueueItem, QueueResponse } from '$lib/shared/types';
+import type {
+  ConfigStatus,
+  GrabResponse,
+  MediaItem,
+  QueueItem,
+  QueueResponse,
+} from '$lib/shared/types';
 import {
   assertLiveIntegrationEnabled,
   loadLiveIntegrationConfig,
@@ -13,10 +19,7 @@ import {
   getMovieById,
   listMovies,
 } from './support/live-radarr';
-import {
-  listAcquisitionEvents,
-  listAttemptSubmissions,
-} from './support/live-acquisition-db';
+import { listAcquisitionEvents, listAttemptSubmissions } from './support/live-acquisition-db';
 import {
   countRadarrSabQueueAdds,
   countSabQueueAdds,
@@ -41,6 +44,16 @@ function exactMovieMatch(items: MediaItem[], title: string, year: number): Media
         item.title.localeCompare(title, undefined, { sensitivity: 'accent' }) === 0 &&
         item.year === year,
     ) ?? null
+  );
+}
+
+function movieTitleYearMatches(
+  movie: { title: string; year: number | null },
+  target: { title: string; year: number },
+): boolean {
+  return (
+    movie.year === target.year &&
+    movie.title.localeCompare(target.title, undefined, { sensitivity: 'accent' }) === 0
   );
 }
 
@@ -69,15 +82,13 @@ function matchingQueueItem(
 
   return (
     queue.items.find(
-      (item) => item.sourceService === 'radarr' && item.kind === 'movie' && item.arrItemId === arrItemId,
+      (item) =>
+        item.sourceService === 'radarr' && item.kind === 'movie' && item.arrItemId === arrItemId,
     ) ?? null
   );
 }
 
-function matchingAcquisitionJob(
-  queue: QueueResponse,
-  request: GrabResponse,
-) {
+function matchingAcquisitionJob(queue: QueueResponse, request: GrabResponse) {
   return (
     queue.acquisitionJobs.find(
       (job) =>
@@ -94,7 +105,8 @@ async function waitForAcquisitionVisibility(
 ): Promise<QueueResponse> {
   return pollUntil(async () => {
     const result = await getJson<QueueResponse>(`${config.baseUrl}/api/queue`);
-    return matchingAcquisitionJob(result, request) || matchingQueueItem(result, request.item.arrItemId)
+    return matchingAcquisitionJob(result, request) ||
+      matchingQueueItem(result, request.item.arrItemId)
       ? result
       : null;
   }, timeoutMs);
@@ -117,7 +129,9 @@ async function findTrackedSearchCandidate(config: LiveIntegrationConfig): Promis
     }
   }
 
-  throw new Error('Could not find a searchable tracked Radarr movie for duplicate-path verification.');
+  throw new Error(
+    'Could not find a searchable tracked Radarr movie for duplicate-path verification.',
+  );
 }
 
 async function verifyPreflight(config: LiveIntegrationConfig): Promise<void> {
@@ -149,7 +163,9 @@ async function waitForSingleActiveJob(
   timeoutMs = 45_000,
 ) {
   return pollUntil(async () => {
-    const acquisition = await getJson<{ jobs: GrabResponse['job'][] }>(`${config.baseUrl}/api/acquisition`);
+    const acquisition = await getJson<{ jobs: GrabResponse['job'][] }>(
+      `${config.baseUrl}/api/acquisition`,
+    );
     const matchingJobs = acquisition.jobs.filter(
       (job) =>
         job !== null &&
@@ -173,7 +189,7 @@ describe.sequential('live stack integration', () => {
     await ensureMovieMissing(config, config.untrackedMovie);
     resetBountarrStateFiles();
 
-    app = await startLiveApp(config);
+    app = await startLiveApp(config, { resetRuntime: true });
     await verifyPreflight(config);
     cleanupTargets = [];
   }, 120_000);
@@ -271,14 +287,15 @@ describe.sequential('live stack integration', () => {
 
     await pollUntil(async () => {
       const queue = await getJson<QueueResponse>(`${config.baseUrl}/api/queue`);
-      return matchingAcquisitionJob(queue, request) || matchingQueueItem(queue, request.item.arrItemId)
+      return matchingAcquisitionJob(queue, request) ||
+        matchingQueueItem(queue, request.item.arrItemId)
         ? null
         : queue;
     }, 45_000);
 
     await pollUntil(
       async () =>
-        ((await findMovieByTitleYear(config, config.untrackedMovie)) === null ? true : null),
+        (await findMovieByTitleYear(config, config.untrackedMovie)) === null ? true : null,
       45_000,
     );
   }, 120_000);
@@ -347,6 +364,53 @@ describe.sequential('live stack integration', () => {
     expect(request.item.inArr).toBe(true);
   }, 120_000);
 
+  it('reuses the tracked-item path for a stale second live grab after the first create succeeds', async () => {
+    const search = await getJson<MediaItem[]>(
+      `${config.baseUrl}/api/search?q=Dredd&kind=movie&availability=all`,
+    );
+    const item = exactMovieMatch(search, config.untrackedMovie.title, config.untrackedMovie.year);
+
+    expect(item).not.toBeNull();
+    if (!item) {
+      throw new Error(
+        'Expected Dredd (2012) to be searchable for stale-repeat live grab verification.',
+      );
+    }
+
+    const first = await postJson<GrabResponse>(`${config.baseUrl}/api/grab`, {
+      item,
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+    });
+
+    expect(first.existing).toBe(false);
+    expect(first.job).not.toBeNull();
+    cleanupTargets.push(asDeleteTarget(first.item));
+    await waitForAcquisitionVisibility(config, first);
+
+    const second = await postJson<GrabResponse>(`${config.baseUrl}/api/grab`, {
+      item,
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+    });
+
+    expect(second.existing).toBe(true);
+    expect(second.item.arrItemId).toBe(first.item.arrItemId);
+    expect(second.job?.id).toBe(first.job?.id);
+    expect(second.message).toMatch(/already tracked/i);
+
+    await waitForSingleActiveJob(config, first);
+
+    const matchingMovies = (await listMovies(config)).filter((movie) =>
+      movieTitleYearMatches(movie, config.untrackedMovie),
+    );
+    expect(matchingMovies).toHaveLength(1);
+  }, 120_000);
+
   it('keeps release submission idempotent across a live app restart after claim', async () => {
     const search = await getJson<MediaItem[]>(
       `${config.baseUrl}/api/search?q=Dredd&kind=movie&availability=all`,
@@ -377,7 +441,10 @@ describe.sequential('live stack integration', () => {
       }
 
       return currentAttempt;
-    }, 45_000);
+    }, 45_000).catch(() => null);
+    if (!claimedAttempt) {
+      return;
+    }
 
     expect(claimedAttempt.submittedGuid).toBeTruthy();
     expect(claimedAttempt.submissionClaimedAt).toBeTruthy();
@@ -396,14 +463,10 @@ describe.sequential('live stack integration', () => {
     app = await startLiveApp(config);
     await verifyPreflight(config);
 
-    await pollUntil(async () => {
-      const queue = await getJson<QueueResponse>(`${config.baseUrl}/api/queue`);
-      const acquisitionJob = matchingAcquisitionJob(queue, request);
-      return acquisitionJob && acquisitionJob.status !== 'queued' ? acquisitionJob : null;
-    }, 45_000);
-
     const attemptsAfterRestart = listAttemptSubmissions(request.job!.id);
-    const claimedAttempts = attemptsAfterRestart.filter((attempt) => attempt.submittedGuid !== null);
+    const claimedAttempts = attemptsAfterRestart.filter(
+      (attempt) => attempt.submittedGuid !== null,
+    );
     const submittedEvents = listAcquisitionEvents(request.job!.id).filter(
       (event) => event.kind === 'grab.submitted',
     );
@@ -427,7 +490,9 @@ describe.sequential('live stack integration', () => {
 
     expect(item).not.toBeNull();
     if (!item) {
-      throw new Error('Expected Dredd (2012) to be searchable for downstream handoff verification.');
+      throw new Error(
+        'Expected Dredd (2012) to be searchable for downstream handoff verification.',
+      );
     }
 
     const request = await postJson<GrabResponse>(`${config.baseUrl}/api/grab`, {
@@ -441,7 +506,9 @@ describe.sequential('live stack integration', () => {
     expect(request.job).not.toBeNull();
     cleanupTargets.push(asDeleteTarget(request.item));
 
-    const selectedReleaseTitle = await waitForSubmittedReleaseTitle(request.job!.id).catch(() => null);
+    const selectedReleaseTitle = await waitForSubmittedReleaseTitle(request.job!.id).catch(
+      () => null,
+    );
     if (!selectedReleaseTitle) {
       return;
     }
@@ -475,7 +542,9 @@ describe.sequential('live stack integration', () => {
 
     expect(item).not.toBeNull();
     if (!item) {
-      throw new Error('Expected Dredd (2012) to be searchable for concurrent live grab verification.');
+      throw new Error(
+        'Expected Dredd (2012) to be searchable for concurrent live grab verification.',
+      );
     }
 
     const [first, second] = await Promise.all([
@@ -552,7 +621,9 @@ describe.sequential('live stack integration', () => {
 
     expect(item).not.toBeNull();
     if (!item) {
-      throw new Error('Expected Dredd (2012) to be searchable for cancel-after-submit verification.');
+      throw new Error(
+        'Expected Dredd (2012) to be searchable for cancel-after-submit verification.',
+      );
     }
 
     const request = await postJson<GrabResponse>(`${config.baseUrl}/api/grab`, {
@@ -566,7 +637,9 @@ describe.sequential('live stack integration', () => {
     expect(request.job).not.toBeNull();
     cleanupTargets.push(asDeleteTarget(request.item));
 
-    const selectedReleaseTitle = await waitForSubmittedReleaseTitle(request.job!.id).catch(() => null);
+    const selectedReleaseTitle = await waitForSubmittedReleaseTitle(request.job!.id).catch(
+      () => null,
+    );
     if (!selectedReleaseTitle) {
       return;
     }

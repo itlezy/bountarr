@@ -42,6 +42,15 @@ export interface QualityProfileOption {
   isDefault: boolean;
 }
 
+export interface RuntimeVolume {
+  driveLetter: string | null;
+  mountPoint: string;
+  label: string | null;
+  fileSystem: string | null;
+  freeSpaceBytes: number | null;
+  totalSpaceBytes: number | null;
+}
+
 export interface RuntimeHealth {
   checkedAt: string;
   healthy: boolean;
@@ -69,6 +78,7 @@ export interface RuntimeHealth {
   heapUsedBytes: number;
   systemTotalMemoryBytes: number;
   systemFreeMemoryBytes: number;
+  volumes: RuntimeVolume[];
 }
 
 export interface ArrServiceStats {

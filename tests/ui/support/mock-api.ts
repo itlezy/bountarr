@@ -15,6 +15,11 @@ import {
 type SearchResponseResolver = (url: URL) => unknown;
 type GrabResponseResolver = (body: Record<string, unknown>) => unknown;
 type ResolveGrabResponseResolver = (body: Record<string, unknown>) => unknown;
+type QueueCancelResponseResolver = (
+  body: Record<string, unknown>,
+  request: Request,
+  url: URL,
+) => MockRouteResult | unknown;
 type RequestAwareResolver = (request: Request, url: URL) => unknown;
 type ManualReleaseResponseResolver = (jobId: string, request: Request, url: URL) => unknown;
 type SelectManualReleaseResponseResolver = (
@@ -30,6 +35,7 @@ type MockApiOptions = {
   resolveGrabResponse?: ResolveGrabResponseResolver;
   manualReleaseResponse?: ManualReleaseResponseResolver;
   plexRecent?: unknown;
+  queueCancelResponse?: QueueCancelResponseResolver;
   queue?: unknown | RequestAwareResolver;
   searchResponse?: SearchResponseResolver;
   selectManualReleaseResponse?: SelectManualReleaseResponseResolver;
@@ -38,6 +44,7 @@ type MockApiOptions = {
 export type MockApiController = {
   dashboardRequests: string[];
   grabBodies: Record<string, unknown>[];
+  queueCancelBodies: Record<string, unknown>[];
   resolveGrabBodies: Record<string, unknown>[];
   manualReleaseRequests: string[];
   queueRequests: string[];
@@ -137,6 +144,7 @@ export async function mockAppApi(
   const controller: MockApiController = {
     dashboardRequests: [],
     grabBodies: [],
+    queueCancelBodies: [],
     resolveGrabBodies: [],
     manualReleaseRequests: [],
     queueRequests: [],
@@ -236,6 +244,19 @@ export async function mockAppApi(
       const body = (request.postDataJSON() as Record<string, unknown> | null) ?? {};
       controller.resolveGrabBodies.push(body);
       await fulfillResolvedRoute(route, options.resolveGrabResponse?.(body) ?? null);
+      return;
+    }
+
+    if (url.pathname === '/api/queue/cancel') {
+      const body = (request.postDataJSON() as Record<string, unknown> | null) ?? {};
+      controller.queueCancelBodies.push(body);
+      const payload =
+        options.queueCancelResponse?.(body, request, url) ??
+        mockJson({
+          itemId: String(body.id ?? ''),
+          message: `${String(body.title ?? 'Download')} download was cancelled and unmonitored.`,
+        });
+      await fulfillResolvedRoute(route, payload);
       return;
     }
 

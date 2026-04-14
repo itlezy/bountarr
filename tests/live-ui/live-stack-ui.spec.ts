@@ -1,9 +1,19 @@
 import { expect, test } from '@playwright/test';
 import {
+  listAcquisitionEvents,
+  listAttemptSubmissions,
+} from '../integration/support/live-acquisition-db';
+import {
   assertLiveIntegrationEnabled,
   loadLiveIntegrationConfig,
 } from '../integration/support/live-config';
 import { getJson, pollUntil, postJson } from '../integration/support/live-http';
+import {
+  countRadarrSabQueueAdds,
+  createLogCheckpoint,
+  readLogAppendix,
+} from '../integration/support/live-log-files';
+import { liveRuntimePaths } from '../integration/support/live-runtime-paths';
 import {
   ensureMovieMissing,
   findMovieByTitleYear,
@@ -11,10 +21,7 @@ import {
   listMovies,
   ensureMovieTracked,
 } from '../integration/support/live-radarr';
-import {
-  ensureSeriesMissing,
-  findSeriesByTitleYear,
-} from '../integration/support/live-sonarr';
+import { ensureSeriesMissing, findSeriesByTitleYear } from '../integration/support/live-sonarr';
 
 type AcquisitionJobSummary = {
   arrItemId: number;
@@ -78,6 +85,7 @@ type ManualReleaseListResponse = {
 };
 
 const config = loadLiveIntegrationConfig();
+const liveUiDatabasePath = liveRuntimePaths(process.cwd(), 'live-ui').databasePath;
 let activeSeriesTarget: { title: string; year: number } | null = null;
 
 test.describe.configure({ mode: 'serial' });
@@ -86,6 +94,18 @@ function searchResultCard(page: import('@playwright/test').Page, title: string) 
   return page
     .getByTestId('search-result-card')
     .filter({ has: page.getByRole('heading', { name: title, exact: true }) })
+    .first();
+}
+
+function searchResultCardByYear(
+  page: import('@playwright/test').Page,
+  title: string,
+  year: number,
+) {
+  return page
+    .getByTestId('search-result-card')
+    .filter({ has: page.getByRole('heading', { name: title, exact: true }) })
+    .filter({ hasText: year.toString() })
     .first();
 }
 
@@ -115,6 +135,28 @@ async function selectSearchKind(
   }
 
   await page.getByRole('button', { name: label, exact: true }).click();
+}
+
+async function selectAvailability(
+  page: import('@playwright/test').Page,
+  label: 'All' | 'Only Available' | 'Only Not Available',
+): Promise<void> {
+  const filterDialog = page.getByRole('dialog', { name: 'Search filters' });
+  if ((await filterDialog.count()) === 0) {
+    await page
+      .getByRole('button', { name: /^(All|Movies|Shows)$/ })
+      .first()
+      .click();
+  }
+
+  const root = (await filterDialog.count()) > 0 ? filterDialog : page.locator('body');
+  const option = root.getByRole('button', { name: label, exact: true });
+  if (label === 'All') {
+    await option.last().click();
+    return;
+  }
+
+  await option.click();
 }
 
 async function searchForTitle(
@@ -157,16 +199,20 @@ async function waitForSelectableManualRelease(
   jobId: string,
   timeoutMs = 45_000,
 ): Promise<ManualReleaseListResponse> {
-  return pollUntil(async () => {
-    const releases = await getJson<ManualReleaseListResponse>(
-      `${config.baseUrl}/api/acquisition/${encodeURIComponent(jobId)}/releases`,
-    ).catch(() => null);
-    if (!releases) {
-      return null;
-    }
+  return pollUntil(
+    async () => {
+      const releases = await getJson<ManualReleaseListResponse>(
+        `${config.baseUrl}/api/acquisition/${encodeURIComponent(jobId)}/releases`,
+      ).catch(() => null);
+      if (!releases) {
+        return null;
+      }
 
-    return releases.releases.some((release) => release.canSelect) ? releases : null;
-  }, timeoutMs, 2_000);
+      return releases.releases.some((release) => release.canSelect) ? releases : null;
+    },
+    timeoutMs,
+    2_000,
+  );
 }
 
 async function queueResponse(): Promise<QueueResponse> {
@@ -175,6 +221,16 @@ async function queueResponse(): Promise<QueueResponse> {
 
 async function acquisitionResponse(): Promise<AcquisitionResponse> {
   return getJson<AcquisitionResponse>(`${config.baseUrl}/api/acquisition`);
+}
+
+function movieTitleYearMatches(
+  movie: { title: string; year: number | null },
+  target: { title: string; year: number },
+): boolean {
+  return (
+    movie.year === target.year &&
+    movie.title.localeCompare(target.title, undefined, { sensitivity: 'accent' }) === 0
+  );
 }
 
 async function waitForJob(
@@ -193,32 +249,82 @@ async function waitForJob(
   }, timeoutMs);
 }
 
+async function waitForSingleTrackedMovie(
+  target: { title: string; year: number },
+  timeoutMs = 45_000,
+) {
+  return pollUntil(async () => {
+    const matches = (await listMovies(config)).filter((movie) =>
+      movieTitleYearMatches(movie, target),
+    );
+    return matches.length === 1 ? matches[0] : null;
+  }, timeoutMs);
+}
+
+async function waitForSingleMovieJob(
+  jobId: string,
+  arrItemId: number,
+  timeoutMs = 45_000,
+): Promise<AcquisitionJobSummary> {
+  return pollUntil(async () => {
+    const acquisition = await acquisitionResponse();
+    const matches = acquisition.jobs.filter(
+      (job) =>
+        job.kind === 'movie' &&
+        job.sourceService === 'radarr' &&
+        (job.id === jobId || job.arrItemId === arrItemId),
+    );
+    return matches.length === 1 ? matches[0] : null;
+  }, timeoutMs);
+}
+
+async function waitForSubmittedReleaseTitle(jobId: string, timeoutMs = 45_000): Promise<string> {
+  return pollUntil(async () => {
+    const submittedEvent =
+      listAcquisitionEvents(jobId, liveUiDatabasePath).find(
+        (event) => event.kind === 'grab.submitted',
+      ) ?? null;
+    const selectedTitle = submittedEvent?.context.selectedTitle;
+    return typeof selectedTitle === 'string' && selectedTitle.length > 0 ? selectedTitle : null;
+  }, timeoutMs);
+}
+
 async function waitForQueueDownload(
   title: string,
   kind: 'movie' | 'series',
   sourceService: 'radarr' | 'sonarr',
   timeoutMs = 120_000,
 ): Promise<QueueResponse['items'][number]> {
-  return pollUntil(async () => {
-    const queue = await queueResponse();
-    return (
-      queue.items.find(
-        (item) =>
-          item.title === title &&
-          item.kind === kind &&
-          item.sourceService === sourceService &&
-          item.progress !== null,
-      ) ?? null
-    );
-  }, timeoutMs, 2_000);
+  return pollUntil(
+    async () => {
+      const queue = await queueResponse();
+      return (
+        queue.items.find(
+          (item) =>
+            item.title === title &&
+            item.kind === kind &&
+            item.sourceService === sourceService &&
+            item.progress !== null,
+        ) ?? null
+      );
+    },
+    timeoutMs,
+    2_000,
+  );
 }
 
-async function findAnyLiveDownload(timeoutMs = 20_000): Promise<QueueResponse['items'][number] | null> {
+async function findAnyLiveDownload(
+  timeoutMs = 20_000,
+): Promise<QueueResponse['items'][number] | null> {
   try {
-    return await pollUntil(async () => {
-      const queue = await queueResponse();
-      return queue.items.find((item) => item.progress !== null) ?? null;
-    }, timeoutMs, 2_000);
+    return await pollUntil(
+      async () => {
+        const queue = await queueResponse();
+        return queue.items.find((item) => item.progress !== null) ?? null;
+      },
+      timeoutMs,
+      2_000,
+    );
   } catch {
     return null;
   }
@@ -259,7 +365,11 @@ async function cleanupMovie(): Promise<void> {
   }
 
   for (const job of acquisition.jobs) {
-    if (job.title === config.untrackedMovie.title && job.kind === 'movie' && job.sourceService === 'radarr') {
+    if (
+      job.title === config.untrackedMovie.title &&
+      job.kind === 'movie' &&
+      job.sourceService === 'radarr'
+    ) {
       deleteTargets.set(job.arrItemId, {
         arrItemId: job.arrItemId,
         id: job.id,
@@ -318,7 +428,7 @@ async function cleanupSeries(target = config.untrackedSeries): Promise<void> {
       await postJson(`${config.baseUrl}/api/media/delete`, target);
     } catch {
       // Fall through to direct Arr cleanup below.
-      }
+    }
   }
 
   await ensureSeriesMissing(config, target);
@@ -326,13 +436,7 @@ async function cleanupSeries(target = config.untrackedSeries): Promise<void> {
 }
 
 async function findLiveSeriesTarget(): Promise<{ title: string; year: number } | null> {
-  const candidates = [
-    config.untrackedSeries.title,
-    'Andor',
-    'Chernobyl',
-    'Severance',
-    'Silo',
-  ];
+  const candidates = [config.untrackedSeries.title, 'Andor', 'Chernobyl', 'Severance', 'Silo'];
 
   for (const query of candidates) {
     const results = await getJson<SearchResultItem[]>(
@@ -354,7 +458,9 @@ async function findLiveSeriesTarget(): Promise<{ title: string; year: number } |
 }
 
 async function findTrackedMovieTarget(): Promise<{ title: string; year: number } | null> {
-  const configuredDuplicate = await findMovieByTitleYear(config, config.duplicateMovie).catch(() => null);
+  const configuredDuplicate = await findMovieByTitleYear(config, config.duplicateMovie).catch(
+    () => null,
+  );
   if (configuredDuplicate && configuredDuplicate.year !== null) {
     return {
       title: configuredDuplicate.title,
@@ -414,9 +520,7 @@ test.afterEach(async () => {
   }
 });
 
-test('movie live UI covers search, grab, and cancel', async ({
-  page,
-}) => {
+test('movie live UI covers search, grab, and cancel', async ({ page }) => {
   test.setTimeout(240_000);
 
   await searchForTitle(page, config.untrackedMovie.title, 'Movies');
@@ -440,8 +544,166 @@ test('movie live UI covers search, grab, and cancel', async ({
   await jobCard.getByRole('button', { name: 'Cancel download' }).click();
   await expect(page.getByText(/download was cancelled and unmonitored/i)).toBeVisible();
   await pollUntil(async () => {
-      const tracked = await getMovieById(config, job.arrItemId);
-      return tracked?.monitored === false ? tracked : null;
+    const tracked = await getMovieById(config, job.arrItemId);
+    return tracked?.monitored === false ? tracked : null;
+  }, 45_000);
+});
+
+test('movie live UI collapses rapid confirmation clicks into one Radarr handoff', async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+
+  const radarrLogCheckpoint = createLogCheckpoint(config.radarrLogPath);
+
+  await searchForTitle(page, config.untrackedMovie.title, 'Movies');
+
+  const resultCard = searchResultCardByYear(
+    page,
+    config.untrackedMovie.title,
+    config.untrackedMovie.year,
+  );
+  await expect(resultCard).toBeVisible();
+  await resultCard.getByRole('button', { name: 'Grab', exact: true }).click();
+
+  const dialog = page.getByRole('dialog', { name: 'Grab title' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Grab', exact: true }).dblclick();
+
+  await expect(page.getByRole('heading', { name: 'Grab Progress' })).toBeVisible();
+  const job = await waitForJob(config.untrackedMovie.title, 'movie', 'radarr');
+  await waitForSingleTrackedMovie(config.untrackedMovie);
+  await waitForSingleMovieJob(job.id, job.arrItemId);
+
+  const selectedReleaseTitle = await waitForSubmittedReleaseTitle(job.id, 45_000).catch(() => null);
+  const submissionClaims = listAttemptSubmissions(job.id, liveUiDatabasePath).filter(
+    (attempt) => attempt.submittedGuid !== null,
+  );
+  const submittedEvents = listAcquisitionEvents(job.id, liveUiDatabasePath).filter(
+    (event) => event.kind === 'grab.submitted',
+  );
+
+  expect(submissionClaims.length).toBeLessThanOrEqual(1);
+  expect(submittedEvents.length).toBeLessThanOrEqual(1);
+  if (!selectedReleaseTitle) {
+    return;
+  }
+
+  await pollUntil(async () => {
+    const radarrAdds = countRadarrSabQueueAdds(
+      readLogAppendix(radarrLogCheckpoint),
+      selectedReleaseTitle,
+    );
+    return radarrAdds >= 1 ? radarrAdds : null;
+  }, 45_000);
+
+  const radarrAdds = countRadarrSabQueueAdds(
+    readLogAppendix(radarrLogCheckpoint),
+    selectedReleaseTitle,
+  );
+
+  expect(submissionClaims).toHaveLength(1);
+  expect(submittedEvents).toHaveLength(1);
+  expect(radarrAdds).toBe(1);
+});
+
+test('movie live UI distinguishes real non-existing and existing movie results', async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+
+  const trackedMovie =
+    (await ensureMovieTracked(config, config.duplicateMovie).catch(() => null)) ??
+    (await findTrackedMovieTarget());
+  test.skip(
+    trackedMovie === null || trackedMovie.year === null,
+    'No searchable tracked Radarr movie is currently available for the existing/non-existing comparison.',
+  );
+  if (!trackedMovie || trackedMovie.year === null) {
+    return;
+  }
+
+  await searchForTitle(page, config.untrackedMovie.title, 'Movies');
+
+  const untrackedCard = searchResultCardByYear(
+    page,
+    config.untrackedMovie.title,
+    config.untrackedMovie.year,
+  );
+  await expect(untrackedCard).toBeVisible();
+  await expect(untrackedCard).toContainText('Ready to Grab');
+  await expect(untrackedCard.getByRole('button', { name: 'Grab', exact: true })).toBeEnabled();
+
+  await searchForTitle(page, trackedMovie.title, 'Movies');
+  await selectAvailability(page, 'All');
+
+  const trackedCard = searchResultCardByYear(page, trackedMovie.title, trackedMovie.year);
+  await expect(trackedCard).toBeVisible();
+  await expect(trackedCard).toContainText('Already Grabbed');
+  const grabButton = trackedCard.getByRole('button', { name: 'Grab', exact: true });
+  await expect(grabButton).toBeEnabled();
+  await grabButton.click();
+
+  const dialog = page.getByRole('dialog', { name: 'Grab title' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText(
+    /Arr is already tracking this title|Plex already has this title and Arr is already tracking it/i,
+  );
+  await dialog.getByLabel('Close grab confirmation').click();
+  await expect(dialog).toHaveCount(0);
+});
+
+test('movie live UI can cancel from the queue item card when the downloader exposes progress', async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+
+  await searchForTitle(page, config.untrackedMovie.title, 'Movies');
+
+  const resultCard = searchResultCard(page, config.untrackedMovie.title);
+  await expect(resultCard).toContainText(config.untrackedMovie.year.toString());
+  await resultCard.getByRole('button', { name: 'Grab', exact: true }).click();
+
+  const dialog = page.getByRole('dialog', { name: 'Grab title' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Grab', exact: true }).click();
+
+  await expect(page.getByRole('heading', { name: 'Grab Progress' })).toBeVisible();
+  const job = await waitForJob(config.untrackedMovie.title, 'movie', 'radarr');
+  const liveDownload = await waitForQueueDownload(
+    config.untrackedMovie.title,
+    'movie',
+    'radarr',
+    75_000,
+  ).catch(() => null);
+  test.skip(
+    liveDownload === null,
+    'The downloader did not expose a live queue item for this movie in time.',
+  );
+  if (!liveDownload) {
+    return;
+  }
+
+  await page.reload();
+  if (
+    !(await page
+      .getByRole('heading', { name: 'Grab Progress' })
+      .isVisible()
+      .catch(() => false))
+  ) {
+    await page.getByRole('button', { name: 'Queue' }).click();
+  }
+  await expect(page.getByRole('heading', { name: 'Grab Progress' })).toBeVisible();
+
+  const downloadCard = queueItemCard(page, config.untrackedMovie.title);
+  await expect(downloadCard).toBeVisible();
+  await expect(downloadCard).toContainText(`${Math.round(liveDownload.progress ?? 0)}%`);
+  await downloadCard.getByRole('button', { name: 'Cancel download' }).click();
+
+  await expect(page.getByText(/download was cancelled and unmonitored/i)).toBeVisible();
+  await pollUntil(async () => {
+    const tracked = await getMovieById(config, job.arrItemId);
+    return tracked?.monitored === false ? tracked : null;
   }, 45_000);
 });
 
@@ -524,8 +786,47 @@ test('movie live UI can submit a manual release selection when Arr exposes one',
     return;
   }
 
+  const selectButtonVisible = await pollUntil(
+    async () => {
+      return (await manualReleaseDialog.getByRole('button', { name: 'Select release' }).count()) > 0
+        ? true
+        : null;
+    },
+    15_000,
+    1_000,
+  ).catch(() => null);
+  test.skip(
+    selectButtonVisible !== true,
+    'Arr reported a selectable manual release, but the UI did not render a selectable button in time.',
+  );
+  if (selectButtonVisible !== true) {
+    return;
+  }
+
   await manualReleaseDialog.getByRole('button', { name: 'Select release' }).first().click();
-  await expect(page.getByText(/Queued manual release|Manual release selected/i)).toBeVisible();
+  const selectionOutcome = await pollUntil(
+    async () => {
+      if ((await page.getByText(/Queued manual release|Manual release selected/i).count()) > 0) {
+        return 'selected';
+      }
+
+      if ((await page.getByText(/can no longer accept manual release selections/i).count()) > 0) {
+        return 'stale';
+      }
+
+      return null;
+    },
+    15_000,
+    500,
+  ).catch(() => null);
+  test.skip(
+    selectionOutcome === 'stale',
+    'Arr advanced the live job before the manual release selection could be submitted.',
+  );
+  expect(selectionOutcome).toBe('selected');
+  if (selectionOutcome !== 'selected') {
+    return;
+  }
   await expect(jobCard).toContainText(selectableRelease.title);
 
   page.once('dialog', (dialogEvent) => dialogEvent.accept());
@@ -584,7 +885,10 @@ test('live UI shows actual download progress when Arr already has an active down
   test.setTimeout(90_000);
 
   const liveDownload = await findAnyLiveDownload();
-  test.skip(liveDownload === null, 'No active Arr download is currently available for live UI verification.');
+  test.skip(
+    liveDownload === null,
+    'No active Arr download is currently available for live UI verification.',
+  );
   if (!liveDownload) {
     return;
   }
@@ -608,7 +912,10 @@ test('series live UI covers search, season selection, remove, and retry grab', a
 
   test.skip(!config.sonarrUrl || !config.sonarrApiKey, 'Sonarr live config is required.');
   const seriesTarget = await findLiveSeriesTarget();
-  test.skip(seriesTarget === null, 'No searchable untracked Sonarr series target is currently available.');
+  test.skip(
+    seriesTarget === null,
+    'No searchable untracked Sonarr series target is currently available.',
+  );
   if (!seriesTarget) {
     return;
   }

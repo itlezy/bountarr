@@ -1,10 +1,12 @@
 import { env } from '$env/dynamic/private';
+import { execFileSync } from 'node:child_process';
 import { existsSync, statSync, statfsSync } from 'node:fs';
 import { freemem, hostname, totalmem } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { defaultAcquisitionDatabasePath, getAcquisitionDatabase } from '$lib/server/acquisition-db';
-import { LOG_FILE_PATH, createAreaLogger } from '$lib/server/logger';
-import type { RuntimeHealth } from '$lib/shared/types';
+import { LOG_FILE_PATH, createAreaLogger, toErrorLogContext } from '$lib/server/logger';
+import { asNumber, asRecord, asString } from '$lib/server/raw';
+import type { RuntimeHealth, RuntimeVolume } from '$lib/shared/types';
 
 export interface ServiceConfigurationFlags {
   radarrConfigured: boolean;
@@ -16,7 +18,11 @@ export interface ServiceConfigurationFlags {
 const logger = createAreaLogger('runtime');
 const validLogLevels = new Set(['error', 'warn', 'info', 'http', 'verbose', 'debug', 'silly']);
 const dataPath = 'data';
+const volumeHelperPath = resolve('helpers', 'helper-runtime-list-volumes.ps1');
+const volumeMetricsCacheTtlMs = 30_000;
 let bootLogged = false;
+let cachedVolumeMetrics: { expiresAt: number; volumes: RuntimeVolume[] } | null = null;
+let volumeMetricsErrorLogged = false;
 
 type StorageMetrics = Pick<RuntimeHealth, 'storagePath' | 'freeSpaceBytes' | 'totalSpaceBytes'>;
 type DatabaseMetrics = Pick<
@@ -27,6 +33,11 @@ type DatabaseMetrics = Pick<
   | 'databaseAttemptCount'
   | 'databaseEventCount'
 >;
+
+function asNonNegativeNumber(value: unknown): number | null {
+  const number = asNumber(value);
+  return number !== null && number >= 0 ? number : null;
+}
 
 function trimEnv(value: string | undefined): string | null {
   return value?.trim() ? value.trim() : null;
@@ -141,6 +152,109 @@ function getDatabaseMetrics(): DatabaseMetrics {
   }
 }
 
+export function parseWindowsVolumeMetricsOutput(output: string): RuntimeVolume[] {
+  const trimmedOutput = output.trim();
+  if (trimmedOutput.length === 0) {
+    return [];
+  }
+
+  const parsed = JSON.parse(trimmedOutput);
+  const volumeRecords = Array.isArray(parsed) ? parsed : [parsed];
+
+  return volumeRecords.map(asRecord).flatMap((volume) => {
+    const driveLetter = asString(volume.driveLetter);
+    const mountPoint = asString(volume.mountPoint) ?? driveLetter;
+    const totalSpaceBytes = asNonNegativeNumber(volume.totalSpaceBytes);
+
+    if (mountPoint === null || totalSpaceBytes === null || totalSpaceBytes <= 0) {
+      return [];
+    }
+
+    return [
+      {
+        driveLetter,
+        mountPoint,
+        label: asString(volume.label),
+        fileSystem: asString(volume.fileSystem),
+        freeSpaceBytes: asNonNegativeNumber(volume.freeSpaceBytes),
+        totalSpaceBytes,
+      } satisfies RuntimeVolume,
+    ];
+  });
+}
+
+function cacheVolumeMetrics(volumes: RuntimeVolume[]): RuntimeVolume[] {
+  cachedVolumeMetrics = {
+    expiresAt: Date.now() + volumeMetricsCacheTtlMs,
+    volumes,
+  };
+  return volumes;
+}
+
+function stderrText(error: unknown): string | null {
+  if (!error || typeof error !== 'object' || !('stderr' in error)) {
+    return null;
+  }
+
+  const stderr = (error as { stderr?: unknown }).stderr;
+  if (typeof stderr === 'string' && stderr.trim().length > 0) {
+    return stderr.trim();
+  }
+
+  if (stderr instanceof Buffer) {
+    const text = stderr.toString('utf8').trim();
+    return text.length > 0 ? text : null;
+  }
+
+  return null;
+}
+
+function getWindowsVolumeMetrics(): RuntimeVolume[] {
+  if (cachedVolumeMetrics && cachedVolumeMetrics.expiresAt > Date.now()) {
+    return cachedVolumeMetrics.volumes;
+  }
+
+  if (!existsSync(volumeHelperPath)) {
+    if (!volumeMetricsErrorLogged) {
+      logger.warn('Windows volume helper is missing', {
+        helperPath: volumeHelperPath,
+      });
+      volumeMetricsErrorLogged = true;
+    }
+
+    return cacheVolumeMetrics([]);
+  }
+
+  try {
+    const output = execFileSync('pwsh', ['-NoLogo', '-NoProfile', '-File', volumeHelperPath], {
+      encoding: 'utf8',
+      windowsHide: true,
+    });
+    const volumes = cacheVolumeMetrics(parseWindowsVolumeMetricsOutput(output));
+    volumeMetricsErrorLogged = false;
+    return volumes;
+  } catch (error) {
+    if (!volumeMetricsErrorLogged) {
+      logger.warn('Windows volume metrics query failed', {
+        helperPath: volumeHelperPath,
+        stderr: stderrText(error),
+        ...toErrorLogContext(error),
+      });
+      volumeMetricsErrorLogged = true;
+    }
+
+    return cacheVolumeMetrics([]);
+  }
+}
+
+function getLocalVolumeMetrics(): RuntimeVolume[] {
+  if (process.platform !== 'win32') {
+    return [];
+  }
+
+  return getWindowsVolumeMetrics();
+}
+
 export function getRuntimeHealth(): RuntimeHealth {
   const radarrUrl = trimEnv(env.RADARR_URL);
   const radarrApiKey = trimEnv(env.RADARR_API_KEY);
@@ -154,6 +268,7 @@ export function getRuntimeHealth(): RuntimeHealth {
   const warnings: string[] = [];
   const storageMetrics = getStorageMetrics(dataPath);
   const databaseMetrics = getDatabaseMetrics();
+  const volumes = getLocalVolumeMetrics();
 
   collectPairIssues(issues, warnings, 'Radarr', radarrUrl, radarrApiKey, true);
   collectPairIssues(issues, warnings, 'Sonarr', sonarrUrl, sonarrApiKey, true);
@@ -175,6 +290,10 @@ export function getRuntimeHealth(): RuntimeHealth {
 
   if (storageMetrics.freeSpaceBytes === null || storageMetrics.totalSpaceBytes === null) {
     warnings.push(`Storage stats are unavailable for ${storageMetrics.storagePath}.`);
+  }
+
+  if (process.platform === 'win32' && volumes.length === 0) {
+    warnings.push('Local Windows volume details are unavailable.');
   }
 
   if (
@@ -212,6 +331,7 @@ export function getRuntimeHealth(): RuntimeHealth {
     heapUsedBytes: process.memoryUsage().heapUsed,
     systemTotalMemoryBytes: totalmem(),
     systemFreeMemoryBytes: freemem(),
+    volumes,
   };
 }
 
@@ -262,6 +382,7 @@ export function ensureRuntimeBootLog(): void {
     heapUsedBytes: runtime.heapUsedBytes,
     systemTotalMemoryBytes: runtime.systemTotalMemoryBytes,
     systemFreeMemoryBytes: runtime.systemFreeMemoryBytes,
+    volumeCount: runtime.volumes.length,
     issueList: runtime.issues,
     warningList: runtime.warnings,
   });

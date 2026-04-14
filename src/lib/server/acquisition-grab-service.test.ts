@@ -256,6 +256,101 @@ describe('acquisition grab service', () => {
     expect(firstResult).toEqual(secondResult);
   });
 
+  it('treats a stale second submit after Arr create as the tracked-item path', async () => {
+    let createCalls = 0;
+    let activeJob: AcquisitionJob | null = null;
+    const arrFetch = vi.fn();
+    arrFetch.mockImplementation(async (_service: string, path: string, init?: RequestInit) => {
+      if (path === '/api/v3/series' && init?.method === 'POST') {
+        createCalls += 1;
+        if (createCalls === 1) {
+          return {
+            id: 80,
+          };
+        }
+
+        throw new Error('sonarr 400: Series has already been added');
+      }
+
+      if (path === '/api/v3/series' && !init?.method) {
+        return [
+          {
+            id: 80,
+            tvdbId: 393189,
+            title: 'Andor',
+            year: 2022,
+          },
+        ];
+      }
+
+      throw new Error(`Unexpected arrFetch path: ${path}`);
+    });
+    const createJob = vi.fn().mockImplementation(() => {
+      activeJob = createdJob;
+      return createdJob;
+    });
+    const fetchExistingSeries = vi.fn().mockResolvedValue({
+      ...seriesItem,
+      arrItemId: 80,
+      canAdd: false,
+      inArr: true,
+      status: 'Already in Arr',
+    } satisfies MediaItem);
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      acquisitionMaxRetries: () => 4,
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/config-service', () => ({
+      fetchServiceDefaults: vi.fn().mockResolvedValue({
+        rootFolderPath: 'C:\\TV',
+        qualityProfileId: 11,
+        languageProfileId: 2,
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        recordJobCreated: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        enqueue: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        createJob,
+        findActiveJob: vi.fn().mockImplementation(() => activeJob),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      findPreferredReleaser: vi.fn().mockReturnValue(null),
+    }));
+    vi.doMock('$lib/server/lookup-service', () => ({
+      fetchExistingMovie: vi.fn(),
+      fetchExistingSeries,
+    }));
+
+    const module = await import('$lib/server/acquisition-grab-service');
+    const first = await module.grabItem(seriesItem, {
+      preferredLanguage: 'English',
+      subtitleLanguage: 'Any',
+    });
+    const second = await module.grabItem(seriesItem, {
+      preferredLanguage: 'English',
+      subtitleLanguage: 'Any',
+    });
+
+    expect(first.existing).toBe(false);
+    expect(second.existing).toBe(true);
+    expect(second.job?.id).toBe(first.job?.id);
+    expect(second.item.arrItemId).toBe(first.item.arrItemId);
+    expect(second.message).toContain('Reusing the active alternate-release grab');
+    expect(createJob).toHaveBeenCalledTimes(1);
+    expect(fetchExistingSeries).toHaveBeenCalledTimes(2);
+  });
+
   it('recovers acquisition tracking after Arr create when the first tracked-item fetch fails', async () => {
     const arrFetch = vi.fn().mockImplementation(async (_service: string, path: string) => {
       if (path === '/api/v3/series') {

@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { liveRuntimePaths } from './live-runtime-paths';
 
 export type LiveAttemptSubmissionRecord = {
   attempt: number;
@@ -25,19 +26,26 @@ function parseContext(raw: string): Record<string, unknown> {
   }
 }
 
-function integrationDatabasePath(repoRoot: string): string {
-  return path.join(repoRoot, 'data', 'runtime', 'integration', 'acquisition.db');
+function acquisitionDatabasePath(location: string): string {
+  if (location.toLowerCase().endsWith('.db')) {
+    return location;
+  }
+
+  return liveRuntimePaths(path.resolve(location), 'integration').databasePath;
 }
 
-function openDatabase(repoRoot = process.cwd()): DatabaseSync {
-  return new DatabaseSync(integrationDatabasePath(repoRoot), {
+function openDatabase(location = process.cwd()): DatabaseSync {
+  return new DatabaseSync(acquisitionDatabasePath(location), {
     open: true,
     readOnly: true,
   });
 }
 
-export function listAttemptSubmissions(jobId: string, repoRoot = process.cwd()): LiveAttemptSubmissionRecord[] {
-  const database = openDatabase(repoRoot);
+export function listAttemptSubmissions(
+  jobId: string,
+  location = process.cwd(),
+): LiveAttemptSubmissionRecord[] {
+  const database = openDatabase(location);
 
   try {
     const rows = database
@@ -67,8 +75,11 @@ export function listAttemptSubmissions(jobId: string, repoRoot = process.cwd()):
   }
 }
 
-export function listAcquisitionEvents(jobId: string, repoRoot = process.cwd()): LiveAcquisitionEventRecord[] {
-  const database = openDatabase(repoRoot);
+export function listAcquisitionEvents(
+  jobId: string,
+  location = process.cwd(),
+): LiveAcquisitionEventRecord[] {
+  const database = openDatabase(location);
 
   try {
     const rows = database

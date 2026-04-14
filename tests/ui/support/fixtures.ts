@@ -65,6 +65,24 @@ export const configStatusFixture = {
     heapUsedBytes: 26_000_000,
     systemTotalMemoryBytes: 34_359_738_368,
     systemFreeMemoryBytes: 12_884_901_888,
+    volumes: [
+      {
+        driveLetter: 'C:',
+        mountPoint: 'C:\\',
+        label: 'SYSC',
+        fileSystem: 'NTFS',
+        freeSpaceBytes: 512_000_000_000,
+        totalSpaceBytes: 1_024_000_000_000,
+      },
+      {
+        driveLetter: null,
+        mountPoint: 'C:\\M\\Archive\\',
+        label: 'Archive',
+        fileSystem: 'NTFS',
+        freeSpaceBytes: 4_487_500_000_000,
+        totalSpaceBytes: 18_627_000_000_000,
+      },
+    ],
   },
 };
 
@@ -303,10 +321,7 @@ export function searchResultsForQuery(query: string): unknown[] {
 
 type GrabItem = typeof movieSearchItem | typeof seriesSearchItem;
 
-export function buildGrabResponse(
-  item: GrabItem,
-  seasonNumbers?: number[],
-): GrabResponse {
+export function buildGrabResponse(item: GrabItem, seasonNumbers?: number[]): GrabResponse {
   const requestedItem = {
     ...item,
     arrItemId: item.kind === 'movie' ? 603 : 83867,

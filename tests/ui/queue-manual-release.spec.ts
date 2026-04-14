@@ -40,6 +40,10 @@ function acquisitionCard(page: Page) {
   });
 }
 
+function queueItemCard(page: Page, title: string) {
+  return page.getByTestId('queue-item-card').filter({ hasText: title }).first();
+}
+
 async function openManualReleaseModal(page: Page) {
   const card = acquisitionCard(page);
   await card.getByRole('button', { name: 'Show manual release options' }).click();
@@ -59,8 +63,69 @@ test('queue view renders acquisition jobs and active downloads', async ({ page }
   await expect(page.getByText(queueItemFixture.title, { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Show operator tools' })).toHaveCount(0);
   await expect(page.getByText('Movie download · Downloading')).toBeVisible();
-  await expect(page.getByText('Show grab · Looking for a release')).toBeVisible();
+  await expect(page.getByText(/Show grab .*Looking for a release/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Cancel download' })).toHaveCount(2);
+});
+
+test('queue item cancel refreshes queue and dashboard state', async ({ page }) => {
+  let queueCall = 0;
+  const refreshedQueue = buildQueueResponse([acquisitionJobFixture], []);
+  const api = await mockAppApi(page, {
+    dashboard: (_request: Request, url: URL) =>
+      url.pathname === '/api/dashboard/refresh'
+        ? mockJson(emptyDashboardResponse)
+        : emptyDashboardResponse,
+    queue: () => {
+      queueCall += 1;
+      return queueCall > 1 ? refreshedQueue : buildQueueResponse();
+    },
+  });
+
+  await openQueue(page, api);
+
+  const downloadCard = queueItemCard(page, queueItemFixture.title);
+  await expect(downloadCard).toBeVisible();
+  await downloadCard.getByRole('button', { name: 'Cancel download' }).click();
+
+  await expect
+    .poll(() => api.queueCancelBodies.length, {
+      message: 'queue item cancel should submit one cancel request body',
+    })
+    .toBe(1);
+  expect(api.queueCancelBodies[0]).toEqual({
+    arrItemId: queueItemFixture.arrItemId,
+    canCancel: queueItemFixture.canCancel,
+    id: queueItemFixture.id,
+    kind: queueItemFixture.kind,
+    queueId: queueItemFixture.queueId,
+    sourceService: queueItemFixture.sourceService,
+    title: queueItemFixture.title,
+  });
+
+  await expect(page.getByText('The Matrix download was cancelled and unmonitored.')).toBeVisible();
+  await expect
+    .poll(() => api.queueRequests.length, {
+      message: 'queue should refresh after cancelling a queue item',
+    })
+    .toBeGreaterThan(1);
+  await expect(downloadCard).toHaveCount(0);
+});
+
+test('queue item cancel errors surface in the queue banner', async ({ page }) => {
+  const api = await mockAppApi(page, {
+    queue: buildQueueResponse(),
+    queueCancelResponse: () => mockTextError('Unable to cancel the selected download.', 500, 150),
+  });
+
+  await openQueue(page, api);
+
+  const downloadCard = queueItemCard(page, queueItemFixture.title);
+  await expect(downloadCard).toBeVisible();
+  await downloadCard.getByRole('button', { name: 'Cancel download' }).click();
+
+  await expect(page.getByText('Unable to cancel the selected download.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Grab Progress' })).toBeVisible();
+  await expect(page.getByTestId('queue-item-card')).toHaveCount(0);
 });
 
 test('queue view shows explicit ETA for downloads and matched grab jobs', async ({ page }) => {
@@ -83,7 +148,10 @@ test('queue view shows explicit ETA for downloads and matched grab jobs', async 
     detail: 'Andor.S01.1080p.WEB-DL-FLUX',
   } as const;
   const api = await mockAppApi(page, {
-    queue: buildQueueResponse([acquisitionJobFixture], [queueItemFixture, matchingAcquisitionQueueItem]),
+    queue: buildQueueResponse(
+      [acquisitionJobFixture],
+      [queueItemFixture, matchingAcquisitionQueueItem],
+    ),
   });
 
   await openQueue(page, api);
@@ -199,7 +267,9 @@ test('manual release dialog shows empty results and closes cleanly', async ({ pa
   await openQueue(page, api);
   const dialog = await openManualReleaseModal(page);
 
-  await expect(dialog.getByText('No manual-search releases are currently available.')).toBeVisible();
+  await expect(
+    dialog.getByText('No manual-search releases are currently available.'),
+  ).toBeVisible();
   await dialog.getByRole('button', { name: 'Close manual release options' }).click();
   await expect(page.getByRole('dialog', { name: 'Manual release options' })).toHaveCount(0);
 });
@@ -246,7 +316,9 @@ test('manual release selection refreshes queue and release state', async ({ page
 
   await expect(dialog.getByText('One manual-search release was selected.')).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Selected' })).toBeDisabled();
-  await expect(page.getByText('Manual release selected. Sending Andor to the downloader.')).toBeVisible();
+  await expect(
+    page.getByText('Manual release selected. Sending Andor to the downloader.'),
+  ).toBeVisible();
   await expect(
     acquisitionCard(page)
       .getByText('Manual release selected and sent to the downloader.', { exact: true })

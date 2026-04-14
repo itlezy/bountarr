@@ -36,6 +36,32 @@ export const runtimeHealthFixture: RuntimeHealth = {
   heapUsedBytes: 26_000_000,
   systemTotalMemoryBytes: 34_359_738_368,
   systemFreeMemoryBytes: 12_884_901_888,
+  volumes: [
+    {
+      driveLetter: 'C:',
+      mountPoint: 'C:\\',
+      label: 'SYSC',
+      fileSystem: 'NTFS',
+      freeSpaceBytes: 512_000_000_000,
+      totalSpaceBytes: 1_024_000_000_000,
+    },
+    {
+      driveLetter: 'F:',
+      mountPoint: 'F:\\',
+      label: 'Media',
+      fileSystem: 'NTFS',
+      freeSpaceBytes: 2_611_200_000_000,
+      totalSpaceBytes: 5_589_000_000_000,
+    },
+    {
+      driveLetter: null,
+      mountPoint: 'C:\\M\\Archive\\',
+      label: 'Archive',
+      fileSystem: 'NTFS',
+      freeSpaceBytes: 4_487_500_000_000,
+      totalSpaceBytes: 18_627_000_000_000,
+    },
+  ],
 };
 
 export const mediaItemFixture: MediaItem = {
