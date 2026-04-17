@@ -355,6 +355,7 @@ describe('AcquisitionJobRepository', () => {
         preferredLanguage: 'English',
         subtitleLanguage: 'Any',
       },
+      qualityProfileId: 22,
       sourceService: 'sonarr',
       targetEpisodeIds: [301, 302, 303],
       targetSeasonNumbers: [3],
@@ -363,6 +364,7 @@ describe('AcquisitionJobRepository', () => {
 
     const loaded = jobs.getJob(created.id);
 
+    expect(loaded?.qualityProfileId).toBe(22);
     expect(loaded?.targetEpisodeIds).toEqual([301, 302, 303]);
     expect(loaded?.targetSeasonNumbers).toEqual([3]);
   });

@@ -127,7 +127,7 @@ function manualReleaseActionLabel(
                   {/if}
                   {#if release.selectionBlockedReason && !release.rejectedByArr && release.scopeStatus !== 'not-applicable'}
                     <div class="mt-2 overflow-safe-text rounded-[14px] border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-200">
-                      Scope blocked: {release.selectionBlockedReason}
+                      Scope mismatch: {release.selectionBlockedReason}
                     </div>
                   {/if}
                   {#if release.rejectionReasons.length > 0}

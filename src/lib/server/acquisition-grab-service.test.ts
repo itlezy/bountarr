@@ -53,6 +53,7 @@ const createdJob: AcquisitionJob = {
   autoRetrying: false,
   progress: null,
   queueStatus: 'Queued',
+  qualityProfileId: 11,
   preferences: {
     preferredLanguage: 'English',
     subtitleLanguage: 'Any',
@@ -96,6 +97,11 @@ describe('acquisition grab service', () => {
       arrItemId: 80,
       canAdd: false,
       inArr: true,
+      requestPayload: {
+        ...seriesItem.requestPayload,
+        id: 80,
+        qualityProfileId: 11,
+      },
       status: 'Already in Arr',
     } satisfies MediaItem);
 
@@ -186,6 +192,7 @@ describe('acquisition grab service', () => {
         arrItemId: 80,
         itemId: seriesItem.id,
         kind: 'series',
+        qualityProfileId: 11,
         sourceService: 'sonarr',
         targetEpisodeIds: null,
         targetSeasonNumbers: [1, 2],
@@ -213,6 +220,11 @@ describe('acquisition grab service', () => {
       arrItemId: 80,
       canAdd: false,
       inArr: true,
+      requestPayload: {
+        ...seriesItem.requestPayload,
+        id: 80,
+        qualityProfileId: 11,
+      },
       status: 'Already in Arr',
     } satisfies MediaItem);
 
@@ -319,6 +331,11 @@ describe('acquisition grab service', () => {
       arrItemId: 80,
       canAdd: false,
       inArr: true,
+      requestPayload: {
+        ...seriesItem.requestPayload,
+        id: 80,
+        qualityProfileId: 11,
+      },
       status: 'Already in Arr',
     } satisfies MediaItem);
 
@@ -466,6 +483,11 @@ describe('acquisition grab service', () => {
     const fetchExistingSeries = vi.fn().mockResolvedValue({
       ...trackedSeriesItem,
       canAdd: false,
+      requestPayload: {
+        ...seriesItem.requestPayload,
+        id: 80,
+        qualityProfileId: 11,
+      },
       sourceService: 'sonarr',
     } satisfies MediaItem);
     const createOrReuseActiveJob = vi.fn().mockReturnValue({ created: true, job: createdJob });
@@ -525,6 +547,7 @@ describe('acquisition grab service', () => {
     expect(createOrReuseActiveJob).toHaveBeenCalledWith(
       expect.objectContaining({
         arrItemId: 80,
+        qualityProfileId: 11,
         targetEpisodeIds: null,
         targetSeasonNumbers: [2],
       }),
@@ -532,6 +555,131 @@ describe('acquisition grab service', () => {
     expect(result.existing).toBe(true);
     expect(result.job?.id).toBe(createdJob.id);
     expect(result.message).toContain('Alternate-release acquisition started');
+  });
+
+  it('updates the tracked Arr title to the requested quality profile before starting a new grab', async () => {
+    const trackedSeriesItem: MediaItem = {
+      ...seriesItem,
+      arrItemId: 80,
+      canAdd: true,
+      inArr: true,
+      isExisting: true,
+      isRequested: true,
+      status: 'Already in Arr',
+    };
+    const fetchExistingSeries = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ...trackedSeriesItem,
+        canAdd: false,
+        requestPayload: {
+          ...seriesItem.requestPayload,
+          id: 80,
+          qualityProfileId: 11,
+        },
+        sourceService: 'sonarr',
+      } satisfies MediaItem)
+      .mockResolvedValueOnce({
+        ...trackedSeriesItem,
+        canAdd: false,
+        requestPayload: {
+          ...seriesItem.requestPayload,
+          id: 80,
+          qualityProfileId: 22,
+        },
+        sourceService: 'sonarr',
+      } satisfies MediaItem);
+    const createOrReuseActiveJob = vi.fn().mockReturnValue({ created: true, job: createdJob });
+    const arrFetch = vi.fn().mockImplementation(async (_service: string, path: string, init?: RequestInit) => {
+      if (!init && path === '/api/v3/series/80') {
+        return {
+          id: 80,
+          monitored: false,
+          qualityProfileId: 11,
+          seasons: [
+            { seasonNumber: 0, monitored: false },
+            { seasonNumber: 1, monitored: false },
+            { seasonNumber: 2, monitored: true },
+          ],
+        };
+      }
+
+      if (init?.method === 'PUT' && path === '/api/v3/series/80') {
+        return {
+          id: 80,
+          qualityProfileId: 22,
+        };
+      }
+
+      throw new Error(`Unexpected arrFetch path: ${path}`);
+    });
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      acquisitionMaxRetries: () => 4,
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/config-service', () => ({
+      fetchServiceDefaults: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        recordJobCreated: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        enqueue: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        createOrReuseActiveJob,
+        findActiveJob: vi.fn().mockReturnValue(null),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      findPreferredReleaser: vi.fn().mockReturnValue('flux'),
+    }));
+    vi.doMock('$lib/server/lookup-service', () => ({
+      fetchExistingMovie: vi.fn(),
+      fetchExistingSeries,
+    }));
+
+    const module = await import('$lib/server/acquisition-grab-service');
+    const result = await module.grabItem(
+      trackedSeriesItem,
+      {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'Any',
+      },
+      {
+        qualityProfileId: 22,
+        seasonNumbers: [2],
+      },
+    );
+
+    expect(arrFetch).toHaveBeenNthCalledWith(1, 'sonarr', '/api/v3/series/80');
+    expect(arrFetch).toHaveBeenNthCalledWith(
+      2,
+      'sonarr',
+      '/api/v3/series/80',
+      expect.objectContaining({
+        body: expect.any(String),
+        method: 'PUT',
+      }),
+    );
+    expect(JSON.parse(String((arrFetch.mock.calls[1] as [string, string, RequestInit])[2].body))).toMatchObject({
+      qualityProfileId: 22,
+    });
+    expect(fetchExistingSeries).toHaveBeenCalledTimes(2);
+    expect(createOrReuseActiveJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        arrItemId: 80,
+        qualityProfileId: 22,
+        targetSeasonNumbers: [2],
+      }),
+    );
+    expect(result.item.requestPayload?.qualityProfileId).toBe(22);
   });
 
   it('reuses an active season-scoped grab even when the stored episode snapshot drifted', async () => {
@@ -552,6 +700,11 @@ describe('acquisition grab service', () => {
     const fetchExistingSeries = vi.fn().mockResolvedValue({
       ...trackedSeriesItem,
       canAdd: false,
+      requestPayload: {
+        ...seriesItem.requestPayload,
+        id: 80,
+        qualityProfileId: 11,
+      },
       sourceService: 'sonarr',
     } satisfies MediaItem);
 
@@ -620,6 +773,11 @@ describe('acquisition grab service', () => {
     const fetchExistingSeries = vi.fn().mockResolvedValue({
       ...trackedSeriesItem,
       canAdd: false,
+      requestPayload: {
+        ...seriesItem.requestPayload,
+        id: 80,
+        qualityProfileId: 11,
+      },
       sourceService: 'sonarr',
     } satisfies MediaItem);
     const createOrReuseActiveJob = vi.fn().mockReturnValue({ created: true, job: createdJob });
@@ -670,6 +828,7 @@ describe('acquisition grab service', () => {
     expect(createOrReuseActiveJob).toHaveBeenCalledWith(
       expect.objectContaining({
         arrItemId: 80,
+        qualityProfileId: 11,
         targetEpisodeIds: null,
         targetSeasonNumbers: [2],
       }),
@@ -698,6 +857,11 @@ describe('acquisition grab service', () => {
     const fetchExistingSeries = vi.fn().mockResolvedValue({
       ...trackedSeriesItem,
       canAdd: false,
+      requestPayload: {
+        ...seriesItem.requestPayload,
+        id: 80,
+        qualityProfileId: 11,
+      },
       sourceService: 'sonarr',
     } satisfies MediaItem);
 
@@ -748,6 +912,83 @@ describe('acquisition grab service', () => {
       ),
     ).rejects.toMatchObject({
       message: expect.stringContaining('already has an active alternate-release grab'),
+      status: 409,
+    });
+  });
+
+  it('rejects a conflicting active series grab when the requested quality profile differs', async () => {
+    const trackedSeriesItem: MediaItem = {
+      ...seriesItem,
+      arrItemId: 80,
+      canAdd: true,
+      inArr: true,
+      isExisting: true,
+      isRequested: true,
+      status: 'Already in Arr',
+    };
+    const conflictingJob: AcquisitionJob = {
+      ...createdJob,
+      qualityProfileId: 11,
+      targetSeasonNumbers: [2],
+    };
+    const fetchExistingSeries = vi.fn().mockResolvedValue({
+      ...trackedSeriesItem,
+      canAdd: false,
+      requestPayload: {
+        ...seriesItem.requestPayload,
+        id: 80,
+        qualityProfileId: 11,
+      },
+      sourceService: 'sonarr',
+    } satisfies MediaItem);
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      acquisitionMaxRetries: () => 4,
+      arrFetch: vi.fn(),
+    }));
+    vi.doMock('$lib/server/config-service', () => ({
+      fetchServiceDefaults: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        recordJobCreated: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        enqueue: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        createOrReuseActiveJob: vi.fn(),
+        findActiveJob: vi.fn().mockReturnValue(conflictingJob),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      findPreferredReleaser: vi.fn().mockReturnValue(null),
+    }));
+    vi.doMock('$lib/server/lookup-service', () => ({
+      fetchExistingMovie: vi.fn(),
+      fetchExistingSeries,
+    }));
+
+    const module = await import('$lib/server/acquisition-grab-service');
+
+    await expect(
+      module.grabItem(
+        trackedSeriesItem,
+        {
+          preferredLanguage: 'English',
+          subtitleLanguage: 'Any',
+        },
+        {
+          qualityProfileId: 22,
+          seasonNumbers: [2],
+        },
+      ),
+    ).rejects.toMatchObject({
+      message: expect.stringContaining('quality profile'),
       status: 409,
     });
   });

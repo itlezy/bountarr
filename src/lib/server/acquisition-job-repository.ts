@@ -9,6 +9,7 @@ import type {
 import { canTransitionJobStatus, sortJobs } from '$lib/server/acquisition-domain';
 import type { AcquisitionReasonCode } from '$lib/shared/types';
 import { sanitizePreferredLanguage } from '$lib/shared/languages';
+import { asPositiveNumber } from '$lib/server/raw';
 import type { AcquisitionAttempt, MediaKind } from '$lib/shared/types';
 
 type JobRow = {
@@ -30,6 +31,7 @@ type JobRow = {
   auto_retrying: number | null;
   progress: number | null;
   queue_status: string | null;
+  quality_profile_id: number | null;
   queued_manual_selection_json: string | null;
   target_season_numbers_json: string | null;
   target_episode_ids_json: string | null;
@@ -67,6 +69,7 @@ export type CreateAcquisitionJobInput = {
   maxRetries: number;
   preferredReleaser: string | null;
   preferences: PersistedAcquisitionJob['preferences'];
+  qualityProfileId?: number | null;
   sourceService: PersistedAcquisitionJob['sourceService'];
   targetEpisodeIds?: number[] | null;
   targetSeasonNumbers?: number[] | null;
@@ -84,6 +87,7 @@ export type UpdateAcquisitionJobPatch = Partial<
     | 'kind'
     | 'maxRetries'
     | 'preferences'
+    | 'qualityProfileId'
     | 'sourceService'
     | 'targetEpisodeIds'
     | 'targetSeasonNumbers'
@@ -299,6 +303,7 @@ export class AcquisitionJobRepository {
         autoRetrying: row.auto_retrying === 1,
         progress: row.progress,
         queueStatus: row.queue_status,
+        qualityProfileId: row.quality_profile_id,
         queuedManualSelection: parseManualSelectionJson(row.queued_manual_selection_json),
         preferences: {
           preferredLanguage: sanitizePreferredLanguage(row.preferred_language),
@@ -430,6 +435,7 @@ export class AcquisitionJobRepository {
       autoRetrying: false,
       progress: null,
       queueStatus: 'Queued',
+      qualityProfileId: asPositiveNumber(input.qualityProfileId) ?? null,
       queuedManualSelection: null,
       preferences: input.preferences,
       targetSeasonNumbers: normalizeNumberArray(input.targetSeasonNumbers),
@@ -457,9 +463,9 @@ export class AcquisitionJobRepository {
               id, item_id, arr_item_id, kind, title, source_service, status, attempt,
               max_retries, current_release, selected_releaser, preferred_releaser,
               reason_code, failure_reason, validation_summary, auto_retrying, progress, queue_status,
-              queued_manual_selection_json, target_season_numbers_json, target_episode_ids_json, preferred_language,
-              subtitle_language, started_at, updated_at, completed_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              quality_profile_id, queued_manual_selection_json, target_season_numbers_json, target_episode_ids_json,
+              preferred_language, subtitle_language, started_at, updated_at, completed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .run(
             job.id,
@@ -480,6 +486,7 @@ export class AcquisitionJobRepository {
             job.autoRetrying ? 1 : 0,
             job.progress,
             job.queueStatus,
+            job.qualityProfileId ?? null,
             serializeManualSelection(job.queuedManualSelection),
             serializeNumberArray(job.targetSeasonNumbers),
             serializeNumberArray(job.targetEpisodeIds),

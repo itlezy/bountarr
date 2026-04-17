@@ -100,10 +100,7 @@ function grabIdentity(
     item.kind === 'series'
       ? normalizeNumberArray(options?.seasonNumbers)?.join(',') ?? 'missing-scope'
       : 'movie';
-  const qualityProfileKey =
-    typeof options?.qualityProfileId === 'number' && Number.isFinite(options.qualityProfileId)
-      ? `${Math.trunc(options.qualityProfileId)}`
-      : 'default-quality';
+  const qualityProfileKey = requestedQualityProfileId(item, options)?.toString() ?? 'default-quality';
 
   return `${item.sourceService}:${item.kind}:${identity}:${preferencesIdentity(preferences)}:${qualityProfileKey}:${seasonScope}`;
 }
@@ -118,6 +115,14 @@ function explicitSeriesTargetSeasonNumbers(
   }
 
   throw new AcquisitionGrabError(400, `Select at least one season before grabbing ${item.title}.`);
+}
+
+function requestedQualityProfileId(item: MediaItem, options?: GrabItemOptions): number | null {
+  return (
+    asPositiveNumber(options?.qualityProfileId) ??
+    asPositiveNumber(asRecord(item.requestPayload).qualityProfileId) ??
+    null
+  );
 }
 
 async function buildRequestedJobInput(
@@ -143,6 +148,7 @@ async function buildRequestedJobInput(
       preferredLanguage: preferences.preferredLanguage,
       subtitleLanguage: preferences.subtitleLanguage,
     },
+    qualityProfileId: requestedQualityProfileId(item, options),
     sourceService,
     targetEpisodeIds,
     targetSeasonNumbers,
@@ -153,7 +159,12 @@ async function buildRequestedJobInput(
 function sameRequestedJob(
   job: Pick<
     AcquisitionJob,
-    'kind' | 'preferences' | 'sourceService' | 'targetEpisodeIds' | 'targetSeasonNumbers'
+    | 'kind'
+    | 'preferences'
+    | 'qualityProfileId'
+    | 'sourceService'
+    | 'targetEpisodeIds'
+    | 'targetSeasonNumbers'
   >,
   requested: CreateAcquisitionJobInput,
 ): boolean {
@@ -169,6 +180,7 @@ function sameRequestedJob(
     job.sourceService === requested.sourceService &&
     job.preferences.preferredLanguage === requested.preferences.preferredLanguage &&
     job.preferences.subtitleLanguage === requested.preferences.subtitleLanguage &&
+    (job.qualityProfileId ?? null) === (requested.qualityProfileId ?? null) &&
     sameSeriesScope
   );
 }
@@ -177,7 +189,12 @@ function activeGrabConflictMessage(
   item: Pick<MediaItem, 'kind' | 'title'>,
   activeJob: Pick<
     AcquisitionJob,
-    'kind' | 'preferences' | 'targetEpisodeIds' | 'targetSeasonNumbers' | 'title'
+    | 'kind'
+    | 'preferences'
+    | 'qualityProfileId'
+    | 'targetEpisodeIds'
+    | 'targetSeasonNumbers'
+    | 'title'
   >,
   requested: CreateAcquisitionJobInput,
 ): string {
@@ -193,15 +210,25 @@ function activeGrabConflictMessage(
     item.kind === 'series'
       ? ` Existing scope: ${existingScope ?? 'unknown'}. Requested scope: ${requestedScope ?? 'unknown'}.`
       : '';
+  const qualityDetail =
+    (activeJob.qualityProfileId ?? null) === (requested.qualityProfileId ?? null)
+      ? ''
+      : ` Existing quality profile: ${activeJob.qualityProfileId ?? 'default'}. Requested quality profile: ${requested.qualityProfileId ?? 'default'}.`;
 
-  return `${activeJob.title} already has an active alternate-release grab with different scope or language preferences.${scopeDetail} Cancel the current grab before starting a different one.`;
+  return `${activeJob.title} already has an active alternate-release grab with different scope, language preferences, or quality profile.${scopeDetail}${qualityDetail} Cancel the current grab before starting a different one.`;
 }
 
 function assertReusableActiveJob(
   item: Pick<MediaItem, 'kind' | 'title'>,
   activeJob: Pick<
     AcquisitionJob,
-    'kind' | 'preferences' | 'sourceService' | 'targetEpisodeIds' | 'targetSeasonNumbers' | 'title'
+    | 'kind'
+    | 'preferences'
+    | 'qualityProfileId'
+    | 'sourceService'
+    | 'targetEpisodeIds'
+    | 'targetSeasonNumbers'
+    | 'title'
   >,
   requested: CreateAcquisitionJobInput,
 ): void {
@@ -232,6 +259,31 @@ function buildMoviePayload(
       searchForMovie: false,
     },
   };
+}
+
+async function updateTrackedQualityProfile(
+  service: ArrService,
+  arrItemId: number,
+  qualityProfileId: number | null,
+): Promise<boolean> {
+  if (qualityProfileId === null) {
+    return false;
+  }
+
+  const path = service === 'radarr' ? `/api/v3/movie/${arrItemId}` : `/api/v3/series/${arrItemId}`;
+  const current = asRecord(await arrFetch<unknown>(service, path));
+  if (asPositiveNumber(current.qualityProfileId) === qualityProfileId) {
+    return false;
+  }
+
+  await arrFetch<unknown>(service, path, {
+    method: 'PUT',
+    body: JSON.stringify({
+      ...current,
+      qualityProfileId,
+    }),
+  });
+  return true;
 }
 
 function buildSeriesPayload(
@@ -344,10 +396,22 @@ async function trackedResponse(
     };
   }
 
+  const currentQualityProfileId = requestedQualityProfileId(existingItem);
+  const qualityProfileUpdated =
+    (requestedJob.qualityProfileId ?? null) !== currentQualityProfileId &&
+    await updateTrackedQualityProfile(
+      spec.service,
+      existingArrItemId,
+      requestedJob.qualityProfileId ?? null,
+    );
+  const responseItem = qualityProfileUpdated
+    ? await spec.fetchExisting(existingArrItemId, preferences, item)
+    : existingItem;
+
   const { created, job } = await createOrReuseJob(requestedJob);
   return {
     existing: true,
-    item: existingItem,
+    item: responseItem,
     job,
     message: created
       ? `${item.title} is already tracked in ${spec.trackedName}. Alternate-release acquisition started.`
