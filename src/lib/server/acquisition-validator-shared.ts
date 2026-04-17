@@ -102,12 +102,20 @@ export function queueRecordArrItemId(
   return asNumber(record.seriesId) ?? asNumber(asRecord(record.series).id);
 }
 
+export function findQueueRecordsForArrItem(
+  records: Record<string, unknown>[],
+  service: ArrService,
+  arrItemId: number,
+): Record<string, unknown>[] {
+  return records.filter((record) => queueRecordArrItemId(service, record) === arrItemId);
+}
+
 export function findQueueRecordForArrItem(
   records: Record<string, unknown>[],
   service: ArrService,
   arrItemId: number,
 ): Record<string, unknown> | null {
-  return records.find((record) => queueRecordArrItemId(service, record) === arrItemId) ?? null;
+  return findQueueRecordsForArrItem(records, service, arrItemId)[0] ?? null;
 }
 
 export function queueRecordId(record: Record<string, unknown>): number | null {

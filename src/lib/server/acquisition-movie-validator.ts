@@ -2,15 +2,17 @@ import { jobStatusLabel } from '$lib/server/acquisition-domain';
 import {
   fetchHistoryRecords,
   fetchQueueRecords,
-  findQueueRecordForArrItem,
+  findQueueRecordsForArrItem,
   historySince,
   type ValidationProbe,
   validationSummary,
 } from '$lib/server/acquisition-validator-shared';
+import { buildManagedLiveSummary } from '$lib/server/queue-live-summary';
 import { normalizeQueueItem } from '$lib/server/queue-normalize';
 import { fetchExistingMovie } from '$lib/server/lookup-service';
 import type { PersistedAcquisitionJob } from '$lib/server/acquisition-domain';
 import { defaultPreferences } from '$lib/shared/preferences';
+import type { QueueItem } from '$lib/shared/types';
 
 export async function validateMovieAttempt(
   job: PersistedAcquisitionJob,
@@ -20,17 +22,19 @@ export async function validateMovieAttempt(
     fetchQueueRecords('radarr'),
     fetchHistoryRecords('radarr', job.arrItemId),
   ]);
-  const queueRecord = findQueueRecordForArrItem(queueRecords, 'radarr', job.arrItemId);
-  const queueItem = queueRecord ? normalizeQueueItem('radarr', queueRecord) : null;
+  const queueItems = findQueueRecordsForArrItem(queueRecords, 'radarr', job.arrItemId)
+    .map((record) => normalizeQueueItem('radarr', record))
+    .filter((item): item is QueueItem => item !== null);
+  const liveSummary = buildManagedLiveSummary(queueItems);
   const relevantHistory = historySince(historyRecords, attemptStart, job.currentRelease);
 
   if (relevantHistory.length === 0) {
-    if (queueItem) {
+    if (liveSummary) {
       return {
         outcome: 'pending',
         preferredReleaser: null,
-        progress: queueItem?.progress ?? null,
-        queueStatus: queueItem?.status ?? jobStatusLabel(job.status),
+        progress: liveSummary.progress,
+        queueStatus: liveSummary.status ?? jobStatusLabel(job.status),
         reasonCode: null,
         summary: null,
       };
@@ -79,8 +83,8 @@ export async function validateMovieAttempt(
   return {
     outcome: 'pending',
     preferredReleaser: null,
-    progress: queueItem?.progress ?? job.progress,
-    queueStatus: queueItem?.status ?? job.queueStatus,
+    progress: liveSummary?.progress ?? job.progress,
+    queueStatus: liveSummary?.status ?? job.queueStatus,
     reasonCode: null,
     summary,
   };
