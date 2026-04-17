@@ -109,6 +109,29 @@ test('completed managed jobs do not expose manual release actions', async ({ pag
   await expect(card.getByRole('button', { name: /manual release options/i })).toHaveCount(0);
 });
 
+test('queued manual selections still expose manual release actions for replacement', async ({ page }) => {
+  const api = await mockAppApi(page, {
+    queue: buildQueueResponse([
+      {
+        ...acquisitionJobFixture,
+        queueStatus: 'Manual selection queued',
+        status: 'queued',
+        validationSummary: 'User selected Andor.S01.1080p.WEB-DL-FLUX',
+      },
+    ], []),
+    manualReleaseResponse: () => buildSelectedManualReleaseList(),
+  });
+
+  await openQueue(page, api);
+
+  const card = managedJobCard(page, acquisitionJobFixture.title);
+  await expect(card).toBeVisible();
+  await expect(card.getByRole('button', { name: /manual release options/i })).toBeVisible();
+
+  const dialog = await openManualReleaseModal(page);
+  await expect(dialog.getByRole('button', { name: 'Selected' })).toBeDisabled();
+});
+
 test('queue item cancel refreshes queue and dashboard state', async ({ page }) => {
   let queueCall = 0;
   const refreshedQueue = buildQueueResponse([acquisitionJobFixture], []);

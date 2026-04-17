@@ -36,7 +36,6 @@ import {
   findManualReleaseSelection,
   getManualReleaseResults as getManualReleaseResultsInternal,
   persistManualSelection,
-  queuedManualReleaseResults,
 } from '$lib/server/acquisition-selection';
 
 const manualReleaseEligibleStatuses = new Set<AcquisitionStatus>([
@@ -161,19 +160,11 @@ function canAcceptManualRelease(status: AcquisitionStatus): boolean {
   return manualReleaseEligibleStatuses.has(status);
 }
 
-function queuedManualSelectionConflictMessage(jobId: string): string {
-  return `Acquisition job ${jobId} already has a queued manual release selection.`;
-}
-
 function manualReleaseConflictMessage(job: {
   id: string;
   queueStatus: string | null;
   status: AcquisitionStatus;
 }): string {
-  if (job.status === 'queued' && job.queueStatus === manualSelectionQueuedStatus) {
-    return queuedManualSelectionConflictMessage(job.id);
-  }
-
   if (!canAcceptManualRelease(job.status)) {
     return `Acquisition job ${job.id} can no longer accept manual release selections.`;
   }
@@ -239,10 +230,6 @@ export async function getManualReleaseResults(jobId: string): Promise<ManualRele
   if (!job) {
     throw new Error(`Acquisition job ${jobId} was not found.`);
   }
-  const queuedResults = queuedManualReleaseResults(job);
-  if (queuedResults) {
-    return queuedResults;
-  }
   if (!canAcceptManualRelease(job.status)) {
     throw new Error(`Acquisition job ${jobId} can no longer accept manual release selections.`);
   }
@@ -261,14 +248,15 @@ export async function selectManualRelease(
   if (!job) {
     throw new Error(`Acquisition job ${jobId} was not found.`);
   }
-  if (
-    (job.status === 'queued' && job.queueStatus === manualSelectionQueuedStatus) ||
-    !canAcceptManualRelease(job.status)
-  ) {
+  if (!canAcceptManualRelease(job.status)) {
     throw new Error(manualReleaseConflictMessage(job));
   }
 
   const selection = await findManualReleaseSelection(job, guid, indexerId);
+  const replacingQueuedSelection =
+    job.status === 'queued' &&
+    job.queueStatus === manualSelectionQueuedStatus &&
+    job.queuedManualSelection !== null;
   const resumed = jobs.updateJobIfStatus(job.id, ['failed', 'queued', 'retrying', 'searching'], {
     autoRetrying: false,
     completedAt: null,
@@ -287,7 +275,7 @@ export async function selectManualRelease(
   getAcquisitionRunner().enqueue(resumed.job.id);
   return {
     job: resumed.job,
-    message: `Queued manual release ${selection.selectedRelease?.title ?? guid}.`,
+    message: `${replacingQueuedSelection ? 'Updated' : 'Queued'} manual release ${selection.selectedRelease?.title ?? guid}.`,
   };
 }
 

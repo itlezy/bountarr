@@ -552,6 +552,93 @@ describe('AcquisitionRunner', () => {
     runner.dispose();
   });
 
+  it('uses the latest queued manual selection when the operator replaces it before grab selection', async () => {
+    const harness = createHarness();
+    const job = harness.jobs.createJob({
+      arrItemId: 894,
+      itemId: 'series:894',
+      kind: 'series',
+      maxRetries: 2,
+      preferredReleaser: 'flux',
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      sourceService: 'sonarr',
+      title: 'Replace Manual Pick',
+    });
+
+    const initialSelection = createSelectionResult(
+      'guid-initial',
+      'Replace.Manual.Pick.S01.1080p.WEB-DL-INITIAL',
+    );
+    const replacementSelection = createSelectionResult(
+      'guid-replacement',
+      'Replace.Manual.Pick.S01.1080p.WEB-DL-REPLACED',
+    );
+    harness.jobs.updateJob(job.id, {
+      queuedManualSelection: persistManualSelection(initialSelection),
+      queueStatus: manualSelectionQueuedStatus,
+      status: 'queued',
+      validationSummary: 'User selected Replace.Manual.Pick.S01.1080p.WEB-DL-INITIAL',
+    });
+
+    const originalGetJob = harness.jobs.getJob.bind(harness.jobs);
+    let replacedSelection = false;
+    vi.spyOn(harness.jobs, 'getJob').mockImplementation((jobId: string) => {
+      const current = originalGetJob(jobId);
+      if (
+        !replacedSelection &&
+        current &&
+        current.id === job.id &&
+        current.status === 'queued' &&
+        current.queueStatus === manualSelectionQueuedStatus &&
+        current.queuedManualSelection?.decision.selected.guid === 'guid-initial'
+      ) {
+        replacedSelection = true;
+        harness.jobs.updateJob(job.id, {
+          queuedManualSelection: persistManualSelection(replacementSelection),
+          queueStatus: manualSelectionQueuedStatus,
+          status: 'queued',
+          validationSummary: 'User selected Replace.Manual.Pick.S01.1080p.WEB-DL-REPLACED',
+        });
+      }
+
+      return current;
+    });
+
+    const submitSelectedRelease = vi.fn().mockResolvedValue(undefined);
+    const runner = new AcquisitionRunner(harness.jobs, harness.lifecycle, {
+      findReleaseSelection: vi.fn(),
+      probeAttempt: vi.fn(),
+      submitSelectedRelease,
+      waitForAttemptOutcome: vi.fn().mockResolvedValue({
+        outcome: 'success',
+        preferredReleaser: 'flux',
+        progress: 100,
+        queueStatus: 'Imported',
+        reasonCode: 'validated',
+        summary: 'Imported and validated',
+      }),
+    });
+
+    runner.ensureWorkers();
+
+    await vi.waitFor(() => {
+      expect(harness.jobs.getJob(job.id)?.status).toBe('completed');
+    });
+
+    expect(submitSelectedRelease).toHaveBeenCalledTimes(1);
+    expect(submitSelectedRelease).toHaveBeenCalledWith(
+      expect.objectContaining({ id: job.id }),
+      replacementSelection.selection,
+    );
+    expect(harness.jobs.getJob(job.id)?.currentRelease).toBe(
+      'Replace.Manual.Pick.S01.1080p.WEB-DL-REPLACED',
+    );
+    runner.dispose();
+  });
+
   it('dedupes reconciliation scheduling across repeated worker startup calls', async () => {
     const harness = createHarness();
     const job = harness.jobs.createJob({

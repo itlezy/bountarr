@@ -58,8 +58,39 @@ afterEach(() => {
 });
 
 describe('acquisition selection', () => {
-  it('returns the persisted queued manual selection without refetching Arr releases', async () => {
-    const arrFetch = vi.spyOn(arrClient, 'arrFetch');
+  it('keeps queued manual selections visible while still refetching live manual results', async () => {
+    const arrFetch = vi.spyOn(arrClient, 'arrFetch').mockResolvedValue([
+      {
+        guid: 'guid-selected',
+        indexerId: 11,
+        indexer: 'Indexer',
+        title: 'American.History.X.1998.1080p.WEB-DL-NTb',
+        movieTitles: 'American History X',
+        mappedMovieId: 603,
+        languages: [{ name: 'English' }],
+        qualityWeight: 70,
+        releaseWeight: 70,
+        customFormatScore: 0,
+        size: 1_000,
+        protocol: 'torrent',
+        downloadAllowed: true,
+      },
+      {
+        guid: 'guid-alt',
+        indexerId: 12,
+        indexer: 'Indexer',
+        title: 'American.History.X.1998.1080p.BluRay-ALT',
+        movieTitles: 'American History X',
+        mappedMovieId: 603,
+        languages: [{ name: 'English' }],
+        qualityWeight: 60,
+        releaseWeight: 60,
+        customFormatScore: 0,
+        size: 2_000,
+        protocol: 'torrent',
+        downloadAllowed: true,
+      },
+    ]);
     const queuedJob: PersistedAcquisitionJob = {
       ...job,
       queueStatus: manualSelectionQueuedStatus,
@@ -130,14 +161,19 @@ describe('acquisition selection', () => {
 
     const results = await getManualReleaseResults(queuedJob);
 
-    expect(arrFetch).not.toHaveBeenCalled();
+    expect(arrFetch).toHaveBeenCalledTimes(1);
     expect(results.selectedGuid).toBe('guid-selected');
     expect(results.summary).toBe('User selected American.History.X.1998.1080p.WEB-DL-NTb');
-    expect(results.releases).toHaveLength(1);
+    expect(results.releases).toHaveLength(2);
     expect(results.releases[0]).toMatchObject({
       canSelect: false,
       status: 'selected',
       title: 'American.History.X.1998.1080p.WEB-DL-NTb',
+    });
+    expect(results.releases[1]).toMatchObject({
+      canSelect: true,
+      guid: 'guid-alt',
+      status: 'accepted',
     });
   });
 

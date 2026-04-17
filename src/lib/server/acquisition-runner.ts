@@ -134,10 +134,10 @@ export class AcquisitionRunner {
       return;
     }
 
-    while (job && !isTerminalJobStatus(job.status)) {
-      const manualSelection =
-        job.status === 'queued' &&
-        job.queueStatus === manualSelectionQueuedStatus &&
+      while (job && !isTerminalJobStatus(job.status)) {
+        const manualSelection =
+          job.status === 'queued' &&
+          job.queueStatus === manualSelectionQueuedStatus &&
         job.queuedManualSelection
           ? restoreManualSelection(job.queuedManualSelection)
           : null;
@@ -154,6 +154,31 @@ export class AcquisitionRunner {
 
         let releaseSelection: ReleaseSelectionResult;
         if (manualSelection) {
+          const refreshedQueuedJob = this.jobs.getJob(job.id);
+          if (
+            !refreshedQueuedJob ||
+            isTerminalJobStatus(refreshedQueuedJob.status)
+          ) {
+            return;
+          }
+          if (
+            refreshedQueuedJob.status !== 'queued' ||
+            refreshedQueuedJob.queueStatus !== manualSelectionQueuedStatus ||
+            !refreshedQueuedJob.queuedManualSelection
+          ) {
+            job = refreshedQueuedJob;
+            continue;
+          }
+          const currentQueuedSelection = refreshedQueuedJob.queuedManualSelection.decision.selected;
+          if (
+            currentQueuedSelection.guid !== manualSelection.selectedGuid ||
+            currentQueuedSelection.indexerId !== manualSelection.selectedRelease?.indexerId
+          ) {
+            job = refreshedQueuedJob;
+            continue;
+          }
+
+          job = refreshedQueuedJob;
           releaseSelection = manualSelection;
         } else {
           const searchingJob = this.lifecycle.startSearch(job);

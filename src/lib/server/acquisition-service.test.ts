@@ -751,9 +751,77 @@ describe('acquisition service', () => {
     );
   });
 
-  it('rejects selecting a second manual release once one is already queued', async () => {
+  it('allows replacing a queued manual release before submission starts', async () => {
+    const enqueue = vi.fn();
+    const updatedJob = {
+      ...job,
+      queueStatus: 'Manual selection queued',
+      queuedManualSelection: {
+        decision: {
+          accepted: 1,
+          considered: 1,
+          reason: 'User selected The.Matrix.1999.1080p.WEB-DL-ALT',
+          selected: {
+            guid: 'guid-2',
+            indexer: 'Indexer',
+            indexerId: 12,
+            languages: ['English'],
+            protocol: 'torrent',
+            reason: 'User selected The.Matrix.1999.1080p.WEB-DL-ALT',
+            score: 520,
+            size: 1_200,
+            title: 'The.Matrix.1999.1080p.WEB-DL-ALT',
+          },
+        },
+        payload: {
+          guid: 'guid-2',
+          indexerId: 12,
+        },
+        selectedResult: {
+          canSelect: false,
+          downloadAllowed: true,
+          guid: 'guid-2',
+          identityReason: 'Release title matched The Matrix',
+          identityStatus: 'exact-match',
+          indexer: 'Indexer',
+          indexerId: 12,
+          languages: ['English'],
+          protocol: 'torrent',
+          reason: 'User selected The.Matrix.1999.1080p.WEB-DL-ALT',
+          rejectedByArr: false,
+          rejectionReasons: [],
+          scopeReason: null,
+          scopeStatus: 'not-applicable',
+          score: 520,
+          selectionBlockedReason: null,
+          size: 1_200,
+          status: 'selected',
+          title: 'The.Matrix.1999.1080p.WEB-DL-ALT',
+        },
+      },
+      status: 'queued',
+      validationSummary: 'User selected The.Matrix.1999.1080p.WEB-DL-ALT',
+    };
+    const updateJobIfStatus = vi.fn().mockReturnValue({
+      updated: true,
+      job: updatedJob,
+    });
+    const persistedSelection = updatedJob.queuedManualSelection;
+    const manualSelection = {
+      manualResults: [persistedSelection.selectedResult],
+      mappedReleases: 1,
+      releasesFound: 1,
+      selectedGuid: 'guid-2',
+      selectedRelease: persistedSelection.decision.selected,
+      selection: {
+        decision: persistedSelection.decision,
+        payload: persistedSelection.payload,
+      },
+    };
+
     vi.doMock('$lib/server/acquisition-runner', () => ({
       getAcquisitionRunner: () => ({
+        enqueue,
         ensureWorkers: vi.fn(),
       }),
     }));
@@ -812,7 +880,7 @@ describe('acquisition service', () => {
           },
           status: 'queued',
         }),
-        updateJobIfStatus: vi.fn(),
+        updateJobIfStatus,
       }),
     }));
     vi.doMock('$lib/server/acquisition-query', () => ({
@@ -824,20 +892,36 @@ describe('acquisition service', () => {
       queueRecordArrItemId: vi.fn(),
       queueRecordId: vi.fn().mockReturnValue(null),
     }));
-    const findManualReleaseSelection = vi.fn();
+    const findManualReleaseSelection = vi.fn().mockResolvedValue(manualSelection);
+    const persistManualSelection = vi.fn().mockReturnValue(persistedSelection);
     vi.doMock('$lib/server/acquisition-selection', () => ({
       findManualReleaseSelection,
       getManualReleaseResults: vi.fn(),
-      persistManualSelection: vi.fn(),
+      persistManualSelection,
       queuedManualReleaseResults: vi.fn().mockReturnValue(null),
     }));
 
     const module = await import('$lib/server/acquisition-service');
 
-    await expect(module.selectManualRelease(job.id, 'guid-2', 12)).rejects.toThrow(
-      'already has a queued manual release selection',
+    const result = await module.selectManualRelease(job.id, 'guid-2', 12);
+
+    expect(findManualReleaseSelection).toHaveBeenCalledWith(
+      expect.objectContaining({ id: job.id }),
+      'guid-2',
+      12,
     );
-    expect(findManualReleaseSelection).not.toHaveBeenCalled();
+    expect(persistManualSelection).toHaveBeenCalledWith(manualSelection);
+    expect(updateJobIfStatus).toHaveBeenCalledWith(
+      job.id,
+      ['failed', 'queued', 'retrying', 'searching'],
+      expect.objectContaining({
+        queueStatus: 'Manual selection queued',
+        status: 'queued',
+        validationSummary: 'User selected The.Matrix.1999.1080p.WEB-DL-ALT',
+      }),
+    );
+    expect(enqueue).toHaveBeenCalledWith(job.id);
+    expect(result.message).toBe('Updated manual release The.Matrix.1999.1080p.WEB-DL-ALT.');
   });
 
   it('rejects loading manual release results once a job is completed', async () => {

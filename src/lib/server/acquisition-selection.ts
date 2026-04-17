@@ -119,6 +119,44 @@ export function queuedManualReleaseResults(
   };
 }
 
+function manualReleaseResultsFromInventory(
+  inventory: ReleaseInventory,
+  failedGuids: string[],
+  selectedGuid: string | null,
+): ManualReleaseResult[] {
+  return orderManualReleaseResults(
+    inventory.evaluated.map((release) =>
+      toManualReleaseResult(release, selectedGuid, failedGuids),
+    ),
+  );
+}
+
+function mergeQueuedManualResult(
+  releases: ManualReleaseResult[],
+  selection: PersistedManualSelection | null,
+): ManualReleaseResult[] {
+  if (!selection) {
+    return releases;
+  }
+
+  const selected = selection.decision.selected;
+  const present = releases.some(
+    (release) => release.guid === selected.guid && release.indexerId === selected.indexerId,
+  );
+  if (present) {
+    return releases;
+  }
+
+  return orderManualReleaseResults([
+    ...releases,
+    {
+      ...structuredClone(selection.selectedResult),
+      canSelect: false,
+      status: 'selected',
+    },
+  ]);
+}
+
 type ReleaseInventory = {
   evaluated: EvaluatedRelease[];
   mappedReleases: number;
@@ -288,9 +326,19 @@ export async function findReleaseSelection(
 export async function getManualReleaseResults(
   job: PersistedAcquisitionJob,
 ): Promise<ManualReleaseListResponse> {
-  const queuedResults = queuedManualReleaseResults(job);
-  if (queuedResults) {
-    return queuedResults;
+  if (job.queueStatus === manualSelectionQueuedStatus && job.queuedManualSelection) {
+    const inventory = await fetchReleaseInventory(job);
+    const selectedGuid = job.queuedManualSelection.decision.selected.guid;
+    return {
+      jobId: job.id,
+      releases: mergeQueuedManualResult(
+        manualReleaseResultsFromInventory(inventory, job.failedGuids, selectedGuid),
+        job.queuedManualSelection,
+      ),
+      selectedGuid,
+      summary: job.queuedManualSelection.decision.reason,
+      updatedAt: new Date().toISOString(),
+    };
   }
 
   const selection = await findReleaseSelection(job);

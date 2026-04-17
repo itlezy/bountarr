@@ -27,7 +27,7 @@
   );
   const targetScope = $derived(describeAcquisitionTarget(job));
   const canOpenManualRelease = $derived(
-    (job.status === 'queued' && job.queueStatus !== 'Manual selection queued') ||
+    job.status === 'queued' ||
       job.status === 'failed' ||
       job.status === 'retrying' ||
       job.status === 'searching',
