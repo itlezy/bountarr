@@ -1,8 +1,9 @@
 <script lang="ts">
-import {
-  acquisitionAttemptSummary,
-  acquisitionJourneySummary,
-  acquisitionNextStep,
+  import { describeAcquisitionTarget } from '$lib/shared/acquisition-scope';
+  import {
+    acquisitionAttemptSummary,
+    acquisitionJourneySummary,
+    acquisitionNextStep,
   acquisitionReasonSummary,
   acquisitionStatusLabel,
   downloadedSummary,
@@ -15,15 +16,16 @@ let { entry, state }: { entry: ManagedQueueEntry; state: AppState } = $props();
 
 const job = $derived(entry.job);
 const liveQueueItems = $derived(entry.liveQueueItems);
-const liveSummary = $derived(entry.liveSummary);
-const displayProgress = $derived(liveSummary?.progress ?? job.progress);
-const displayQueueStatus = $derived(
-  liveSummary?.status ?? job.queueStatus ?? job.validationSummary ?? 'Waiting for more progress',
-);
-const etaLabel = $derived(liveSummary ? queueEtaLabel(liveSummary) : null);
-const downloadSummary = $derived(
-  liveSummary && !liveSummary.byteMetricsPartial ? downloadedSummary(liveSummary) : null,
-);
+  const liveSummary = $derived(entry.liveSummary);
+  const displayProgress = $derived(liveSummary?.progress ?? job.progress);
+  const displayQueueStatus = $derived(
+    liveSummary?.status ?? job.queueStatus ?? job.validationSummary ?? 'Waiting for more progress',
+  );
+  const etaLabel = $derived(liveSummary ? queueEtaLabel(liveSummary) : null);
+  const downloadSummary = $derived(
+    liveSummary && !liveSummary.byteMetricsPartial ? downloadedSummary(liveSummary) : null,
+  );
+  const targetScope = $derived(describeAcquisitionTarget(job));
 </script>
 
 <article
@@ -156,6 +158,12 @@ const downloadSummary = $derived(
         <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Preferred releaser</div>
         <div class="overflow-safe-text">{job.preferredReleaser ?? job.selectedReleaser ?? 'Not set'}</div>
       </div>
+      {#if targetScope}
+        <div class="min-w-0">
+          <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Scope</div>
+          <div class="overflow-safe-text">{targetScope}</div>
+        </div>
+      {/if}
       <div class="min-w-0 sm:col-span-2">
         <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Validation detail</div>
         <div class="overflow-safe-text">{job.validationSummary ?? 'Waiting for import'}</div>

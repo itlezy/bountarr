@@ -67,6 +67,23 @@ test('queue view renders acquisition jobs and active downloads', async ({ page }
   await expect(page.getByRole('button', { name: 'Cancel download' })).toHaveCount(2);
 });
 
+test('queue cards and manual release modal show the managed target scope', async ({ page }) => {
+  const api = await mockAppApi(page, {
+    queue: buildQueueResponse(),
+    manualReleaseResponse: () => manualReleaseListFixture,
+  });
+
+  await openQueue(page, api);
+
+  const card = acquisitionCard(page);
+  await expect(card.getByText('Scope', { exact: true })).toBeVisible();
+  await expect(card.getByText('Season 1', { exact: true })).toBeVisible();
+
+  const dialog = await openManualReleaseModal(page);
+  await expect(dialog.getByText('Scope', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('Season 1', { exact: true })).toBeVisible();
+});
+
 test('queue item cancel refreshes queue and dashboard state', async ({ page }) => {
   let queueCall = 0;
   const refreshedQueue = buildQueueResponse([acquisitionJobFixture], []);

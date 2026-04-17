@@ -2,6 +2,7 @@
   import type { AppState } from '$lib/client/app-state.svelte';
   import { formatBytes, manualReleaseStatusLabel, manualReleaseStatusTone } from '$lib/client/app-ui';
   import OverlayDialog from '$lib/components/app/OverlayDialog.svelte';
+  import { describeAcquisitionTarget } from '$lib/shared/acquisition-scope';
   import type { ManualReleaseResult } from '$lib/shared/types';
 
 let { state }: { state: AppState } = $props();
@@ -12,6 +13,7 @@ const releaseList = $derived(activeJobId ? state.manualReleaseList(activeJobId) 
 const releaseError = $derived(activeJobId ? state.manualReleaseError[activeJobId] : null);
 const selectionError = $derived(activeJobId ? state.manualSelectionError[activeJobId] : null);
 const isLoading = $derived(activeJobId ? state.manualReleaseLoading[activeJobId] === true : false);
+const targetScope = $derived(activeJob ? describeAcquisitionTarget(activeJob) : null);
 
 function manualReleaseActionLabel(
   release: ManualReleaseResult,
@@ -61,6 +63,12 @@ function manualReleaseActionLabel(
               <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Preferred releaser</div>
               <div class="mt-1 overflow-safe-text">{activeJob.preferredReleaser ?? activeJob.selectedReleaser ?? 'Not set'}</div>
             </div>
+            {#if targetScope}
+              <div class="min-w-0 rounded-[14px] border border-[var(--line)] bg-[var(--surface)] px-3 py-2 sm:col-span-2">
+                <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Scope</div>
+                <div class="mt-1 overflow-safe-text">{targetScope}</div>
+              </div>
+            {/if}
           </div>
         {/if}
 
