@@ -11,7 +11,10 @@ import {
 import { fetchServiceDefaults } from '$lib/server/config-service';
 import { getAcquisitionLifecycle } from '$lib/server/acquisition-lifecycle';
 import { getAcquisitionRunner } from '$lib/server/acquisition-runner';
-import { getAcquisitionJobRepository } from '$lib/server/acquisition-job-repository';
+import {
+  getAcquisitionJobRepository,
+  type CreateAcquisitionJobInput,
+} from '$lib/server/acquisition-job-repository';
 import { findPreferredReleaser } from '$lib/server/acquisition-query';
 import {
   fetchExistingMovie,
@@ -19,6 +22,7 @@ import {
   fetchSeriesEpisodeRecords,
 } from '$lib/server/lookup-service';
 import { normalizeItem } from '$lib/server/media-normalize';
+import { describeSeriesScope, normalizeNumberArray, scopeFromSeriesJob } from '$lib/server/series-scope';
 import { asArray, asNumber, asPositiveNumber, asRecord, asString } from '$lib/server/raw';
 
 const logger = createAreaLogger('acquisition');
@@ -69,7 +73,23 @@ function normalizedIdentityValue(value: string | null): string | null {
   return trimmed && trimmed.length > 0 ? trimmed.toLowerCase() : null;
 }
 
-function grabIdentity(item: MediaItem): string {
+function sameNumbers(left: number[] | null, right: number[] | null): boolean {
+  if (left === null || right === null) {
+    return left === right;
+  }
+
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function preferencesIdentity(preferences: Preferences): string {
+  return `${preferences.preferredLanguage}:${preferences.subtitleLanguage}`;
+}
+
+function grabIdentity(
+  item: MediaItem,
+  preferences: Preferences,
+  options?: GrabItemOptions,
+): string {
   const payload = asRecord(item.requestPayload);
   const identity =
     asNumber(payload.id) ??
@@ -77,68 +97,130 @@ function grabIdentity(item: MediaItem): string {
     asNumber(payload.tvdbId) ??
     asString(payload.imdbId) ??
     item.id;
+  const seasonScope =
+    item.kind === 'series'
+      ? normalizeNumberArray(options?.seasonNumbers)?.join(',') ?? 'missing-scope'
+      : 'movie';
+  const qualityProfileKey =
+    typeof options?.qualityProfileId === 'number' && Number.isFinite(options.qualityProfileId)
+      ? `${Math.trunc(options.qualityProfileId)}`
+      : 'default-quality';
 
-  return `${item.sourceService}:${item.kind}:${identity}`;
+  return `${item.sourceService}:${item.kind}:${identity}:${preferencesIdentity(preferences)}:${qualityProfileKey}:${seasonScope}`;
 }
 
-function normalizeIntegerArray(value: number[] | null | undefined): number[] | null {
-  if (!value) {
-    return null;
-  }
-
-  const normalized = [...new Set(
-    value
-      .filter((seasonNumber) => Number.isFinite(seasonNumber) && seasonNumber >= 0)
-      .map((seasonNumber) => Math.trunc(seasonNumber)),
-  )].sort((left, right) => left - right);
-
-  return normalized.length > 0 ? normalized : null;
-}
-
-function deriveSeriesTargetSeasonNumbers(
+function explicitSeriesTargetSeasonNumbers(
   item: MediaItem,
   options?: GrabItemOptions,
-): number[] | null {
-  const explicitSeasonNumbers = normalizeIntegerArray(options?.seasonNumbers);
-  if (explicitSeasonNumbers) {
-    return explicitSeasonNumbers;
+): number[] {
+  const seasonNumbers = normalizeNumberArray(options?.seasonNumbers);
+  if (seasonNumbers) {
+    return seasonNumbers;
   }
 
-  const seasons = asArray(asRecord(item.requestPayload).seasons).map(asRecord);
-  const monitoredSeasonNumbers = normalizeIntegerArray(
-    seasons
-      .filter((season) => season.monitored === true)
-      .map((season) => asNumber(season.seasonNumber))
-      .filter((seasonNumber): seasonNumber is number => seasonNumber !== null),
-  );
-  if (monitoredSeasonNumbers) {
-    return monitoredSeasonNumbers;
-  }
-
-  return normalizeIntegerArray(
-    seasons
-      .map((season) => asNumber(season.seasonNumber))
-      .filter((seasonNumber): seasonNumber is number => seasonNumber !== null),
-  );
+  throw new AcquisitionGrabError(400, `Select at least one season before grabbing ${item.title}.`);
 }
 
 async function resolveSeriesTargetEpisodeIds(
   seriesId: number,
-  targetSeasonNumbers: number[] | null,
+  targetSeasonNumbers: number[],
 ): Promise<number[] | null> {
-  const targetSeasons = targetSeasonNumbers ? new Set(targetSeasonNumbers) : null;
-  const episodeIds = normalizeIntegerArray(
+  const targetSeasons = new Set(targetSeasonNumbers);
+  const episodeIds = normalizeNumberArray(
     (await fetchSeriesEpisodeRecords(seriesId))
       .filter((episode) =>
-        targetSeasons === null
-          ? true
-          : targetSeasons.has(asNumber(episode.seasonNumber) ?? Number.NaN),
+        targetSeasons.has(asNumber(episode.seasonNumber) ?? Number.NaN),
       )
       .map((episode) => asNumber(episode.id))
       .filter((episodeId): episodeId is number => episodeId !== null && episodeId > 0),
   );
 
   return episodeIds;
+}
+
+async function buildRequestedJobInput(
+  item: MediaItem,
+  arrItemId: number,
+  sourceService: ArrService,
+  preferences: Preferences,
+  options?: GrabItemOptions,
+): Promise<CreateAcquisitionJobInput> {
+  const targetSeasonNumbers =
+    item.kind === 'series' ? explicitSeriesTargetSeasonNumbers(item, options) : null;
+  const targetEpisodeIds =
+    item.kind === 'series' ? await resolveSeriesTargetEpisodeIds(arrItemId, targetSeasonNumbers) : null;
+
+  return {
+    arrItemId,
+    itemId: item.id,
+    kind: item.kind,
+    maxRetries: acquisitionMaxRetries(),
+    preferredReleaser: findPreferredReleaser(item.kind, item.title),
+    preferences: {
+      preferredLanguage: preferences.preferredLanguage,
+      subtitleLanguage: preferences.subtitleLanguage,
+    },
+    sourceService,
+    targetEpisodeIds,
+    targetSeasonNumbers,
+    title: item.title,
+  };
+}
+
+function sameRequestedJob(
+  job: Pick<
+    AcquisitionJob,
+    'kind' | 'preferences' | 'sourceService' | 'targetEpisodeIds' | 'targetSeasonNumbers'
+  >,
+  requested: CreateAcquisitionJobInput,
+): boolean {
+  return (
+    job.kind === requested.kind &&
+    job.sourceService === requested.sourceService &&
+    job.preferences.preferredLanguage === requested.preferences.preferredLanguage &&
+    job.preferences.subtitleLanguage === requested.preferences.subtitleLanguage &&
+    sameNumbers(job.targetSeasonNumbers, requested.targetSeasonNumbers ?? null) &&
+    sameNumbers(job.targetEpisodeIds, requested.targetEpisodeIds ?? null)
+  );
+}
+
+function activeGrabConflictMessage(
+  item: Pick<MediaItem, 'kind' | 'title'>,
+  activeJob: Pick<
+    AcquisitionJob,
+    'kind' | 'preferences' | 'targetEpisodeIds' | 'targetSeasonNumbers' | 'title'
+  >,
+  requested: CreateAcquisitionJobInput,
+): string {
+  const existingScope = describeSeriesScope(scopeFromSeriesJob(activeJob));
+  const requestedScope =
+    item.kind === 'series'
+      ? describeSeriesScope({
+          episodeIds: requested.targetEpisodeIds ?? null,
+          seasonNumbers: requested.targetSeasonNumbers ?? null,
+        })
+      : null;
+  const scopeDetail =
+    item.kind === 'series'
+      ? ` Existing scope: ${existingScope ?? 'unknown'}. Requested scope: ${requestedScope ?? 'unknown'}.`
+      : '';
+
+  return `${activeJob.title} already has an active alternate-release grab with different scope or language preferences.${scopeDetail} Cancel the current grab before starting a different one.`;
+}
+
+function assertReusableActiveJob(
+  item: Pick<MediaItem, 'kind' | 'title'>,
+  activeJob: Pick<
+    AcquisitionJob,
+    'kind' | 'preferences' | 'sourceService' | 'targetEpisodeIds' | 'targetSeasonNumbers' | 'title'
+  >,
+  requested: CreateAcquisitionJobInput,
+): void {
+  if (sameRequestedJob(activeJob, requested)) {
+    return;
+  }
+
+  throw new AcquisitionGrabError(409, activeGrabConflictMessage(item, activeJob, requested));
 }
 
 function buildMoviePayload(
@@ -169,9 +251,7 @@ function buildSeriesPayload(
   options?: GrabItemOptions,
 ): Record<string, unknown> {
   const raw = asRecord(item.requestPayload);
-  const normalizedSeasonNumbers = normalizeIntegerArray(options?.seasonNumbers) ?? [];
-  const selectedSeasonNumbers =
-    normalizedSeasonNumbers.length > 0 ? new Set(normalizedSeasonNumbers) : null;
+  const selectedSeasonNumbers = new Set(explicitSeriesTargetSeasonNumbers(item, options));
 
   return {
     ...raw,
@@ -179,9 +259,7 @@ function buildSeriesPayload(
     seasonFolder: raw.seasonFolder ?? true,
     seasons: asArray(raw.seasons).map((season) => ({
       ...asRecord(season),
-      monitored: selectedSeasonNumbers
-        ? selectedSeasonNumbers.has(asNumber(asRecord(season).seasonNumber) ?? Number.NaN)
-        : false,
+      monitored: selectedSeasonNumbers.has(asNumber(asRecord(season).seasonNumber) ?? Number.NaN),
     })),
     rootFolderPath: asString(raw.rootFolderPath) ?? asString(defaults.rootFolderPath),
     qualityProfileId:
@@ -254,12 +332,20 @@ async function trackedResponse(
     };
   }
 
+  const requestedJob = await buildRequestedJobInput(
+    existingItem,
+    existingArrItemId,
+    spec.service,
+    preferences,
+    options,
+  );
   const activeJob = getAcquisitionJobRepository().findActiveJob(
     existingArrItemId,
     item.kind,
     spec.service,
   );
   if (activeJob) {
+    assertReusableActiveJob(item, activeJob, requestedJob);
     return {
       existing: true,
       item: existingItem,
@@ -269,13 +355,7 @@ async function trackedResponse(
     };
   }
 
-  const { created, job } = await createOrReuseJob(
-    existingItem,
-    existingArrItemId,
-    spec.service,
-    preferences,
-    options,
-  );
+  const { created, job } = await createOrReuseJob(requestedJob);
   return {
     existing: true,
     item: existingItem,
@@ -349,36 +429,22 @@ async function findExistingTrackedItem(
 }
 
 async function createOrReuseJob(
-  item: MediaItem,
-  arrItemId: number,
-  sourceService: ArrService,
-  preferences: Preferences,
-  options?: GrabItemOptions,
+  requestedJob: CreateAcquisitionJobInput,
 ): Promise<{ created: boolean; job: AcquisitionJob }> {
   const jobs = getAcquisitionJobRepository();
-  const targetSeasonNumbers =
-    item.kind === 'series' ? deriveSeriesTargetSeasonNumbers(item, options) : null;
-  const targetEpisodeIds =
-    item.kind === 'series' ? await resolveSeriesTargetEpisodeIds(arrItemId, targetSeasonNumbers) : null;
-  const result = jobs.createOrReuseActiveJob({
-    arrItemId,
-    itemId: item.id,
-    kind: item.kind,
-    maxRetries: acquisitionMaxRetries(),
-    preferredReleaser: findPreferredReleaser(item.kind, item.title),
-    preferences: {
-      preferredLanguage: preferences.preferredLanguage,
-      subtitleLanguage: preferences.subtitleLanguage,
-    },
-    sourceService,
-    targetEpisodeIds,
-    targetSeasonNumbers,
-    title: item.title,
-  });
+  const result = jobs.createOrReuseActiveJob(requestedJob);
 
   if (!result.created) {
+    assertReusableActiveJob(
+      {
+        kind: requestedJob.kind,
+        title: requestedJob.title,
+      },
+      result.job,
+      requestedJob,
+    );
     logger.info('Reusing existing acquisition job', {
-      arrItemId,
+      arrItemId: requestedJob.arrItemId,
       itemTitle: result.job.title,
       jobId: result.job.id,
       kind: result.job.kind,
@@ -453,7 +519,11 @@ async function grabTrackedItem(
       ? await spec.fetchExisting(createdId, preferences, item)
       : spec.buildFallbackItem(created, preferences);
     job = createdId
-      ? (await createOrReuseJob(createdItem, createdId, spec.service, preferences, options)).job
+      ? (
+          await createOrReuseJob(
+            await buildRequestedJobInput(createdItem, createdId, spec.service, preferences, options),
+          )
+        ).job
       : null;
   } catch (trackingError) {
     if (!createdId) {
@@ -470,7 +540,11 @@ async function grabTrackedItem(
       createdItem =
         (await spec.fetchExisting(createdId, preferences, item).catch(() => null)) ??
         spec.buildFallbackItem(created, preferences);
-      job = (await createOrReuseJob(createdItem, createdId, spec.service, preferences, options)).job;
+      job = (
+        await createOrReuseJob(
+          await buildRequestedJobInput(createdItem, createdId, spec.service, preferences, options),
+        )
+      ).job;
     } catch (recoveryError) {
       logger.error(
         'Tracked item was created in Arr but acquisition tracking could not be recovered',
@@ -505,7 +579,7 @@ export async function grabItem(
 ): Promise<GrabResponse> {
   const normalizedPreferences = sanitizePreferences(preferences);
   const spec = item.kind === 'movie' ? movieGrabSpec() : seriesGrabSpec();
-  const lockKey = grabIdentity(item);
+  const lockKey = grabIdentity(item, normalizedPreferences, options);
   const existingGrab = inFlightGrabs.get(lockKey);
   if (existingGrab) {
     return existingGrab;

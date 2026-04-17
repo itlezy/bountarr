@@ -217,6 +217,34 @@ describe('API routes', () => {
     });
   });
 
+  it('rejects series grab calls without explicit season scope', async () => {
+    const grabItem = vi.fn();
+    const route = await loadRouteModule<{
+      POST: (event: { request: Request }) => Promise<Response>;
+    }>('../../routes/api/grab/+server', {
+      '$lib/server/acquisition-service': () => ({
+        grabItem,
+      }),
+    });
+
+    await expect(
+      route.POST(
+        createPostEvent('http://local.test/api/grab', {
+          item: {
+            ...mediaItemFixture,
+            id: 'series:80',
+            kind: 'series',
+            sourceService: 'sonarr',
+            title: 'Andor',
+          },
+        }),
+      ),
+    ).rejects.toMatchObject({
+      status: 400,
+    });
+    expect(grabItem).not.toHaveBeenCalled();
+  });
+
   it('returns duplicate grab responses unchanged when the item already exists', async () => {
     const grabItem = vi.fn().mockResolvedValue(grabResponseFixture);
     const route = await loadRouteModule<{

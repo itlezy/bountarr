@@ -38,6 +38,7 @@ export const POST = async ({ request }) => {
       theme?: ThemeMode;
     };
   };
+  const seasonNumbers = sanitizeSeasonNumbers(payload.seasonNumbers);
   const preferences = sanitizePreferences(payload.preferences);
 
   logger.info('Grab API call started', {
@@ -52,13 +53,20 @@ export const POST = async ({ request }) => {
     throw error(400, 'A media item is required.');
   }
 
+  if (payload.item.kind === 'series' && !seasonNumbers) {
+    logger.warn('Grab API call rejected because no season scope was provided for a series', {
+      title: payload.item.title,
+    });
+    throw error(400, 'Select at least one season before grabbing a series.');
+  }
+
   try {
     const result = await grabItem(payload.item, preferences, {
       qualityProfileId:
         typeof payload.qualityProfileId === 'number' && Number.isFinite(payload.qualityProfileId)
           ? payload.qualityProfileId
           : undefined,
-      seasonNumbers: sanitizeSeasonNumbers(payload.seasonNumbers),
+      seasonNumbers,
     });
     logger.info('Grab API call completed', {
       title: payload.item.title,

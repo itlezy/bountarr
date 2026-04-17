@@ -70,6 +70,7 @@ const seriesEpisodeRecords = [
   { id: 102, seasonNumber: 2 },
   { id: 103, seasonNumber: 3 },
 ];
+const selectedSeasonNumbers = [1, 2];
 
 afterEach(() => {
   vi.resetModules();
@@ -255,10 +256,14 @@ describe('acquisition grab service', () => {
     const first = module.grabItem(seriesItem, {
       preferredLanguage: 'English',
       subtitleLanguage: 'Any',
+    }, {
+      seasonNumbers: selectedSeasonNumbers,
     });
     const second = module.grabItem(seriesItem, {
       preferredLanguage: 'English',
       subtitleLanguage: 'Any',
+    }, {
+      seasonNumbers: selectedSeasonNumbers,
     });
 
     await Promise.resolve();
@@ -357,10 +362,14 @@ describe('acquisition grab service', () => {
     const first = await module.grabItem(seriesItem, {
       preferredLanguage: 'English',
       subtitleLanguage: 'Any',
+    }, {
+      seasonNumbers: selectedSeasonNumbers,
     });
     const second = await module.grabItem(seriesItem, {
       preferredLanguage: 'English',
       subtitleLanguage: 'Any',
+    }, {
+      seasonNumbers: selectedSeasonNumbers,
     });
 
     expect(first.existing).toBe(false);
@@ -434,6 +443,8 @@ describe('acquisition grab service', () => {
     const result = await module.grabItem(seriesItem, {
       preferredLanguage: 'English',
       subtitleLanguage: 'Any',
+    }, {
+      seasonNumbers: selectedSeasonNumbers,
     });
 
     expect(fetchExistingSeries).toHaveBeenCalledTimes(2);
@@ -521,5 +532,81 @@ describe('acquisition grab service', () => {
     expect(result.existing).toBe(true);
     expect(result.job?.id).toBe(createdJob.id);
     expect(result.message).toContain('Alternate-release acquisition started');
+  });
+
+  it('rejects a conflicting active series grab instead of silently reusing it', async () => {
+    const trackedSeriesItem: MediaItem = {
+      ...seriesItem,
+      arrItemId: 80,
+      canAdd: true,
+      inArr: true,
+      isExisting: true,
+      isRequested: true,
+      status: 'Already in Arr',
+    };
+    const conflictingJob: AcquisitionJob = {
+      ...createdJob,
+      preferences: {
+        preferredLanguage: 'Spanish',
+        subtitleLanguage: 'Any',
+      },
+      targetEpisodeIds: [101],
+      targetSeasonNumbers: [1],
+    };
+    const fetchExistingSeries = vi.fn().mockResolvedValue({
+      ...trackedSeriesItem,
+      canAdd: false,
+      sourceService: 'sonarr',
+    } satisfies MediaItem);
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      acquisitionMaxRetries: () => 4,
+      arrFetch: vi.fn(),
+    }));
+    vi.doMock('$lib/server/config-service', () => ({
+      fetchServiceDefaults: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        recordJobCreated: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        enqueue: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        createOrReuseActiveJob: vi.fn(),
+        findActiveJob: vi.fn().mockReturnValue(conflictingJob),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      findPreferredReleaser: vi.fn().mockReturnValue(null),
+    }));
+    vi.doMock('$lib/server/lookup-service', () => ({
+      fetchExistingMovie: vi.fn(),
+      fetchExistingSeries,
+      fetchSeriesEpisodeRecords: vi.fn().mockResolvedValue(seriesEpisodeRecords),
+    }));
+
+    const module = await import('$lib/server/acquisition-grab-service');
+
+    await expect(
+      module.grabItem(
+        trackedSeriesItem,
+        {
+          preferredLanguage: 'English',
+          subtitleLanguage: 'Any',
+        },
+        {
+          seasonNumbers: [2],
+        },
+      ),
+    ).rejects.toMatchObject({
+      message: expect.stringContaining('already has an active alternate-release grab'),
+      status: 409,
+    });
   });
 });
