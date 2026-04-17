@@ -190,6 +190,8 @@ export const queueItemFixture: QueueItem = {
   sizeLeft: 250_000_000,
   queueId: 1,
   detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+  episodeIds: null,
+  seasonNumbers: null,
 };
 
 function buildManagedLiveSummary(items: QueueItem[]): ManagedQueueLiveSummary | null {
@@ -218,7 +220,20 @@ function buildQueueEntries(acquisitionJobs: AcquisitionJob[], items: QueueItem[]
   const unmatchedItems = [...items];
   const managedEntries: QueueEntry[] = acquisitionJobs.map((job) => {
     const liveQueueItems = unmatchedItems.filter(
-      (item) => item.arrItemId === job.arrItemId && item.sourceService === job.sourceService,
+      (item) =>
+        item.arrItemId === job.arrItemId &&
+        item.sourceService === job.sourceService &&
+        (job.kind !== 'series' ||
+          ((item.episodeIds?.some((episodeId) => job.targetEpisodeIds?.includes(episodeId)) ??
+            false) ||
+            (!job.targetEpisodeIds &&
+              (item.seasonNumbers?.some((seasonNumber) =>
+                job.targetSeasonNumbers?.includes(seasonNumber),
+              ) ??
+                false)) ||
+            (item.detail !== null &&
+              job.currentRelease !== null &&
+              item.detail.toLowerCase() === job.currentRelease.toLowerCase()))),
     );
     for (const liveQueueItem of liveQueueItems) {
       const matchIndex = unmatchedItems.findIndex((item) => item.id === liveQueueItem.id);

@@ -187,9 +187,7 @@ function optimisticQueueResponse(
         );
       }
 
-      return !(
-        entry.item.arrItemId === job.arrItemId && entry.item.sourceService === job.sourceService
-      );
+      return true;
     }) ?? []),
   ];
 

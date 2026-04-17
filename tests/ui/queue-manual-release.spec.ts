@@ -146,7 +146,9 @@ test('queue view shows explicit ETA for downloads and matched grab jobs', async 
     sizeLeft: 1_200_000_000,
     queueId: 2,
     detail: 'Andor.S01.1080p.WEB-DL-FLUX',
-  } as const;
+    episodeIds: [101, 102],
+    seasonNumbers: [1],
+  };
   const api = await mockAppApi(page, {
     queue: buildQueueResponse(
       [acquisitionJobFixture],

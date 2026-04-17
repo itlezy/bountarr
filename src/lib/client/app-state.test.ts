@@ -620,6 +620,95 @@ describe('app state', () => {
     });
   });
 
+  it('keeps unrelated external queue rows during optimistic series grab updates', async () => {
+    const queueRefresh = createDeferred<QueueResponse>();
+    const dashboardRefresh = createDeferred<DashboardResponse>();
+    const seriesJob: AcquisitionJob = {
+      ...acquisitionJob,
+      id: 'job-series',
+      itemId: seriesItem.id,
+      arrItemId: 1399,
+      kind: 'series',
+      title: seriesItem.title,
+      sourceService: 'sonarr',
+      targetSeasonNumbers: [1],
+      targetEpisodeIds: [101, 102],
+    };
+    const dependencies = createDependencies({
+      api: {
+        submitGrab: vi.fn().mockResolvedValue({
+          existing: false,
+          item: {
+            ...seriesItem,
+            arrItemId: 1399,
+            inArr: true,
+            canAdd: false,
+            status: 'Already in Arr',
+          },
+          message: 'Game of Thrones was added to Sonarr.',
+          releaseDecision: null,
+          job: seriesJob,
+        } satisfies GrabResponse),
+        fetchQueue: vi.fn().mockImplementation(() => queueRefresh.promise),
+        refreshDashboard: vi.fn().mockImplementation(() => dashboardRefresh.promise),
+      },
+      timers: {
+        setTimeout: vi.fn().mockReturnValue(99) as unknown as typeof globalThis.setTimeout,
+        clearTimeout: vi.fn() as unknown as typeof globalThis.clearTimeout,
+      },
+    });
+    const state = new AppState(pageData, dependencies);
+    state.queue = buildQueue([
+      buildExternalEntry({
+        id: 'sonarr:queue:stale',
+        arrItemId: 1399,
+        canCancel: true,
+        kind: 'series',
+        title: seriesItem.title,
+        year: seriesItem.year,
+        poster: null,
+        sourceService: 'sonarr',
+        status: 'Downloading',
+        progress: 40,
+        timeLeft: '20m',
+        estimatedCompletionTime: null,
+        size: 2_000_000_000,
+        sizeLeft: 1_200_000_000,
+        queueId: 9,
+        detail: 'Game.of.Thrones.S02E01.1080p.WEB-DL-OTHER',
+        episodeIds: [201],
+        seasonNumbers: [2],
+      }),
+    ]);
+
+    state.openAddConfirm(seriesItem);
+    await state.submitGrab(
+      seriesItem,
+      11,
+      {
+        cardsView: state.cardsView,
+        preferredLanguage: state.confirmPreferredLanguage,
+        subtitleLanguage: state.confirmSubtitleLanguage,
+        theme: state.theme,
+      },
+      [1],
+    );
+
+    expect(state.queue?.entries).toHaveLength(2);
+    expect(state.queue?.entries[0]).toMatchObject({
+      kind: 'managed',
+      id: 'job-series',
+    });
+    expect(state.queue?.entries[1]).toMatchObject({
+      kind: 'external',
+      id: 'sonarr:queue:stale',
+    });
+
+    queueRefresh.resolve(queueResponse);
+    dashboardRefresh.resolve(dashboardResponse);
+    await Promise.all([queueRefresh.promise, dashboardRefresh.promise]);
+  });
+
   it('ignores duplicate in-flight grab submissions for the same item', async () => {
     const submitGrabResult = createDeferred<GrabResponse>();
     const submitGrab = vi.fn().mockImplementation(() => submitGrabResult.promise);
@@ -994,6 +1083,8 @@ describe('app state', () => {
       sizeLeft: 1_200_000_000,
       queueId: 4,
       detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      episodeIds: null,
+      seasonNumbers: null,
     };
 
     state.queue = buildQueue([
@@ -1256,6 +1347,8 @@ describe('app state', () => {
         sizeLeft: 500,
         queueId: 1,
         detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+        episodeIds: null,
+        seasonNumbers: null,
       }),
     );
 
