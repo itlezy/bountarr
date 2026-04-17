@@ -22,6 +22,8 @@ const acquisitionSchema = `
     auto_retrying INTEGER NOT NULL DEFAULT 0,
     progress REAL,
     queue_status TEXT,
+    target_season_numbers_json TEXT,
+    target_episode_ids_json TEXT,
     preferred_language TEXT NOT NULL,
     subtitle_language TEXT,
     started_at TEXT NOT NULL,
@@ -34,6 +36,10 @@ const acquisitionSchema = `
 
   CREATE INDEX IF NOT EXISTS acquisition_jobs_lookup_idx
     ON acquisition_jobs (arr_item_id, kind, source_service, status);
+
+  CREATE UNIQUE INDEX IF NOT EXISTS acquisition_jobs_active_identity_idx
+    ON acquisition_jobs (arr_item_id, kind, source_service)
+    WHERE status NOT IN ('completed', 'failed', 'cancelled');
 
   CREATE TABLE IF NOT EXISTS acquisition_attempts (
     job_id TEXT NOT NULL,
@@ -110,6 +116,8 @@ const expectedAcquisitionTableColumns = {
     'auto_retrying',
     'progress',
     'queue_status',
+    'target_season_numbers_json',
+    'target_episode_ids_json',
     'preferred_language',
     'subtitle_language',
     'started_at',
@@ -119,9 +127,21 @@ const expectedAcquisitionTableColumns = {
 } as const;
 
 const expectedAcquisitionIndexes = {
+  acquisition_jobs_active_identity_idx: {
+    table: 'acquisition_jobs',
+    columns: [
+      { name: 'arr_item_id', desc: false },
+      { name: 'kind', desc: false },
+      { name: 'source_service', desc: false },
+    ],
+    unique: true,
+    whereClause: "status NOT IN ('completed', 'failed', 'cancelled')",
+  },
   acquisition_events_job_idx: {
     table: 'acquisition_events',
     columns: [{ name: 'job_id', desc: false }, { name: 'created_at', desc: true }],
+    unique: false,
+    whereClause: null,
   },
   acquisition_jobs_lookup_idx: {
     table: 'acquisition_jobs',
@@ -131,16 +151,22 @@ const expectedAcquisitionIndexes = {
       { name: 'source_service', desc: false },
       { name: 'status', desc: false },
     ],
+    unique: false,
+    whereClause: null,
   },
   acquisition_jobs_status_idx: {
     table: 'acquisition_jobs',
     columns: [{ name: 'status', desc: false }, { name: 'updated_at', desc: true }],
+    unique: false,
+    whereClause: null,
   },
 } as const;
 
 type ExplicitIndexDefinition = {
   table: string;
   columns: Array<{ name: string; desc: boolean }>;
+  unique: boolean;
+  whereClause: string | null;
 };
 
 function tableExists(database: DatabaseSync, tableName: string): boolean {
@@ -149,6 +175,15 @@ function tableExists(database: DatabaseSync, tableName: string): boolean {
     .get(tableName) as { name?: string } | undefined;
 
   return row?.name === tableName;
+}
+
+function normalizeSqlFragment(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  return normalized.length > 0 ? normalized : null;
 }
 
 function tableColumns(database: DatabaseSync, tableName: string): string[] {
@@ -166,6 +201,8 @@ function explicitIndexes(
     const indexes = database.prepare(`PRAGMA index_list(${tableName})`).all() as Array<{
       name?: unknown;
       origin?: unknown;
+      partial?: unknown;
+      unique?: unknown;
     }>;
 
     for (const index of indexes) {
@@ -196,6 +233,19 @@ function explicitIndexes(
       definitions[index.name] = {
         columns,
         table: tableName,
+        unique: index.unique === 1,
+        whereClause:
+          index.partial === 1
+            ? normalizeSqlFragment(
+                (
+                  database
+                    .prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?")
+                    .get(index.name) as { sql?: unknown } | undefined
+                )?.sql
+                  ?.toString()
+                  .match(/\bWHERE\b(.+)$/iu)?.[1] ?? null,
+              )
+            : null,
       };
     }
   }
@@ -257,6 +307,8 @@ function hasCurrentAcquisitionIndexes(database: DatabaseSync): boolean {
     const actualIndex = actualIndexes[indexName];
     return (
       actualIndex.table === expectedIndex.table &&
+      actualIndex.unique === expectedIndex.unique &&
+      actualIndex.whereClause === expectedIndex.whereClause &&
       actualIndex.columns.length === expectedIndex.columns.length &&
       actualIndex.columns.every(
         (column, index) =>

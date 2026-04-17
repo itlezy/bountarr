@@ -240,6 +240,8 @@ export interface AcquisitionJob {
   progress: number | null;
   queueStatus: string | null;
   preferences: Pick<Preferences, 'preferredLanguage' | 'subtitleLanguage'>;
+  targetSeasonNumbers: number[] | null;
+  targetEpisodeIds: number[] | null;
   startedAt: string;
   updatedAt: string;
   completedAt: string | null;
@@ -295,12 +297,59 @@ export interface QueueItem {
   detail: string | null;
 }
 
+export interface ManagedQueueLiveSummary {
+  rowCount: number;
+  progress: number | null;
+  status: string | null;
+  timeLeft: string | null;
+  estimatedCompletionTime: string | null;
+  size: number | null;
+  sizeLeft: number | null;
+  byteMetricsPartial: boolean;
+}
+
+export interface ManagedQueueEntry {
+  kind: 'managed';
+  id: string;
+  job: AcquisitionJob;
+  liveQueueItems: QueueItem[];
+  liveSummary: ManagedQueueLiveSummary | null;
+  canCancel: boolean;
+  canRemove: boolean;
+}
+
+export interface ExternalQueueEntry {
+  kind: 'external';
+  id: string;
+  item: QueueItem;
+  canCancel: boolean;
+  canRemove: boolean;
+}
+
+export type QueueEntry = ManagedQueueEntry | ExternalQueueEntry;
+
 export interface QueueResponse {
   updatedAt: string;
-  items: QueueItem[];
-  acquisitionJobs: AcquisitionJob[];
+  entries: QueueEntry[];
   total: number;
 }
+
+export type QueueCancelRequest =
+  | {
+      kind: 'managed';
+      jobId: string;
+      arrItemId: number;
+      sourceService: 'radarr' | 'sonarr';
+      title: string;
+    }
+  | {
+      kind: 'external';
+      id: string;
+      arrItemId: number | null;
+      queueId: number;
+      sourceService: 'radarr' | 'sonarr';
+      title: string;
+    };
 
 export interface AcquisitionResponse {
   updatedAt: string;

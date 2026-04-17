@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   cancelAcquisitionJob,
-  cancelQueueItem,
+  cancelQueueEntry,
   deleteArrItem,
   fetchQueue,
   resolveGrabCandidate,
@@ -238,11 +238,11 @@ describe('client api', () => {
     await expect(fetchQueue()).rejects.toThrow('Queue is unavailable');
   });
 
-  it('posts queue-cancel payloads with Arr queue metadata', async () => {
+  it('posts unified cancel payloads for managed queue entries', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
-          itemId: 'radarr:queue:1',
+          itemId: 'job-1',
           message: 'Cancelled',
         }),
         {
@@ -255,33 +255,82 @@ describe('client api', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
 
-    await cancelQueueItem({
-      id: 'radarr:queue:1',
-      arrItemId: 603,
+    await cancelQueueEntry({
+      kind: 'managed',
+      id: 'job-1',
+      job: {
+        id: 'job-1',
+        itemId: 'movie:1',
+        arrItemId: 603,
+        kind: 'movie',
+        title: 'The Matrix',
+        sourceService: 'radarr',
+        status: 'validating',
+        attempt: 1,
+        maxRetries: 3,
+        currentRelease: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+        selectedReleaser: 'flux',
+        preferredReleaser: 'flux',
+        reasonCode: null,
+        failureReason: null,
+        validationSummary: null,
+        autoRetrying: false,
+        progress: 50,
+        queueStatus: 'Downloading',
+        preferences: {
+          preferredLanguage: 'English',
+          subtitleLanguage: 'English',
+        },
+        targetSeasonNumbers: null,
+        targetEpisodeIds: null,
+        startedAt: '2026-04-02T12:00:00.000Z',
+        updatedAt: '2026-04-02T12:05:00.000Z',
+        completedAt: null,
+        attempts: [],
+      },
+      liveQueueItems: [
+        {
+          id: 'radarr:queue:1',
+          arrItemId: 603,
+          canCancel: true,
+          kind: 'movie',
+          title: 'The Matrix',
+          year: 1999,
+          poster: null,
+          sourceService: 'radarr',
+          status: 'Downloading',
+          progress: 50,
+          timeLeft: '5m',
+          estimatedCompletionTime: null,
+          size: 1_000,
+          sizeLeft: 500,
+          queueId: 1,
+          detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+        },
+      ],
+      liveSummary: {
+        rowCount: 1,
+        progress: 50,
+        status: 'Downloading',
+        timeLeft: '5m',
+        estimatedCompletionTime: null,
+        size: 1_000,
+        sizeLeft: 500,
+        byteMetricsPartial: false,
+      },
       canCancel: true,
-      kind: 'movie',
-      title: 'The Matrix',
-      year: 1999,
-      poster: null,
-      sourceService: 'radarr',
-      status: 'Downloading',
-      progress: 50,
-      timeLeft: '5m',
-      estimatedCompletionTime: null,
-      size: 1_000,
-      sizeLeft: 500,
-      queueId: 1,
-      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      canRemove: true,
     });
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('/api/queue/cancel');
     expect(init.method).toBe('POST');
-    expect(JSON.parse(String(init.body))).toMatchObject({
-      id: 'radarr:queue:1',
+    expect(JSON.parse(String(init.body))).toEqual({
+      kind: 'managed',
+      jobId: 'job-1',
       arrItemId: 603,
-      queueId: 1,
       sourceService: 'radarr',
+      title: 'The Matrix',
     });
   });
 

@@ -3,6 +3,7 @@ import type {
   ConfigStatus,
   GrabResponse,
   MediaItem,
+  QueueEntry,
   QueueItem,
   QueueResponse,
 } from '$lib/shared/types';
@@ -80,21 +81,30 @@ function matchingQueueItem(
     return null;
   }
 
-  return (
-    queue.items.find(
-      (item) =>
-        item.sourceService === 'radarr' && item.kind === 'movie' && item.arrItemId === arrItemId,
-    ) ?? null
-  );
+  for (const entry of queue.entries) {
+    const items = entry.kind === 'managed' ? entry.liveQueueItems : [entry.item];
+    for (const item of items) {
+      if (
+        item.sourceService === 'radarr' &&
+        item.kind === 'movie' &&
+        item.arrItemId === arrItemId
+      ) {
+        return item;
+      }
+    }
+  }
+
+  return null;
 }
 
 function matchingAcquisitionJob(queue: QueueResponse, request: GrabResponse) {
   return (
-    queue.acquisitionJobs.find(
-      (job) =>
-        job.id === request.job?.id ||
-        (job.arrItemId !== null && job.arrItemId === request.item.arrItemId),
-    ) ?? null
+    queue.entries.find(
+      (entry): entry is Extract<QueueEntry, { kind: 'managed' }> =>
+        entry.kind === 'managed' &&
+        (entry.job.id === request.job?.id ||
+          (entry.job.arrItemId !== null && entry.job.arrItemId === request.item.arrItemId)),
+    )?.job ?? null
   );
 }
 

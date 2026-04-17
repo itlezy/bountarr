@@ -1,6 +1,5 @@
 import {
-  cancelAcquisitionJob,
-  cancelQueueItem,
+  cancelQueueEntry,
   deleteArrItem,
   fetchManualReleaseResults,
   fetchDashboard,
@@ -42,11 +41,12 @@ import type {
   CardViewMode,
   ConfigStatus,
   DashboardResponse,
+  ManagedQueueEntry,
   ManualReleaseListResponse,
   MediaItem,
   Preferences,
   QualityProfileOption,
-  QueueItem,
+  QueueEntry,
   QueueResponse,
   SearchKind,
   SearchAvailability,
@@ -58,8 +58,7 @@ import type {
 import type { PreferredLanguage } from '$lib/shared/languages';
 
 type AppStateApi = {
-  cancelAcquisitionJob: typeof cancelAcquisitionJob;
-  cancelQueueItem: typeof cancelQueueItem;
+  cancelQueueEntry: typeof cancelQueueEntry;
   deleteArrItem: typeof deleteArrItem;
   fetchManualReleaseResults: typeof fetchManualReleaseResults;
   fetchDashboard: typeof fetchDashboard;
@@ -105,8 +104,7 @@ export type AppStateDependencies = {
 
 const defaultDependencies: AppStateDependencies = {
   api: {
-    cancelAcquisitionJob,
-    cancelQueueItem,
+    cancelQueueEntry,
     deleteArrItem,
     fetchManualReleaseResults,
     fetchDashboard,
@@ -170,16 +168,34 @@ function optimisticQueueResponse(
   currentQueue: QueueResponse | null,
   job: AcquisitionJob,
 ): QueueResponse {
-  const acquisitionJobs = [
+  const optimisticEntry: ManagedQueueEntry = {
+    kind: 'managed',
+    id: job.id,
     job,
-    ...(currentQueue?.acquisitionJobs ?? []).filter((entry) => entry.id !== job.id),
+    liveQueueItems: [],
+    liveSummary: null,
+    canCancel: job.status !== 'completed' && job.status !== 'cancelled',
+    canRemove: true,
+  };
+  const entries = [
+    optimisticEntry,
+    ...(currentQueue?.entries.filter((entry) => {
+      if (entry.kind === 'managed') {
+        return (
+          entry.job.id !== job.id &&
+          !(entry.job.arrItemId === job.arrItemId && entry.job.sourceService === job.sourceService)
+        );
+      }
+
+      return !(
+        entry.item.arrItemId === job.arrItemId && entry.item.sourceService === job.sourceService
+      );
+    }) ?? []),
   ];
-  const items = currentQueue?.items ?? [];
 
   return {
-    acquisitionJobs,
-    items,
-    total: items.length + acquisitionJobs.length,
+    entries,
+    total: entries.length,
     updatedAt: new Date().toISOString(),
   };
 }
@@ -341,6 +357,7 @@ export class AppState {
   recentPlexError = $state<string | null>(null);
   dashboardError = $state<string | null>(null);
   queueError = $state<string | null>(null);
+  queueEntryErrors = $state<Record<string, string | null>>({});
   manualReleaseError = $state<Record<string, string | null>>({});
   manualReleaseLists = $state<Record<string, ManualReleaseListResponse | null>>({});
   manualSelectionError = $state<Record<string, string | null>>({});
@@ -357,8 +374,7 @@ export class AppState {
   grabbing = $state<string | null>(null);
   resolvingGrabItemId = $state<string | null>(null);
   deletingItemId = $state<string | null>(null);
-  cancelingAcquisitionJobId = $state<string | null>(null);
-  cancelingQueueItemId = $state<string | null>(null);
+  cancelingQueueEntryId = $state<string | null>(null);
   manualSelectingJobId = $state<string | null>(null);
   notificationState = $state<NotificationPermission | 'unsupported' | 'idle'>('idle');
   kindMenuOpen = $state(false);
@@ -463,17 +479,7 @@ export class AppState {
       return null;
     }
 
-    return (
-      this.queue?.acquisitionJobs.find((job) => job.id === this.activeManualReleaseJobId) ?? null
-    );
-  }
-
-  queueItemForAcquisitionJob(job: AcquisitionJob): QueueItem | null {
-    return (
-      this.queue?.items.find(
-        (item) => item.arrItemId === job.arrItemId && item.sourceService === job.sourceService,
-      ) ?? null
-    );
+    return this.managedQueueEntry(this.activeManualReleaseJobId)?.job ?? null;
   }
 
   get hasOpenOverlay(): boolean {
@@ -651,8 +657,20 @@ export class AppState {
     return item.canDeleteFromArr === true;
   }
 
-  hasQueueOperatorActions(item: QueueItem): boolean {
-    return item.arrItemId !== null || item.queueId !== null;
+  managedQueueEntry(jobId: string): ManagedQueueEntry | null {
+    return (
+      this.queue?.entries.find(
+        (entry): entry is ManagedQueueEntry => entry.kind === 'managed' && entry.job.id === jobId,
+      ) ?? null
+    );
+  }
+
+  queueEntryError(entryId: string): string | null {
+    return this.queueEntryErrors[entryId] ?? null;
+  }
+
+  hasQueueOperatorActions(entry: QueueEntry): boolean {
+    return entry.canRemove;
   }
 
   hasAuditOperatorActions(item: MediaItem): boolean {
@@ -876,42 +894,32 @@ export class AppState {
     }
   }
 
-  async cancelAcquisitionJob(jobId: string): Promise<void> {
-    this.cancelingAcquisitionJobId = jobId;
-    this.manualSelectionError = {
-      ...this.manualSelectionError,
-      [jobId]: null,
-    };
-    this.latestActionMessage = null;
-
-    try {
-      const result = await this.dependencies.api.cancelAcquisitionJob(jobId);
-      this.latestActionMessage = result.message;
-      await Promise.all([this.loadQueue(), this.loadDashboard(true)]);
-    } catch (error) {
-      this.manualSelectionError = {
-        ...this.manualSelectionError,
-        [jobId]: error instanceof Error ? error.message : 'Unable to cancel the selected download.',
-      };
-    } finally {
-      this.cancelingAcquisitionJobId = null;
-    }
-  }
-
-  async cancelQueueItem(item: QueueItem): Promise<void> {
-    this.cancelingQueueItemId = item.id;
+  async cancelQueueEntry(entry: QueueEntry): Promise<void> {
+    this.cancelingQueueEntryId = entry.id;
     this.queueError = null;
     this.latestActionMessage = null;
+    this.queueEntryErrors = {
+      ...this.queueEntryErrors,
+      [entry.id]: null,
+    };
 
     try {
-      const result = await this.dependencies.api.cancelQueueItem(item);
+      const result = await this.dependencies.api.cancelQueueEntry(entry);
       this.latestActionMessage = result.message;
+      this.queueEntryErrors = {
+        ...this.queueEntryErrors,
+        [entry.id]: null,
+      };
       await Promise.all([this.loadQueue(), this.loadDashboard(true)]);
     } catch (error) {
-      this.queueError =
+      const message =
         error instanceof Error ? error.message : 'Unable to cancel the selected download.';
+      this.queueEntryErrors = {
+        ...this.queueEntryErrors,
+        [entry.id]: message,
+      };
     } finally {
-      this.cancelingQueueItemId = null;
+      this.cancelingQueueEntryId = null;
     }
   }
 
@@ -959,28 +967,29 @@ export class AppState {
     });
   }
 
-  async deleteQueueArrItem(item: QueueItem): Promise<void> {
-    if (item.arrItemId == null && item.queueId == null) {
+  async deleteQueueEntry(entry: QueueEntry): Promise<void> {
+    if (entry.kind === 'managed') {
+      await this.deleteArrItem({
+        arrItemId: entry.job.arrItemId,
+        id: entry.id,
+        kind: entry.job.kind,
+        sourceService: entry.job.sourceService,
+        title: entry.job.title,
+      });
+      return;
+    }
+
+    if (entry.item.arrItemId == null && entry.item.queueId == null) {
       return;
     }
 
     await this.deleteArrItem({
-      arrItemId: item.arrItemId,
-      id: item.id,
-      kind: item.kind,
-      queueId: item.queueId,
-      sourceService: item.sourceService,
-      title: item.title,
-    });
-  }
-
-  async deleteAcquisitionJob(job: AcquisitionJob): Promise<void> {
-    await this.deleteArrItem({
-      arrItemId: job.arrItemId,
-      id: job.id,
-      kind: job.kind,
-      sourceService: job.sourceService,
-      title: job.title,
+      arrItemId: entry.item.arrItemId,
+      id: entry.id,
+      kind: entry.item.kind,
+      queueId: entry.item.queueId,
+      sourceService: entry.item.sourceService,
+      title: entry.item.title,
     });
   }
 

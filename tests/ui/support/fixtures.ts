@@ -2,9 +2,11 @@ import type {
   AcquisitionJob,
   AcquisitionJobActionResponse,
   GrabResponse,
+  ManagedQueueLiveSummary,
   ManualReleaseListResponse,
   ManualReleaseResult,
   MediaItem,
+  QueueEntry,
   QueueItem,
   QueueResponse,
 } from '$lib/shared/types';
@@ -75,12 +77,28 @@ export const configStatusFixture = {
         totalSpaceBytes: 1_024_000_000_000,
       },
       {
+        driveLetter: 'F:',
+        mountPoint: 'F:\\',
+        label: 'Media',
+        fileSystem: 'NTFS',
+        freeSpaceBytes: 2_611_200_000_000,
+        totalSpaceBytes: 5_589_000_000_000,
+      },
+      {
         driveLetter: null,
         mountPoint: 'C:\\M\\Archive\\',
         label: 'Archive',
         fileSystem: 'NTFS',
         freeSpaceBytes: 4_487_500_000_000,
         totalSpaceBytes: 18_627_000_000_000,
+      },
+      {
+        driveLetter: null,
+        mountPoint: 'C:\\M\\Full\\',
+        label: 'Full',
+        fileSystem: 'NTFS',
+        freeSpaceBytes: 0,
+        totalSpaceBytes: 16_000_898_547_712,
       },
     ],
   },
@@ -99,8 +117,7 @@ export const emptyDashboardResponse = {
 
 export const emptyQueueResponse = {
   updatedAt: '2026-04-13T12:00:00.000Z',
-  items: [],
-  acquisitionJobs: [],
+  entries: [],
   total: 0,
 };
 
@@ -127,6 +144,8 @@ export const acquisitionJobFixture: AcquisitionJob = {
     preferredLanguage: 'English',
     subtitleLanguage: 'English',
   },
+  targetSeasonNumbers: [1],
+  targetEpisodeIds: [101, 102],
   startedAt: '2026-04-13T11:58:00.000Z',
   updatedAt: '2026-04-13T12:00:00.000Z',
   completedAt: null,
@@ -173,15 +192,72 @@ export const queueItemFixture: QueueItem = {
   detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
 };
 
+function buildManagedLiveSummary(items: QueueItem[]): ManagedQueueLiveSummary | null {
+  if (items.length === 0) {
+    return null;
+  }
+
+  const withSize = items.filter((item) => item.size !== null && item.sizeLeft !== null);
+  return {
+    rowCount: items.length,
+    progress:
+      items.reduce((sum, item) => sum + (item.progress ?? 0), 0) /
+      Math.max(1, items.filter((item) => item.progress !== null).length),
+    status: items.length === 1 ? items[0]?.status ?? null : `${items.length} live downloads active`,
+    timeLeft: items.find((item) => item.timeLeft)?.timeLeft ?? null,
+    estimatedCompletionTime:
+      items.find((item) => item.estimatedCompletionTime)?.estimatedCompletionTime ?? null,
+    size: withSize.length > 0 ? withSize.reduce((sum, item) => sum + (item.size ?? 0), 0) : null,
+    sizeLeft:
+      withSize.length > 0 ? withSize.reduce((sum, item) => sum + (item.sizeLeft ?? 0), 0) : null,
+    byteMetricsPartial: withSize.length !== items.length,
+  };
+}
+
+function buildQueueEntries(acquisitionJobs: AcquisitionJob[], items: QueueItem[]): QueueEntry[] {
+  const unmatchedItems = [...items];
+  const managedEntries: QueueEntry[] = acquisitionJobs.map((job) => {
+    const liveQueueItems = unmatchedItems.filter(
+      (item) => item.arrItemId === job.arrItemId && item.sourceService === job.sourceService,
+    );
+    for (const liveQueueItem of liveQueueItems) {
+      const matchIndex = unmatchedItems.findIndex((item) => item.id === liveQueueItem.id);
+      if (matchIndex >= 0) {
+        unmatchedItems.splice(matchIndex, 1);
+      }
+    }
+
+    return {
+      kind: 'managed',
+      id: job.id,
+      job,
+      liveQueueItems,
+      liveSummary: buildManagedLiveSummary(liveQueueItems),
+      canCancel: job.status !== 'completed' && job.status !== 'cancelled',
+      canRemove: true,
+    };
+  });
+
+  const externalEntries: QueueEntry[] = unmatchedItems.map((item) => ({
+    kind: 'external',
+    id: item.id,
+    item,
+    canCancel: item.canCancel && item.queueId !== null,
+    canRemove: item.arrItemId !== null || item.queueId !== null,
+  }));
+
+  return [...managedEntries, ...externalEntries];
+}
+
 export function buildQueueResponse(
   acquisitionJobs: AcquisitionJob[] = [acquisitionJobFixture],
   items: QueueItem[] = [queueItemFixture],
 ): QueueResponse {
+  const entries = buildQueueEntries(acquisitionJobs, items);
   return {
     updatedAt: '2026-04-13T12:00:00.000Z',
-    items,
-    acquisitionJobs,
-    total: acquisitionJobs.length + items.length,
+    entries,
+    total: entries.length,
   };
 }
 
@@ -362,6 +438,8 @@ export function buildGrabResponse(item: GrabItem, seasonNumbers?: number[]): Gra
         preferredLanguage: 'English',
         subtitleLanguage: 'English',
       },
+      targetSeasonNumbers: seasonNumbers ?? null,
+      targetEpisodeIds: null,
       startedAt: '2026-04-13T12:00:00.000Z',
       updatedAt: '2026-04-13T12:00:00.000Z',
       completedAt: null,

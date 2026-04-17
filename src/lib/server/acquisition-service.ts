@@ -7,9 +7,11 @@ import type {
   MediaItemActionResponse,
   MediaItem,
   Preferences,
+  QueueCancelRequest,
   QueueItem,
   QueueActionResponse,
 } from '$lib/shared/types';
+import { queueCache } from '$lib/server/app-cache';
 import type { GrabItemOptions } from '$lib/server/acquisition-domain';
 import { manualSelectionQueuedStatus } from '$lib/server/acquisition-domain';
 import { getAcquisitionRunner } from '$lib/server/acquisition-runner';
@@ -22,7 +24,7 @@ import { getAcquisitionJobRepository } from '$lib/server/acquisition-job-reposit
 import { arrFetch } from '$lib/server/arr-client';
 import {
   fetchQueueRecords,
-  findQueueRecordForArrItem,
+  queueRecordArrItemId,
   queueRecordId,
 } from '$lib/server/acquisition-validator-shared';
 import { asArray, asRecord } from '$lib/server/raw';
@@ -57,7 +59,7 @@ export async function grabItem(
 async function unmonitorTrackedItem(
   service: 'radarr' | 'sonarr',
   arrItemId: number,
-) : Promise<boolean> {
+): Promise<boolean> {
   try {
     if (service === 'radarr') {
       const movie = asRecord(await arrFetch<unknown>('radarr', `/api/v3/movie/${arrItemId}`));
@@ -139,12 +141,37 @@ function isMissingArrItemError(error: unknown): boolean {
   return error instanceof Error && /\b404\b/.test(error.message);
 }
 
-async function findQueueEntryForJob(
+function invalidateQueueCache(): void {
+  queueCache.delete('queue');
+}
+
+async function findQueueEntryIdsForArrItem(
   service: 'radarr' | 'sonarr',
   arrItemId: number,
-): Promise<number | null> {
-  const match = findQueueRecordForArrItem(await fetchQueueRecords(service), service, arrItemId);
-  return match ? queueRecordId(match) : null;
+): Promise<number[]> {
+  const queueRecords = await fetchQueueRecords(service);
+  return [
+    ...new Set(
+      queueRecords
+        .filter((record) => queueRecordArrItemId(service, record) === arrItemId)
+        .map((record) => queueRecordId(record))
+        .filter((queueId): queueId is number => queueId !== null),
+    ),
+  ];
+}
+
+async function deleteQueueEntries(
+  service: 'radarr' | 'sonarr',
+  queueIds: number[],
+): Promise<number> {
+  const uniqueQueueIds = [...new Set(queueIds)];
+  if (uniqueQueueIds.length === 0) {
+    return 0;
+  }
+
+  invalidateQueueCache();
+  const deleted = await Promise.all(uniqueQueueIds.map((queueId) => deleteQueueEntry(service, queueId)));
+  return deleted.filter(Boolean).length;
 }
 
 export async function getManualReleaseResults(jobId: string): Promise<ManualReleaseListResponse> {
@@ -193,16 +220,17 @@ export async function selectManualRelease(
 
 export async function cancelAcquisitionJob(jobId: string): Promise<AcquisitionJobActionResponse> {
   ensureAcquisitionWorkers();
+  invalidateQueueCache();
   const jobs = getAcquisitionJobRepository();
   const job = jobs.getJob(jobId);
   if (!job) {
     throw new Error(`Acquisition job ${jobId} was not found.`);
   }
 
-  const queueId = await findQueueEntryForJob(job.sourceService, job.arrItemId);
-  if (queueId !== null) {
-    await deleteQueueEntry(job.sourceService, queueId);
-  }
+  await deleteQueueEntries(
+    job.sourceService,
+    await findQueueEntryIdsForArrItem(job.sourceService, job.arrItemId),
+  );
   await unmonitorTrackedItem(job.sourceService, job.arrItemId);
   const cancelled = getAcquisitionLifecycle().cancelJob(job);
 
@@ -212,29 +240,55 @@ export async function cancelAcquisitionJob(jobId: string): Promise<AcquisitionJo
   };
 }
 
-export async function cancelQueueItem(
-  item: Pick<
-    QueueItem,
-    'arrItemId' | 'canCancel' | 'id' | 'kind' | 'queueId' | 'sourceService' | 'title'
-  >,
+async function cancelExternalQueueItem(
+  item: Pick<QueueItem, 'arrItemId' | 'id' | 'queueId' | 'sourceService' | 'title'>,
 ): Promise<QueueActionResponse> {
-  if (!item.canCancel || item.queueId === null) {
+  if (item.queueId === null) {
     throw new Error('This download cannot be cancelled.');
   }
 
-  await deleteQueueEntry(item.sourceService, item.queueId);
-
-  if (item.arrItemId !== null) {
-    await unmonitorTrackedItem(item.sourceService, item.arrItemId);
-  }
+  await deleteQueueEntries(item.sourceService, [item.queueId]);
 
   return {
     itemId: item.id,
-    message: `${item.title} download was cancelled and unmonitored.`,
+    message: `${item.title} download was cancelled.`,
   };
 }
 
+export async function cancelQueueEntry(entry: QueueCancelRequest): Promise<QueueActionResponse> {
+  if (entry.kind === 'managed') {
+    invalidateQueueCache();
+    const job = getAcquisitionJobRepository().getJob(entry.jobId);
+    if (job) {
+      const result = await cancelAcquisitionJob(entry.jobId);
+      return {
+        itemId: entry.jobId,
+        message: result.message,
+      };
+    }
+
+    await deleteQueueEntries(
+      entry.sourceService,
+      await findQueueEntryIdsForArrItem(entry.sourceService, entry.arrItemId),
+    );
+    await unmonitorTrackedItem(entry.sourceService, entry.arrItemId);
+    return {
+      itemId: entry.jobId,
+      message: `${entry.title} download was cancelled and unmonitored.`,
+    };
+  }
+
+  return cancelExternalQueueItem({
+    arrItemId: entry.arrItemId,
+    id: entry.id,
+    queueId: entry.queueId,
+    sourceService: entry.sourceService,
+    title: entry.title,
+  });
+}
+
 export async function deleteArrItem(item: ArrDeleteTarget): Promise<MediaItemActionResponse> {
+  invalidateQueueCache();
   const jobs =
     item.arrItemId !== null
       ? getAcquisitionJobRepository().listActiveJobsByArrItem(
@@ -244,14 +298,13 @@ export async function deleteArrItem(item: ArrDeleteTarget): Promise<MediaItemAct
         )
       : [];
   const serviceLabel = item.sourceService === 'radarr' ? 'Radarr' : 'Sonarr';
-  const queueId =
-    item.queueId ??
-    (item.arrItemId !== null
-      ? await findQueueEntryForJob(item.sourceService, item.arrItemId)
-      : null);
-  if (queueId !== null) {
-    await deleteQueueEntry(item.sourceService, queueId);
-  }
+  const queueIds =
+    item.queueId !== null && item.queueId !== undefined
+      ? [item.queueId]
+      : item.arrItemId !== null
+        ? await findQueueEntryIdsForArrItem(item.sourceService, item.arrItemId)
+        : [];
+  await deleteQueueEntries(item.sourceService, queueIds);
 
   if (item.arrItemId !== null) {
     for (const job of jobs) {

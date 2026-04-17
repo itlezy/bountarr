@@ -10,8 +10,9 @@ export const GET = async () => {
   try {
     const result = await getQueue();
     logger.info('Queue API request completed', {
-      items: result.items.length,
-      acquisitionJobs: result.acquisitionJobs.length,
+      entries: result.entries.length,
+      managedEntries: result.entries.filter((entry) => entry.kind === 'managed').length,
+      externalEntries: result.entries.filter((entry) => entry.kind === 'external').length,
       total: result.total,
     });
     return json(result);

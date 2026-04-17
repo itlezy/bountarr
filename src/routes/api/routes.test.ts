@@ -142,7 +142,7 @@ describe('API routes', () => {
     expect(payload.summary.attention).toBe(1);
   });
 
-  it('returns queue data with Arr items and acquisition jobs', async () => {
+  it('returns unified queue entries for managed and external downloads', async () => {
     const getQueue = vi.fn().mockResolvedValue(queueResponseFixture);
     const route = await loadRouteModule<{ GET: () => Promise<Response> }>(
       '../../routes/api/queue/+server',
@@ -157,8 +157,22 @@ describe('API routes', () => {
     const payload = await readJson<typeof queueResponseFixture>(response);
 
     expect(getQueue).toHaveBeenCalledTimes(1);
-    expect(payload.total).toBe(2);
-    expect(payload.acquisitionJobs[0]?.status).toBe('validating');
+    expect(payload.total).toBe(1);
+    expect(payload.entries[0]).toMatchObject({
+      kind: 'managed',
+      job: {
+        status: 'validating',
+      },
+      liveQueueItems: [
+        {
+          status: 'Downloading',
+        },
+      ],
+      liveSummary: {
+        rowCount: 1,
+        status: 'Downloading',
+      },
+    });
   });
 
   it('returns acquisition jobs from the acquisition service', async () => {

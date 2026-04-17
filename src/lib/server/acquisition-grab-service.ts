@@ -13,7 +13,11 @@ import { getAcquisitionLifecycle } from '$lib/server/acquisition-lifecycle';
 import { getAcquisitionRunner } from '$lib/server/acquisition-runner';
 import { getAcquisitionJobRepository } from '$lib/server/acquisition-job-repository';
 import { findPreferredReleaser } from '$lib/server/acquisition-query';
-import { fetchExistingMovie, fetchExistingSeries } from '$lib/server/lookup-service';
+import {
+  fetchExistingMovie,
+  fetchExistingSeries,
+  fetchSeriesEpisodeRecords,
+} from '$lib/server/lookup-service';
 import { normalizeItem } from '$lib/server/media-normalize';
 import { asArray, asNumber, asPositiveNumber, asRecord, asString } from '$lib/server/raw';
 
@@ -77,6 +81,66 @@ function grabIdentity(item: MediaItem): string {
   return `${item.sourceService}:${item.kind}:${identity}`;
 }
 
+function normalizeIntegerArray(value: number[] | null | undefined): number[] | null {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = [...new Set(
+    value
+      .filter((seasonNumber) => Number.isFinite(seasonNumber) && seasonNumber >= 0)
+      .map((seasonNumber) => Math.trunc(seasonNumber)),
+  )].sort((left, right) => left - right);
+
+  return normalized.length > 0 ? normalized : null;
+}
+
+function deriveSeriesTargetSeasonNumbers(
+  item: MediaItem,
+  options?: GrabItemOptions,
+): number[] | null {
+  const explicitSeasonNumbers = normalizeIntegerArray(options?.seasonNumbers);
+  if (explicitSeasonNumbers) {
+    return explicitSeasonNumbers;
+  }
+
+  const seasons = asArray(asRecord(item.requestPayload).seasons).map(asRecord);
+  const monitoredSeasonNumbers = normalizeIntegerArray(
+    seasons
+      .filter((season) => season.monitored === true)
+      .map((season) => asNumber(season.seasonNumber))
+      .filter((seasonNumber): seasonNumber is number => seasonNumber !== null),
+  );
+  if (monitoredSeasonNumbers) {
+    return monitoredSeasonNumbers;
+  }
+
+  return normalizeIntegerArray(
+    seasons
+      .map((season) => asNumber(season.seasonNumber))
+      .filter((seasonNumber): seasonNumber is number => seasonNumber !== null),
+  );
+}
+
+async function resolveSeriesTargetEpisodeIds(
+  seriesId: number,
+  targetSeasonNumbers: number[] | null,
+): Promise<number[] | null> {
+  const targetSeasons = targetSeasonNumbers ? new Set(targetSeasonNumbers) : null;
+  const episodeIds = normalizeIntegerArray(
+    (await fetchSeriesEpisodeRecords(seriesId))
+      .filter((episode) =>
+        targetSeasons === null
+          ? true
+          : targetSeasons.has(asNumber(episode.seasonNumber) ?? Number.NaN),
+      )
+      .map((episode) => asNumber(episode.id))
+      .filter((episodeId): episodeId is number => episodeId !== null && episodeId > 0),
+  );
+
+  return episodeIds;
+}
+
 function buildMoviePayload(
   item: MediaItem,
   defaults: Record<string, unknown>,
@@ -105,10 +169,7 @@ function buildSeriesPayload(
   options?: GrabItemOptions,
 ): Record<string, unknown> {
   const raw = asRecord(item.requestPayload);
-  const normalizedSeasonNumbers =
-    options?.seasonNumbers
-      ?.filter((seasonNumber) => Number.isFinite(seasonNumber) && seasonNumber >= 0)
-      .map((seasonNumber) => Math.trunc(seasonNumber)) ?? [];
+  const normalizedSeasonNumbers = normalizeIntegerArray(options?.seasonNumbers) ?? [];
   const selectedSeasonNumbers =
     normalizedSeasonNumbers.length > 0 ? new Set(normalizedSeasonNumbers) : null;
 
@@ -174,12 +235,13 @@ function seriesGrabSpec(): GrabSpec {
   };
 }
 
-function trackedResponse(
+async function trackedResponse(
   spec: GrabSpec,
   item: MediaItem,
   existingItem: MediaItem,
   preferences: Preferences,
-): GrabResponse {
+  options?: GrabItemOptions,
+): Promise<GrabResponse> {
   const existingArrItemId =
     typeof existingItem.arrItemId === 'number' ? existingItem.arrItemId : null;
   if (existingArrItemId === null) {
@@ -207,12 +269,20 @@ function trackedResponse(
     };
   }
 
-  const job = createOrReuseJob(existingItem, existingArrItemId, spec.service, preferences);
+  const { created, job } = await createOrReuseJob(
+    existingItem,
+    existingArrItemId,
+    spec.service,
+    preferences,
+    options,
+  );
   return {
     existing: true,
     item: existingItem,
     job,
-    message: `${item.title} is already tracked in ${spec.trackedName}. Alternate-release acquisition started.`,
+    message: created
+      ? `${item.title} is already tracked in ${spec.trackedName}. Alternate-release acquisition started.`
+      : `${item.title} is already tracked in ${spec.trackedName}. Reusing the active alternate-release grab.`,
     releaseDecision: null,
   };
 }
@@ -278,26 +348,19 @@ async function findExistingTrackedItem(
   return spec.fetchExisting(existingId, preferences, item).catch(() => null);
 }
 
-function createOrReuseJob(
+async function createOrReuseJob(
   item: MediaItem,
   arrItemId: number,
   sourceService: ArrService,
   preferences: Preferences,
-): AcquisitionJob {
+  options?: GrabItemOptions,
+): Promise<{ created: boolean; job: AcquisitionJob }> {
   const jobs = getAcquisitionJobRepository();
-  const existing = jobs.findActiveJob(arrItemId, item.kind, sourceService);
-  if (existing) {
-    logger.info('Reusing existing acquisition job', {
-      arrItemId,
-      itemTitle: existing.title,
-      jobId: existing.id,
-      kind: existing.kind,
-      service: existing.sourceService,
-    });
-    return cloneJob(existing);
-  }
-
-  const job = jobs.createJob({
+  const targetSeasonNumbers =
+    item.kind === 'series' ? deriveSeriesTargetSeasonNumbers(item, options) : null;
+  const targetEpisodeIds =
+    item.kind === 'series' ? await resolveSeriesTargetEpisodeIds(arrItemId, targetSeasonNumbers) : null;
+  const result = jobs.createOrReuseActiveJob({
     arrItemId,
     itemId: item.id,
     kind: item.kind,
@@ -308,12 +371,31 @@ function createOrReuseJob(
       subtitleLanguage: preferences.subtitleLanguage,
     },
     sourceService,
+    targetEpisodeIds,
+    targetSeasonNumbers,
     title: item.title,
   });
 
-  getAcquisitionLifecycle().recordJobCreated(job);
-  getAcquisitionRunner().enqueue(job.id);
-  return cloneJob(job);
+  if (!result.created) {
+    logger.info('Reusing existing acquisition job', {
+      arrItemId,
+      itemTitle: result.job.title,
+      jobId: result.job.id,
+      kind: result.job.kind,
+      service: result.job.sourceService,
+    });
+    return {
+      created: false,
+      job: cloneJob(result.job),
+    };
+  }
+
+  getAcquisitionLifecycle().recordJobCreated(result.job);
+  getAcquisitionRunner().enqueue(result.job.id);
+  return {
+    created: true,
+    job: cloneJob(result.job),
+  };
 }
 
 async function grabTrackedItem(
@@ -331,7 +413,7 @@ async function grabTrackedItem(
   const sourceId = trackedArrItemId(item);
   if (item.inArr && sourceId) {
     const existingItem = await spec.fetchExisting(sourceId, preferences, item);
-    return trackedResponse(spec, item, existingItem, preferences);
+    return trackedResponse(spec, item, existingItem, preferences, options);
   }
 
   ensureAddable(item);
@@ -357,7 +439,7 @@ async function grabTrackedItem(
           service: spec.service,
         },
       );
-      return trackedResponse(spec, item, existingItem, preferences);
+      return trackedResponse(spec, item, existingItem, preferences, options);
     }
 
     throw createError;
@@ -370,7 +452,9 @@ async function grabTrackedItem(
     createdItem = createdId
       ? await spec.fetchExisting(createdId, preferences, item)
       : spec.buildFallbackItem(created, preferences);
-    job = createdId ? createOrReuseJob(createdItem, createdId, spec.service, preferences) : null;
+    job = createdId
+      ? (await createOrReuseJob(createdItem, createdId, spec.service, preferences, options)).job
+      : null;
   } catch (trackingError) {
     if (!createdId) {
       throw trackingError;
@@ -386,7 +470,7 @@ async function grabTrackedItem(
       createdItem =
         (await spec.fetchExisting(createdId, preferences, item).catch(() => null)) ??
         spec.buildFallbackItem(created, preferences);
-      job = createOrReuseJob(createdItem, createdId, spec.service, preferences);
+      job = (await createOrReuseJob(createdItem, createdId, spec.service, preferences, options)).job;
     } catch (recoveryError) {
       logger.error(
         'Tracked item was created in Arr but acquisition tracking could not be recovered',

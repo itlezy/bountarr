@@ -26,6 +26,8 @@ type JobRow = {
   auto_retrying: number | null;
   progress: number | null;
   queue_status: string | null;
+  target_season_numbers_json: string | null;
+  target_episode_ids_json: string | null;
   preferred_language: string;
   subtitle_language?: string | null;
   started_at: string;
@@ -61,6 +63,8 @@ export type CreateAcquisitionJobInput = {
   preferredReleaser: string | null;
   preferences: PersistedAcquisitionJob['preferences'];
   sourceService: PersistedAcquisitionJob['sourceService'];
+  targetEpisodeIds?: number[] | null;
+  targetSeasonNumbers?: number[] | null;
   title: string;
 };
 
@@ -74,9 +78,11 @@ export type UpdateAcquisitionJobPatch = Partial<
     | 'itemId'
     | 'kind'
     | 'maxRetries'
-    | 'preferences'
-    | 'sourceService'
-    | 'title'
+     | 'preferences'
+     | 'sourceService'
+     | 'targetEpisodeIds'
+     | 'targetSeasonNumbers'
+     | 'title'
   >
 > & {
   preferences?: Partial<PersistedAcquisitionJob['preferences']>;
@@ -109,6 +115,40 @@ function placeholders(count: number): string {
   return new Array(count).fill('?').join(', ');
 }
 
+function normalizeNumberArray(value: number[] | null | undefined): number[] | null {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = [...new Set(
+    value
+      .filter((entry) => Number.isFinite(entry) && entry >= 0)
+      .map((entry) => Math.trunc(entry)),
+  )].sort((left, right) => left - right);
+
+  return normalized.length > 0 ? normalized : null;
+}
+
+function parseNumberArrayJson(value: string | null | undefined): number[] | null {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    return normalizeNumberArray(JSON.parse(value) as number[]);
+  } catch {
+    return null;
+  }
+}
+
+function serializeNumberArray(value: number[] | null): string | null {
+  return value ? JSON.stringify(value) : null;
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return error instanceof Error && /UNIQUE constraint failed/iu.test(error.message);
+}
+
 export class AcquisitionJobRepository {
   readonly database: DatabaseSync;
 
@@ -131,6 +171,22 @@ export class AcquisitionJobRepository {
 
   private invalidateQueueCache(): void {
     queueCache.delete('queue');
+  }
+
+  private findActiveJobRow(
+    arrItemId: number,
+    kind: MediaKind,
+    sourceService: ArrService,
+  ): JobRow | undefined {
+    return this.database
+      .prepare(
+        `SELECT * FROM acquisition_jobs
+         WHERE arr_item_id = ? AND kind = ? AND source_service = ?
+           AND status NOT IN ('completed', 'failed', 'cancelled')
+         ORDER BY updated_at DESC
+         LIMIT 1`,
+      )
+      .get(arrItemId, kind, sourceService) as JobRow | undefined;
   }
 
   private hydrateJobs(jobRows: JobRow[]): PersistedAcquisitionJob[] {
@@ -199,6 +255,8 @@ export class AcquisitionJobRepository {
           preferredLanguage: sanitizePreferredLanguage(row.preferred_language),
           subtitleLanguage: sanitizePreferredLanguage(row.subtitle_language, 'Any'),
         },
+        targetSeasonNumbers: parseNumberArrayJson(row.target_season_numbers_json),
+        targetEpisodeIds: parseNumberArrayJson(row.target_episode_ids_json),
         startedAt: row.started_at,
         updatedAt: row.updated_at,
         completedAt: row.completed_at,
@@ -261,16 +319,7 @@ export class AcquisitionJobRepository {
     kind: MediaKind,
     sourceService: ArrService,
   ): PersistedAcquisitionJob | null {
-    const row = this.database
-      .prepare(
-        `SELECT * FROM acquisition_jobs
-         WHERE arr_item_id = ? AND kind = ? AND source_service = ?
-           AND status NOT IN ('completed', 'failed', 'cancelled')
-         ORDER BY updated_at DESC
-         LIMIT 1`,
-      )
-      .get(arrItemId, kind, sourceService) as JobRow | undefined;
-
+    const row = this.findActiveJobRow(arrItemId, kind, sourceService);
     return row ? (this.hydrateJobs([row])[0] ?? null) : null;
   }
 
@@ -306,6 +355,12 @@ export class AcquisitionJobRepository {
   }
 
   createJob(input: CreateAcquisitionJobInput): PersistedAcquisitionJob {
+    return this.createOrReuseActiveJob(input).job;
+  }
+
+  createOrReuseActiveJob(
+    input: CreateAcquisitionJobInput,
+  ): { created: boolean; job: PersistedAcquisitionJob } {
     const startedAt = new Date().toISOString();
     const job: PersistedAcquisitionJob = {
       id: crypto.randomUUID(),
@@ -327,6 +382,8 @@ export class AcquisitionJobRepository {
       progress: null,
       queueStatus: 'Queued',
       preferences: input.preferences,
+      targetSeasonNumbers: normalizeNumberArray(input.targetSeasonNumbers),
+      targetEpisodeIds: normalizeNumberArray(input.targetEpisodeIds),
       startedAt,
       updatedAt: startedAt,
       completedAt: null,
@@ -334,45 +391,77 @@ export class AcquisitionJobRepository {
       failedGuids: [],
     };
 
-    this.withTransaction(() => {
-      this.database
-        .prepare(
-          `INSERT INTO acquisition_jobs (
-            id, item_id, arr_item_id, kind, title, source_service, status, attempt,
-            max_retries, current_release, selected_releaser, preferred_releaser,
-            reason_code, failure_reason, validation_summary, auto_retrying, progress, queue_status,
-            preferred_language, subtitle_language, started_at, updated_at, completed_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          job.id,
-          job.itemId,
-          job.arrItemId,
-          job.kind,
-          job.title,
-          job.sourceService,
-          job.status,
-          job.attempt,
-          job.maxRetries,
-          job.currentRelease,
-          job.selectedReleaser,
-          job.preferredReleaser,
-          job.reasonCode,
-          job.failureReason,
-          job.validationSummary,
-          job.autoRetrying ? 1 : 0,
-          job.progress,
-          job.queueStatus,
-          job.preferences.preferredLanguage,
-          job.preferences.subtitleLanguage,
-          job.startedAt,
-          job.updatedAt,
-          job.completedAt,
-        );
+    const result = this.withTransaction<{ created: boolean; job: PersistedAcquisitionJob }>(() => {
+      const existingRow = this.findActiveJobRow(job.arrItemId, job.kind, job.sourceService);
+      if (existingRow) {
+        return {
+          created: false,
+          job: this.hydrateJobs([existingRow])[0] ?? job,
+        };
+      }
+
+      try {
+        this.database
+          .prepare(
+            `INSERT INTO acquisition_jobs (
+              id, item_id, arr_item_id, kind, title, source_service, status, attempt,
+              max_retries, current_release, selected_releaser, preferred_releaser,
+              reason_code, failure_reason, validation_summary, auto_retrying, progress, queue_status,
+              target_season_numbers_json, target_episode_ids_json, preferred_language,
+              subtitle_language, started_at, updated_at, completed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            job.id,
+            job.itemId,
+            job.arrItemId,
+            job.kind,
+            job.title,
+            job.sourceService,
+            job.status,
+            job.attempt,
+            job.maxRetries,
+            job.currentRelease,
+            job.selectedReleaser,
+            job.preferredReleaser,
+            job.reasonCode,
+            job.failureReason,
+            job.validationSummary,
+            job.autoRetrying ? 1 : 0,
+            job.progress,
+            job.queueStatus,
+            serializeNumberArray(job.targetSeasonNumbers),
+            serializeNumberArray(job.targetEpisodeIds),
+            job.preferences.preferredLanguage,
+            job.preferences.subtitleLanguage,
+            job.startedAt,
+            job.updatedAt,
+            job.completedAt,
+          );
+      } catch (error) {
+        if (!isUniqueConstraintError(error)) {
+          throw error;
+        }
+
+        const racedRow = this.findActiveJobRow(job.arrItemId, job.kind, job.sourceService);
+        if (!racedRow) {
+          throw error;
+        }
+
+        return {
+          created: false,
+          job: this.hydrateJobs([racedRow])[0] ?? job,
+        };
+      }
+
+      return {
+        created: true,
+        job,
+      };
     });
 
     this.invalidateQueueCache();
-    return job;
+    return result;
   }
 
   updateJob(jobId: string, patch: UpdateAcquisitionJobPatch): PersistedAcquisitionJob {

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { AcquisitionJob, QueueItem } from '$lib/shared/types';
 
 afterEach(() => {
   vi.resetAllMocks();
@@ -6,6 +7,253 @@ afterEach(() => {
 });
 
 describe('queue dashboard service', () => {
+  it('merges matching acquisition jobs and Arr queue items into one managed entry', async () => {
+    const { composeQueueEntries } = await import('$lib/server/queue-dashboard-service');
+
+    const acquisitionJob: AcquisitionJob = {
+      id: 'job-1',
+      itemId: 'movie:603',
+      arrItemId: 603,
+      kind: 'movie',
+      title: 'The Matrix',
+      sourceService: 'radarr',
+      status: 'validating',
+      attempt: 1,
+      maxRetries: 3,
+      currentRelease: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      selectedReleaser: 'flux',
+      preferredReleaser: 'flux',
+      reasonCode: null,
+      failureReason: null,
+      validationSummary: null,
+      autoRetrying: false,
+      progress: 20,
+      queueStatus: 'Queued',
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      targetSeasonNumbers: null,
+      targetEpisodeIds: null,
+      startedAt: '2026-04-13T12:00:00.000Z',
+      updatedAt: '2026-04-13T12:05:00.000Z',
+      completedAt: null,
+      attempts: [],
+    };
+    const queueItem: QueueItem = {
+      id: 'radarr:queue:1',
+      arrItemId: 603,
+      canCancel: true,
+      kind: 'movie',
+      title: 'The Matrix',
+      year: 1999,
+      poster: null,
+      sourceService: 'radarr',
+      status: 'Downloading',
+      progress: 75,
+      timeLeft: '10m',
+      estimatedCompletionTime: '2026-04-13T12:10:00.000Z',
+      size: 1_000_000_000,
+      sizeLeft: 250_000_000,
+      queueId: 1,
+      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+    };
+
+    const entries = composeQueueEntries([acquisitionJob], [queueItem]);
+
+    expect(entries).toEqual([
+      {
+        kind: 'managed',
+        id: acquisitionJob.id,
+        job: acquisitionJob,
+        liveQueueItems: [queueItem],
+        liveSummary: {
+          rowCount: 1,
+          progress: 75,
+          status: 'Downloading',
+          timeLeft: '10m',
+          estimatedCompletionTime: '2026-04-13T12:10:00.000Z',
+          size: 1_000_000_000,
+          sizeLeft: 250_000_000,
+          byteMetricsPartial: false,
+        },
+        canCancel: true,
+        canRemove: true,
+      },
+    ]);
+  });
+
+  it('keeps unmatched Arr downloads as external entries after managed matches are consumed', async () => {
+    const { composeQueueEntries } = await import('$lib/server/queue-dashboard-service');
+
+    const acquisitionJob: AcquisitionJob = {
+      id: 'job-1',
+      itemId: 'series:83867',
+      arrItemId: 83867,
+      kind: 'series',
+      title: 'Andor',
+      sourceService: 'sonarr',
+      status: 'searching',
+      attempt: 1,
+      maxRetries: 3,
+      currentRelease: null,
+      selectedReleaser: null,
+      preferredReleaser: 'flux',
+      reasonCode: null,
+      failureReason: null,
+      validationSummary: 'Waiting for a manual release choice.',
+      autoRetrying: false,
+      progress: null,
+      queueStatus: 'Queued',
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      targetSeasonNumbers: [1],
+      targetEpisodeIds: [101, 102],
+      startedAt: '2026-04-13T12:00:00.000Z',
+      updatedAt: '2026-04-13T12:05:00.000Z',
+      completedAt: null,
+      attempts: [],
+    };
+    const matchingQueueItem: QueueItem = {
+      id: 'sonarr:queue:1',
+      arrItemId: 83867,
+      canCancel: true,
+      kind: 'series',
+      title: 'Andor',
+      year: 2022,
+      poster: null,
+      sourceService: 'sonarr',
+      status: 'Downloading',
+      progress: 58,
+      timeLeft: '18m',
+      estimatedCompletionTime: '2026-04-13T12:18:00.000Z',
+      size: 4_000_000_000,
+      sizeLeft: 1_200_000_000,
+      queueId: 2,
+      detail: 'Andor.S01.1080p.WEB-DL-FLUX',
+    };
+    const externalQueueItem: QueueItem = {
+      id: 'radarr:queue:2',
+      arrItemId: 603,
+      canCancel: true,
+      kind: 'movie',
+      title: 'The Matrix',
+      year: 1999,
+      poster: null,
+      sourceService: 'radarr',
+      status: 'Downloading',
+      progress: 75,
+      timeLeft: '10m',
+      estimatedCompletionTime: '2026-04-13T12:10:00.000Z',
+      size: 1_000_000_000,
+      sizeLeft: 250_000_000,
+      queueId: 1,
+      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+    };
+
+    const entries = composeQueueEntries([acquisitionJob], [externalQueueItem, matchingQueueItem]);
+
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toMatchObject({
+      kind: 'managed',
+      liveQueueItems: [matchingQueueItem],
+      liveSummary: {
+        rowCount: 1,
+        progress: 58,
+      },
+    });
+    expect(entries[1]).toEqual({
+      kind: 'external',
+      id: externalQueueItem.id,
+      item: externalQueueItem,
+      canCancel: true,
+      canRemove: true,
+    });
+  });
+
+  it('aggregates multiple matching Arr queue rows into one managed entry', async () => {
+    const { composeQueueEntries } = await import('$lib/server/queue-dashboard-service');
+
+    const acquisitionJob: AcquisitionJob = {
+      id: 'job-2',
+      itemId: 'series:83867',
+      arrItemId: 83867,
+      kind: 'series',
+      title: 'Andor',
+      sourceService: 'sonarr',
+      status: 'grabbing',
+      attempt: 2,
+      maxRetries: 3,
+      currentRelease: 'Andor.S01.1080p.WEB-DL-FLUX',
+      selectedReleaser: 'flux',
+      preferredReleaser: 'flux',
+      reasonCode: null,
+      failureReason: null,
+      validationSummary: 'Sending to downloader',
+      autoRetrying: false,
+      progress: 45,
+      queueStatus: 'Queued',
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      targetSeasonNumbers: [1],
+      targetEpisodeIds: [101, 102],
+      startedAt: '2026-04-13T12:00:00.000Z',
+      updatedAt: '2026-04-13T12:05:00.000Z',
+      completedAt: null,
+      attempts: [],
+    };
+    const firstQueueItem: QueueItem = {
+      id: 'sonarr:queue:1',
+      arrItemId: 83867,
+      canCancel: true,
+      kind: 'series',
+      title: 'Andor',
+      year: 2022,
+      poster: null,
+      sourceService: 'sonarr',
+      status: 'Downloading',
+      progress: 25,
+      timeLeft: '18m',
+      estimatedCompletionTime: '2026-04-13T12:18:00.000Z',
+      size: 2_000_000_000,
+      sizeLeft: 1_500_000_000,
+      queueId: 2,
+      detail: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+    };
+    const secondQueueItem: QueueItem = {
+      ...firstQueueItem,
+      id: 'sonarr:queue:2',
+      progress: 75,
+      timeLeft: '8m',
+      estimatedCompletionTime: '2026-04-13T12:08:00.000Z',
+      sizeLeft: 500_000_000,
+      queueId: 3,
+      detail: 'Andor.S01E02.1080p.WEB-DL-FLUX',
+    };
+
+    const entries = composeQueueEntries([acquisitionJob], [firstQueueItem, secondQueueItem]);
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      kind: 'managed',
+      liveQueueItems: [firstQueueItem, secondQueueItem],
+      liveSummary: {
+        rowCount: 2,
+        progress: 50,
+        status: 'Downloading',
+        timeLeft: '8m',
+        estimatedCompletionTime: '2026-04-13T12:08:00.000Z',
+        size: 4_000_000_000,
+        sizeLeft: 2_000_000_000,
+        byteMetricsPartial: false,
+      },
+    });
+  });
+
   it('keeps Arr ids on dashboard fallback items so audit cards can delete them', async () => {
     const arrFetch = vi.fn().mockImplementation(async (_service: string, path: string) => {
       if (path === '/api/v3/history') {

@@ -1,10 +1,14 @@
 import type {
+  AcquisitionJob,
   AcquisitionResponse,
   ConfigStatus,
   DashboardResponse,
   GrabResponse,
   HealthResponse,
+  ManagedQueueLiveSummary,
   MediaItem,
+  QueueEntry,
+  QueueItem,
   QueueResponse,
   RuntimeHealth,
 } from '$lib/shared/types';
@@ -60,6 +64,14 @@ export const runtimeHealthFixture: RuntimeHealth = {
       fileSystem: 'NTFS',
       freeSpaceBytes: 4_487_500_000_000,
       totalSpaceBytes: 18_627_000_000_000,
+    },
+    {
+      driveLetter: null,
+      mountPoint: 'C:\\M\\Full\\',
+      label: 'Full',
+      fileSystem: 'NTFS',
+      freeSpaceBytes: 0,
+      totalSpaceBytes: 16_000_898_547_712,
     },
   ],
 };
@@ -160,69 +172,107 @@ export const dashboardResponseFixture: DashboardResponse = {
 
 export const queueResponseFixture: QueueResponse = {
   updatedAt: runtimeHealthFixture.checkedAt,
-  items: [
-    {
-      id: 'radarr:queue:1',
-      arrItemId: 603,
-      canCancel: true,
-      kind: 'movie',
-      title: 'The Matrix',
-      year: 1999,
-      poster: 'https://img.example/matrix.jpg',
-      sourceService: 'radarr',
-      status: 'Downloading',
-      progress: 75,
-      timeLeft: '10m',
-      estimatedCompletionTime: '2026-04-02T12:10:00.000Z',
-      size: 1_000_000_000,
-      sizeLeft: 250_000_000,
-      queueId: 1,
-      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
-    },
-  ],
-  acquisitionJobs: [
-    {
-      id: 'job-1',
-      itemId: mediaItemFixture.id,
-      arrItemId: 603,
-      kind: 'movie',
-      title: 'The Matrix',
-      sourceService: 'radarr',
-      status: 'validating',
-      attempt: 1,
-      maxRetries: 3,
-      currentRelease: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
-      selectedReleaser: 'flux',
-      preferredReleaser: 'flux',
-      reasonCode: null,
-      failureReason: null,
-      validationSummary: null,
-      autoRetrying: false,
-      progress: 75,
-      queueStatus: 'Downloading',
-      preferences: {
-        preferredLanguage: 'English',
-        subtitleLanguage: 'English',
-      },
-      startedAt: '2026-04-02T12:00:00.000Z',
-      updatedAt: '2026-04-02T12:05:00.000Z',
-      completedAt: null,
-      attempts: [
-        {
-          attempt: 1,
-          status: 'validating',
-          reasonCode: null,
-          releaseTitle: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
-          releaser: 'flux',
-          reason: null,
-          startedAt: '2026-04-02T12:00:00.000Z',
-          finishedAt: null,
-        },
-      ],
-    },
-  ],
-  total: 2,
+  entries: [],
+  total: 0,
 };
+
+const queueItemFixture: QueueItem = {
+  id: 'radarr:queue:1',
+  arrItemId: 603,
+  canCancel: true,
+  kind: 'movie',
+  title: 'The Matrix',
+  year: 1999,
+  poster: 'https://img.example/matrix.jpg',
+  sourceService: 'radarr',
+  status: 'Downloading',
+  progress: 75,
+  timeLeft: '10m',
+  estimatedCompletionTime: '2026-04-02T12:10:00.000Z',
+  size: 1_000_000_000,
+  sizeLeft: 250_000_000,
+  queueId: 1,
+  detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+};
+
+const acquisitionJobFixture: AcquisitionJob = {
+  id: 'job-1',
+  itemId: mediaItemFixture.id,
+  arrItemId: 603,
+  kind: 'movie',
+  title: 'The Matrix',
+  sourceService: 'radarr',
+  status: 'validating',
+  attempt: 1,
+  maxRetries: 3,
+  currentRelease: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+  selectedReleaser: 'flux',
+  preferredReleaser: 'flux',
+  reasonCode: null,
+  failureReason: null,
+  validationSummary: null,
+  autoRetrying: false,
+  progress: 75,
+  queueStatus: 'Downloading',
+  preferences: {
+    preferredLanguage: 'English',
+    subtitleLanguage: 'English',
+  },
+  targetSeasonNumbers: null,
+  targetEpisodeIds: null,
+  startedAt: '2026-04-02T12:00:00.000Z',
+  updatedAt: '2026-04-02T12:05:00.000Z',
+  completedAt: null,
+  attempts: [
+    {
+      attempt: 1,
+      status: 'validating',
+      reasonCode: null,
+      releaseTitle: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      releaser: 'flux',
+      reason: null,
+      startedAt: '2026-04-02T12:00:00.000Z',
+      finishedAt: null,
+    },
+  ],
+};
+
+function buildManagedLiveSummary(items: QueueItem[]): ManagedQueueLiveSummary | null {
+  if (items.length === 0) {
+    return null;
+  }
+
+  const withSize = items.filter((item) => item.size !== null && item.sizeLeft !== null);
+  return {
+    rowCount: items.length,
+    progress:
+      items.reduce((sum, item) => sum + (item.progress ?? 0), 0) /
+      Math.max(1, items.filter((item) => item.progress !== null).length),
+    status: items.length === 1 ? items[0]?.status ?? null : `${items.length} live downloads active`,
+    timeLeft: items.find((item) => item.timeLeft)?.timeLeft ?? null,
+    estimatedCompletionTime:
+      items.find((item) => item.estimatedCompletionTime)?.estimatedCompletionTime ?? null,
+    size: withSize.length > 0 ? withSize.reduce((sum, item) => sum + (item.size ?? 0), 0) : null,
+    sizeLeft:
+      withSize.length > 0 ? withSize.reduce((sum, item) => sum + (item.sizeLeft ?? 0), 0) : null,
+    byteMetricsPartial: withSize.length !== items.length,
+  };
+}
+
+const queueEntriesFixture: QueueEntry[] = [
+  {
+    kind: 'managed',
+    id: acquisitionJobFixture.id,
+    job: acquisitionJobFixture,
+    liveQueueItems: [queueItemFixture],
+    liveSummary: buildManagedLiveSummary([queueItemFixture]),
+    canCancel: true,
+    canRemove: true,
+  },
+];
+
+queueResponseFixture.entries = queueEntriesFixture;
+queueResponseFixture.total = queueEntriesFixture.length;
 
 export const grabResponseFixture: GrabResponse = {
   existing: true,
@@ -236,10 +286,10 @@ export const grabResponseFixture: GrabResponse = {
   },
   message: 'The Matrix is already tracked in Radarr',
   releaseDecision: null,
-  job: queueResponseFixture.acquisitionJobs[0] ?? null,
+  job: acquisitionJobFixture,
 };
 
 export const acquisitionResponseFixture: AcquisitionResponse = {
   updatedAt: runtimeHealthFixture.checkedAt,
-  jobs: queueResponseFixture.acquisitionJobs,
+  jobs: [acquisitionJobFixture],
 };

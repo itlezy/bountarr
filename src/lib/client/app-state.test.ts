@@ -5,9 +5,14 @@ import type { PageData } from '$lib/client/app-state.svelte';
 import type {
   AcquisitionJob,
   DashboardResponse,
+  ExternalQueueEntry,
   GrabResponse,
+  ManagedQueueEntry,
+  ManagedQueueLiveSummary,
   MediaItem,
   ManualReleaseListResponse,
+  QueueEntry,
+  QueueItem,
   QueueResponse,
 } from '$lib/shared/types';
 
@@ -156,8 +161,7 @@ const seriesItem: MediaItem = {
 
 const queueResponse: QueueResponse = {
   updatedAt: '2026-04-02T10:05:00.000Z',
-  items: [],
-  acquisitionJobs: [],
+  entries: [],
   total: 0,
 };
 
@@ -184,6 +188,8 @@ const acquisitionJob: AcquisitionJob = {
     preferredLanguage: 'English',
     subtitleLanguage: 'English',
   },
+  targetSeasonNumbers: null,
+  targetEpisodeIds: null,
   startedAt: '2026-04-02T10:05:00.000Z',
   updatedAt: '2026-04-02T10:05:00.000Z',
   completedAt: null,
@@ -228,6 +234,66 @@ const dashboardResponse: DashboardResponse = {
   },
 };
 
+function buildManagedLiveSummary(items: QueueItem[]): ManagedQueueLiveSummary | null {
+  if (items.length === 0) {
+    return null;
+  }
+
+  return {
+    rowCount: items.length,
+    progress:
+      items.reduce((sum, item) => sum + (item.progress ?? 0), 0) /
+      Math.max(1, items.filter((item) => item.progress !== null).length),
+    status: items.length === 1 ? items[0]?.status ?? null : `${items.length} live downloads active`,
+    timeLeft: items.find((item) => item.timeLeft)?.timeLeft ?? null,
+    estimatedCompletionTime:
+      items.find((item) => item.estimatedCompletionTime)?.estimatedCompletionTime ?? null,
+    size:
+      items.every((item) => item.size !== null)
+        ? items.reduce((sum, item) => sum + (item.size ?? 0), 0)
+        : null,
+    sizeLeft:
+      items.every((item) => item.sizeLeft !== null)
+        ? items.reduce((sum, item) => sum + (item.sizeLeft ?? 0), 0)
+        : null,
+    byteMetricsPartial:
+      items.some((item) => item.size === null) || items.some((item) => item.sizeLeft === null),
+  };
+}
+
+function buildManagedEntry(
+  job: AcquisitionJob = acquisitionJob,
+  liveQueueItems: QueueItem[] = [],
+): ManagedQueueEntry {
+  return {
+    kind: 'managed',
+    id: job.id,
+    job,
+    liveQueueItems,
+    liveSummary: buildManagedLiveSummary(liveQueueItems),
+    canCancel: job.status !== 'completed' && job.status !== 'cancelled',
+    canRemove: true,
+  };
+}
+
+function buildExternalEntry(item: QueueItem): ExternalQueueEntry {
+  return {
+    kind: 'external',
+    id: item.id,
+    item,
+    canCancel: item.canCancel && item.queueId !== null,
+    canRemove: item.arrItemId !== null || item.queueId !== null,
+  };
+}
+
+function buildQueue(entries: QueueEntry[]): QueueResponse {
+  return {
+    updatedAt: '2026-04-02T10:05:00.000Z',
+    entries,
+    total: entries.length,
+  };
+}
+
 function createDeferred<T>(): Deferred<T> {
   let resolve!: (value: T) => void;
   let reject!: (error?: unknown) => void;
@@ -249,8 +315,7 @@ function createDependencies(
 ): AppStateDependencies {
   return {
     api: {
-      cancelAcquisitionJob: vi.fn(),
-      cancelQueueItem: vi.fn(),
+      cancelQueueEntry: vi.fn(),
       deleteArrItem: vi.fn(),
       fetchManualReleaseResults: vi.fn().mockResolvedValue({
         jobId: 'job-1',
@@ -379,6 +444,8 @@ describe('app state', () => {
           preferredLanguage: 'English',
           subtitleLanguage: 'English',
         },
+        targetSeasonNumbers: null,
+        targetEpisodeIds: null,
         startedAt: '2026-04-02T10:05:00.000Z',
         updatedAt: '2026-04-02T10:05:00.000Z',
         completedAt: null,
@@ -448,6 +515,8 @@ describe('app state', () => {
           preferredLanguage: 'English',
           subtitleLanguage: 'English',
         },
+        targetSeasonNumbers: null,
+        targetEpisodeIds: null,
         startedAt: '2026-04-02T10:05:00.000Z',
         updatedAt: '2026-04-02T10:05:00.000Z',
         completedAt: null,
@@ -473,7 +542,10 @@ describe('app state', () => {
     expect(state.confirmAddItem).toBeNull();
     expect(state.grabbing).toBeNull();
     expect(state.activeView).toBe('queue');
-    expect(state.queue?.acquisitionJobs[0]?.id).toBe('job-1');
+    expect(state.queue?.entries[0]).toMatchObject({
+      kind: 'managed',
+      id: 'job-1',
+    });
     expect(dependencies.api.fetchQueue).toHaveBeenCalledTimes(1);
     expect(dependencies.api.refreshDashboard).toHaveBeenCalledTimes(1);
 
@@ -516,6 +588,8 @@ describe('app state', () => {
           preferredLanguage: 'English',
           subtitleLanguage: 'English',
         },
+        targetSeasonNumbers: null,
+        targetEpisodeIds: null,
         startedAt: '2026-04-02T10:05:00.000Z',
         updatedAt: '2026-04-02T10:05:00.000Z',
         completedAt: null,
@@ -537,7 +611,10 @@ describe('app state', () => {
 
     await state.submitGrab(movieItem, 7);
 
-    expect(state.queue?.acquisitionJobs[0]?.id).toBe('job-1');
+    expect(state.queue?.entries[0]).toMatchObject({
+      kind: 'managed',
+      id: 'job-1',
+    });
     await vi.waitFor(() => {
       expect(state.latestActionMessage).toContain('refresh is still catching up');
     });
@@ -856,9 +933,7 @@ describe('app state', () => {
       }),
     );
     state.queue = {
-      ...queueResponse,
-      acquisitionJobs: [acquisitionJob],
-      total: 1,
+      ...buildQueue([buildManagedEntry(acquisitionJob)]),
     };
 
     await state.openManualReleaseList(acquisitionJob.id);
@@ -889,9 +964,7 @@ describe('app state', () => {
       }),
     );
     state.queue = {
-      ...queueResponse,
-      acquisitionJobs: [acquisitionJob],
-      total: 1,
+      ...buildQueue([buildManagedEntry(acquisitionJob)]),
     };
 
     await state.openManualReleaseList(acquisitionJob.id);
@@ -902,9 +975,9 @@ describe('app state', () => {
     expect(state.activeManualReleaseJobId).toBe(acquisitionJob.id);
   });
 
-  it('matches acquisition jobs to live queue items for derived ETA details', () => {
+  it('keeps managed queue entries matched to live Arr download items', () => {
     const state = new AppState(pageData, createDependencies());
-    const matchingQueueItem = {
+    const matchingQueueItem: QueueItem = {
       id: 'radarr:queue:4',
       arrItemId: acquisitionJob.arrItemId,
       canCancel: true,
@@ -921,23 +994,34 @@ describe('app state', () => {
       sizeLeft: 1_200_000_000,
       queueId: 4,
       detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
-    } as const;
-
-    state.queue = {
-      ...queueResponse,
-      acquisitionJobs: [acquisitionJob],
-      items: [
-        {
-          ...matchingQueueItem,
-          id: 'sonarr:queue:4',
-          sourceService: 'sonarr',
-        },
-        matchingQueueItem,
-      ],
-      total: 3,
     };
 
-    expect(state.queueItemForAcquisitionJob(acquisitionJob)).toEqual(matchingQueueItem);
+    state.queue = buildQueue([
+      buildManagedEntry(acquisitionJob, [matchingQueueItem]),
+      buildExternalEntry({
+        ...matchingQueueItem,
+        id: 'sonarr:queue:4',
+        sourceService: 'sonarr',
+      }),
+    ]);
+
+    expect(state.managedQueueEntry(acquisitionJob.id)?.liveQueueItems).toEqual([matchingQueueItem]);
+  });
+
+  it('stores queue cancel failures separately from manual release errors', async () => {
+    const dependencies = createDependencies({
+      api: {
+        cancelQueueEntry: vi.fn().mockRejectedValue(new Error('Unable to cancel the selected download.')),
+      },
+    });
+    const state = new AppState(pageData, dependencies);
+    const managedEntry = buildManagedEntry(acquisitionJob);
+    state.queue = buildQueue([managedEntry]);
+
+    await state.cancelQueueEntry(managedEntry);
+
+    expect(state.queueEntryError(managedEntry.id)).toBe('Unable to cancel the selected download.');
+    expect(state.manualSelectionError[acquisitionJob.id] ?? null).toBeNull();
   });
 
   it('treats the filter UI as an overlay only on mobile viewports', () => {
@@ -1154,24 +1238,26 @@ describe('app state', () => {
     });
     const state = new AppState(pageData, dependencies);
 
-    await state.deleteQueueArrItem({
-      id: 'radarr:queue:1',
-      arrItemId: null,
-      canCancel: true,
-      kind: 'movie',
-      title: 'The Matrix',
-      year: 1999,
-      poster: null,
-      sourceService: 'radarr',
-      status: 'Downloading',
-      progress: 50,
-      timeLeft: '5m',
-      estimatedCompletionTime: null,
-      size: 1_000,
-      sizeLeft: 500,
-      queueId: 1,
-      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
-    });
+    await state.deleteQueueEntry(
+      buildExternalEntry({
+        id: 'radarr:queue:1',
+        arrItemId: null,
+        canCancel: true,
+        kind: 'movie',
+        title: 'The Matrix',
+        year: 1999,
+        poster: null,
+        sourceService: 'radarr',
+        status: 'Downloading',
+        progress: 50,
+        timeLeft: '5m',
+        estimatedCompletionTime: null,
+        size: 1_000,
+        sizeLeft: 500,
+        queueId: 1,
+        detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      }),
+    );
 
     expect(dependencies.api.deleteArrItem).toHaveBeenCalledWith({
       arrItemId: null,

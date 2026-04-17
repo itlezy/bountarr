@@ -38,14 +38,14 @@ let { state }: { state: AppState } = $props();
     </div>
   {:else if state.queueLoading && !state.queue}
     <div class="mt-4 text-sm text-[var(--muted)]">Loading active downloads...</div>
-  {:else if state.queue && (state.queue.acquisitionJobs.length > 0 || state.queue.items.length > 0)}
+  {:else if state.queue && state.queue.entries.length > 0}
     <div class="mt-4 space-y-3">
-      {#each state.queue.acquisitionJobs as job}
-        <AcquisitionJobCard {job} {state} />
-      {/each}
-
-      {#each state.queue.items as item}
-        <QueueItemCard {item} {state} />
+      {#each state.queue.entries as entry}
+        {#if entry.kind === 'managed'}
+          <AcquisitionJobCard {entry} {state} />
+        {:else}
+          <QueueItemCard {entry} {state} />
+        {/if}
       {/each}
     </div>
   {:else}

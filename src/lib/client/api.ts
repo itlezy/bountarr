@@ -7,8 +7,9 @@ import type {
   MediaItemActionResponse,
   MediaItem,
   Preferences,
+  QueueCancelRequest,
+  QueueEntry,
   QueueActionResponse,
-  QueueItem,
   QueueResponse,
   SearchAvailability,
   SearchKind,
@@ -133,7 +134,32 @@ export async function cancelAcquisitionJob(jobId: string): Promise<AcquisitionJo
   );
 }
 
-export async function cancelQueueItem(item: QueueItem): Promise<QueueActionResponse> {
+function queueCancelPayload(entry: QueueEntry): QueueCancelRequest {
+  if (entry.kind === 'managed') {
+    return {
+      kind: 'managed',
+      jobId: entry.job.id,
+      arrItemId: entry.job.arrItemId,
+      sourceService: entry.job.sourceService,
+      title: entry.job.title,
+    };
+  }
+
+  if (entry.item.queueId === null) {
+    throw new Error('This download cannot be cancelled.');
+  }
+
+  return {
+    kind: 'external',
+    id: entry.item.id,
+    arrItemId: entry.item.arrItemId,
+    queueId: entry.item.queueId,
+    sourceService: entry.item.sourceService,
+    title: entry.item.title,
+  };
+}
+
+export async function cancelQueueEntry(entry: QueueEntry): Promise<QueueActionResponse> {
   return requestJson<QueueActionResponse>(
     '/api/queue/cancel',
     {
@@ -141,15 +167,7 @@ export async function cancelQueueItem(item: QueueItem): Promise<QueueActionRespo
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        arrItemId: item.arrItemId,
-        canCancel: item.canCancel,
-        id: item.id,
-        kind: item.kind,
-        queueId: item.queueId,
-        sourceService: item.sourceService,
-        title: item.title,
-      }),
+      body: JSON.stringify(queueCancelPayload(entry)),
     },
     'Unable to cancel the selected download.',
   );

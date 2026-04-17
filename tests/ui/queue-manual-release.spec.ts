@@ -93,16 +93,15 @@ test('queue item cancel refreshes queue and dashboard state', async ({ page }) =
     })
     .toBe(1);
   expect(api.queueCancelBodies[0]).toEqual({
+    kind: 'external',
     arrItemId: queueItemFixture.arrItemId,
-    canCancel: queueItemFixture.canCancel,
     id: queueItemFixture.id,
-    kind: queueItemFixture.kind,
     queueId: queueItemFixture.queueId,
     sourceService: queueItemFixture.sourceService,
     title: queueItemFixture.title,
   });
 
-  await expect(page.getByText('The Matrix download was cancelled and unmonitored.')).toBeVisible();
+  await expect(page.getByText('The Matrix download was cancelled.')).toBeVisible();
   await expect
     .poll(() => api.queueRequests.length, {
       message: 'queue should refresh after cancelling a queue item',
@@ -111,7 +110,7 @@ test('queue item cancel refreshes queue and dashboard state', async ({ page }) =
   await expect(downloadCard).toHaveCount(0);
 });
 
-test('queue item cancel errors surface in the queue banner', async ({ page }) => {
+test('queue item cancel errors stay inline on the queue card', async ({ page }) => {
   const api = await mockAppApi(page, {
     queue: buildQueueResponse(),
     queueCancelResponse: () => mockTextError('Unable to cancel the selected download.', 500, 150),
@@ -125,7 +124,8 @@ test('queue item cancel errors surface in the queue banner', async ({ page }) =>
 
   await expect(page.getByText('Unable to cancel the selected download.')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Grab Progress' })).toBeVisible();
-  await expect(page.getByTestId('queue-item-card')).toHaveCount(0);
+  await expect(downloadCard).toBeVisible();
+  await expect(downloadCard).toContainText('Unable to cancel the selected download.');
 });
 
 test('queue view shows explicit ETA for downloads and matched grab jobs', async ({ page }) => {
@@ -164,10 +164,11 @@ test('queue view shows explicit ETA for downloads and matched grab jobs', async 
   await expect(downloadCard.getByText('10m remaining', { exact: true })).toBeVisible();
 
   const card = acquisitionCard(page);
-  await expect(card.getByText('58%', { exact: true })).toBeVisible();
-  await expect(card.getByText('Downloading', { exact: true })).toBeVisible();
-  await expect(card.getByText('ETA', { exact: true })).toBeVisible();
-  await expect(card.getByText('18m remaining', { exact: true })).toBeVisible();
+  await expect(card.getByText('58%', { exact: true }).first()).toBeVisible();
+  await expect(card).toContainText('Downloading');
+  await expect(card.getByText('ETA', { exact: true }).first()).toBeVisible();
+  await expect(card).toContainText('18m remaining');
+  await expect(card).toContainText('Andor.S01.1080p.WEB-DL-FLUX');
 });
 
 test('queue and manual release long text wraps without breaking layout', async ({ page }) => {

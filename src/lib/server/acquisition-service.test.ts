@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { AcquisitionJob, QueueItem } from '$lib/shared/types';
+import type { AcquisitionJob, QueueCancelRequest } from '$lib/shared/types';
 
 const job: AcquisitionJob = {
   id: 'job-1',
@@ -24,6 +24,8 @@ const job: AcquisitionJob = {
     preferredLanguage: 'English',
     subtitleLanguage: 'English',
   },
+  targetSeasonNumbers: null,
+  targetEpisodeIds: null,
   startedAt: '2026-04-13T12:00:00.000Z',
   updatedAt: '2026-04-13T12:00:00.000Z',
   completedAt: null,
@@ -77,8 +79,8 @@ describe('acquisition service', () => {
     }));
     vi.doMock('$lib/server/acquisition-validator-shared', () => ({
       fetchQueueRecords: vi.fn().mockResolvedValue([{ id: 7, movieId: 603 }]),
-      findQueueRecordForArrItem: vi.fn().mockReturnValue({ id: 7, movieId: 603 }),
-      queueRecordId: vi.fn().mockReturnValue(7),
+      queueRecordArrItemId: vi.fn().mockImplementation((_service: string, record: { movieId: number }) => record.movieId),
+      queueRecordId: vi.fn().mockImplementation((record: { id: number }) => record.id),
     }));
     vi.doMock('$lib/server/acquisition-selection', () => ({
       findManualReleaseSelection: vi.fn(),
@@ -95,21 +97,33 @@ describe('acquisition service', () => {
 
   it('cleans up stale queue deletes when the queue entry is already gone', async () => {
     const arrFetch = vi.fn().mockRejectedValue(new Error('radarr 404: Queue entry missing'));
-    const queueItem: Pick<
-      QueueItem,
-      'arrItemId' | 'canCancel' | 'id' | 'kind' | 'queueId' | 'sourceService' | 'title'
-    > = {
+    const queueEntry: QueueCancelRequest = {
+      kind: 'external',
       arrItemId: null,
-      canCancel: true,
       id: 'radarr:queue:7',
-      kind: 'movie',
       queueId: 7,
       sourceService: 'radarr',
       title: 'The Matrix',
     };
+    const queueCache = new Map([
+      [
+        'queue',
+        {
+          expiresAt: Date.now() + 60_000,
+          value: {
+            updatedAt: '2026-04-13T12:00:00.000Z',
+            entries: [],
+            total: 0,
+          },
+        },
+      ],
+    ]);
 
     vi.doMock('$lib/server/arr-client', () => ({
       arrFetch,
+    }));
+    vi.doMock('$lib/server/app-cache', () => ({
+      queueCache,
     }));
     vi.doMock('$lib/server/acquisition-runner', () => ({
       getAcquisitionRunner: () => ({
@@ -132,7 +146,7 @@ describe('acquisition service', () => {
     }));
     vi.doMock('$lib/server/acquisition-validator-shared', () => ({
       fetchQueueRecords: vi.fn().mockResolvedValue([]),
-      findQueueRecordForArrItem: vi.fn().mockReturnValue(null),
+      queueRecordArrItemId: vi.fn(),
       queueRecordId: vi.fn().mockReturnValue(null),
     }));
     vi.doMock('$lib/server/acquisition-selection', () => ({
@@ -141,10 +155,206 @@ describe('acquisition service', () => {
     }));
 
     const module = await import('$lib/server/acquisition-service');
-    const result = await module.cancelQueueItem(queueItem);
+    const result = await module.cancelQueueEntry(queueEntry);
 
-    expect(result.itemId).toBe(queueItem.id);
-    expect(result.message).toContain('cancelled and unmonitored');
+    expect(result.itemId).toBe('radarr:queue:7');
+    expect(result.message).toBe('The Matrix download was cancelled.');
+    expect(queueCache.has('queue')).toBe(false);
+  });
+
+  it('cancels only the selected external queue row without unmonitoring the tracked item', async () => {
+    const arrFetch = vi.fn().mockResolvedValue({});
+    const queueEntry: QueueCancelRequest = {
+      kind: 'external',
+      arrItemId: 603,
+      id: 'radarr:queue:7',
+      queueId: 7,
+      sourceService: 'radarr',
+      title: 'The Matrix',
+    };
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/app-cache', () => ({
+      queueCache: new Map(),
+    }));
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        ensureWorkers: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        cancelJob: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        listActiveJobsByArrItem: vi.fn().mockReturnValue([]),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      getAcquisitionJobsResponse: vi.fn(),
+      listQueueAcquisitionJobs: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-validator-shared', () => ({
+      fetchQueueRecords: vi.fn().mockResolvedValue([]),
+      queueRecordArrItemId: vi.fn(),
+      queueRecordId: vi.fn().mockReturnValue(null),
+    }));
+    vi.doMock('$lib/server/acquisition-selection', () => ({
+      findManualReleaseSelection: vi.fn(),
+      getManualReleaseResults: vi.fn(),
+    }));
+
+    const module = await import('$lib/server/acquisition-service');
+    const result = await module.cancelQueueEntry(queueEntry);
+
+    expect(result).toEqual({
+      itemId: 'radarr:queue:7',
+      message: 'The Matrix download was cancelled.',
+    });
+    expect(arrFetch).toHaveBeenCalledTimes(1);
+    expect(arrFetch).toHaveBeenCalledWith(
+      'radarr',
+      '/api/v3/queue/7',
+      {
+        method: 'DELETE',
+      },
+      {
+        blocklist: false,
+        removeFromClient: true,
+        skipRedownload: false,
+      },
+    );
+  });
+
+  it('cancels managed jobs across every matching Arr queue row', async () => {
+    const cancelJob = vi.fn().mockReturnValue(cancelledJob);
+    const arrFetch = vi
+      .fn()
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({
+        id: 603,
+        monitored: true,
+      })
+      .mockResolvedValueOnce({});
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        ensureWorkers: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        cancelJob,
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        getJob: vi.fn().mockReturnValue(job),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      getAcquisitionJobsResponse: vi.fn(),
+      listQueueAcquisitionJobs: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-validator-shared', () => ({
+      fetchQueueRecords: vi.fn().mockResolvedValue([
+        { id: 7, movieId: 603 },
+        { id: 8, movieId: 603 },
+      ]),
+      queueRecordArrItemId: vi.fn().mockImplementation((_service: string, record: { movieId: number }) => record.movieId),
+      queueRecordId: vi.fn().mockImplementation((record: { id: number }) => record.id),
+    }));
+    vi.doMock('$lib/server/acquisition-selection', () => ({
+      findManualReleaseSelection: vi.fn(),
+      getManualReleaseResults: vi.fn(),
+    }));
+
+    const module = await import('$lib/server/acquisition-service');
+    const result = await module.cancelAcquisitionJob(job.id);
+
+    expect(result.message).toBe('The Matrix download was cancelled and unmonitored.');
+    expect(cancelJob).toHaveBeenCalledWith(job);
+    expect(arrFetch).toHaveBeenCalledTimes(4);
+    expect(arrFetch.mock.calls[0]?.[1]).toBe('/api/v3/queue/7');
+    expect(arrFetch.mock.calls[1]?.[1]).toBe('/api/v3/queue/8');
+    expect(arrFetch.mock.calls[2]?.[1]).toBe('/api/v3/movie/603');
+    expect(arrFetch.mock.calls[3]?.[1]).toBe('/api/v3/movie/603');
+  });
+
+  it('falls back to deleting every live row when a managed queue job is already gone', async () => {
+    const arrFetch = vi
+      .fn()
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({
+        id: 603,
+        monitored: true,
+      })
+      .mockResolvedValueOnce({});
+    const queueEntry: QueueCancelRequest = {
+      kind: 'managed',
+      arrItemId: 603,
+      jobId: 'job-missing',
+      sourceService: 'radarr',
+      title: 'The Matrix',
+    };
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/app-cache', () => ({
+      queueCache: new Map(),
+    }));
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        ensureWorkers: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        cancelJob: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        getJob: vi.fn().mockReturnValue(null),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      getAcquisitionJobsResponse: vi.fn(),
+      listQueueAcquisitionJobs: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-validator-shared', () => ({
+      fetchQueueRecords: vi.fn().mockResolvedValue([
+        { id: 7, movieId: 603 },
+        { id: 8, movieId: 603 },
+      ]),
+      queueRecordArrItemId: vi.fn().mockImplementation((_service: string, record: { movieId: number }) => record.movieId),
+      queueRecordId: vi.fn().mockImplementation((record: { id: number }) => record.id),
+    }));
+    vi.doMock('$lib/server/acquisition-selection', () => ({
+      findManualReleaseSelection: vi.fn(),
+      getManualReleaseResults: vi.fn(),
+    }));
+
+    const module = await import('$lib/server/acquisition-service');
+    const result = await module.cancelQueueEntry(queueEntry);
+
+    expect(result).toEqual({
+      itemId: 'job-missing',
+      message: 'The Matrix download was cancelled and unmonitored.',
+    });
+    expect(arrFetch).toHaveBeenCalledTimes(4);
+    expect(arrFetch.mock.calls[0]?.[1]).toBe('/api/v3/queue/7');
+    expect(arrFetch.mock.calls[1]?.[1]).toBe('/api/v3/queue/8');
   });
 
   it('removes local jobs when the Arr item is already missing during delete', async () => {
@@ -176,7 +386,7 @@ describe('acquisition service', () => {
     }));
     vi.doMock('$lib/server/acquisition-validator-shared', () => ({
       fetchQueueRecords: vi.fn().mockResolvedValue([]),
-      findQueueRecordForArrItem: vi.fn().mockReturnValue(null),
+      queueRecordArrItemId: vi.fn(),
       queueRecordId: vi.fn().mockReturnValue(null),
     }));
     vi.doMock('$lib/server/acquisition-selection', () => ({
@@ -222,7 +432,7 @@ describe('acquisition service', () => {
     }));
     vi.doMock('$lib/server/acquisition-validator-shared', () => ({
       fetchQueueRecords: vi.fn().mockResolvedValue([]),
-      findQueueRecordForArrItem: vi.fn().mockReturnValue(null),
+      queueRecordArrItemId: vi.fn(),
       queueRecordId: vi.fn().mockReturnValue(null),
     }));
     vi.doMock('$lib/server/acquisition-selection', () => ({

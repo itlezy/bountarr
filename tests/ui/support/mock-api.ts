@@ -1,8 +1,8 @@
 import type { Page, Request, Route } from '@playwright/test';
 import {
+  acquisitionJobFixture,
   buildGrabResponse,
   buildSelectedManualReleaseList,
-  buildQueueResponse,
   configStatusFixture,
   emptyDashboardResponse,
   emptyQueueResponse,
@@ -86,8 +86,7 @@ function isMockRouteResult(value: unknown): value is MockRouteResult {
   return Boolean(
     value &&
       typeof value === 'object' &&
-      (Object.prototype.hasOwnProperty.call(value, 'json') ||
-        Object.prototype.hasOwnProperty.call(value, 'body')),
+      (Object.hasOwn(value, 'json') || Object.hasOwn(value, 'body')),
   );
 }
 
@@ -205,7 +204,7 @@ export async function mockAppApi(
       const payload =
         options.selectManualReleaseResponse?.(jobId, body, request, url) ??
         mockJson({
-          job: buildQueueResponse().acquisitionJobs[0],
+          job: acquisitionJobFixture,
           message: 'Manual release selected.',
         });
       await fulfillResolvedRoute(route, payload);
@@ -250,11 +249,14 @@ export async function mockAppApi(
     if (url.pathname === '/api/queue/cancel') {
       const body = (request.postDataJSON() as Record<string, unknown> | null) ?? {};
       controller.queueCancelBodies.push(body);
+      const isManagedCancel = body.kind === 'managed';
       const payload =
         options.queueCancelResponse?.(body, request, url) ??
         mockJson({
-          itemId: String(body.id ?? ''),
-          message: `${String(body.title ?? 'Download')} download was cancelled and unmonitored.`,
+          itemId: String(body.id ?? body.jobId ?? ''),
+          message: isManagedCancel
+            ? `${String(body.title ?? 'Download')} download was cancelled and unmonitored.`
+            : `${String(body.title ?? 'Download')} download was cancelled.`,
         });
       await fulfillResolvedRoute(route, payload);
       return;

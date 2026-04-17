@@ -54,18 +54,39 @@ type SearchResultItem = {
 };
 
 type QueueResponse = {
-  acquisitionJobs: AcquisitionJobSummary[];
-  items: Array<{
-    arrItemId: number | null;
-    estimatedCompletionTime: string | null;
-    id: string;
-    kind: 'movie' | 'series';
-    progress: number | null;
-    sourceService: 'radarr' | 'sonarr';
-    status: string;
-    timeLeft: string | null;
-    title: string;
-  }>;
+  entries: Array<
+    | {
+        kind: 'managed';
+        id: string;
+        job: AcquisitionJobSummary;
+        liveQueueItems: Array<{
+          arrItemId: number | null;
+          estimatedCompletionTime: string | null;
+          id: string;
+          kind: 'movie' | 'series';
+          progress: number | null;
+          sourceService: 'radarr' | 'sonarr';
+          status: string;
+          timeLeft: string | null;
+          title: string;
+        }>;
+      }
+    | {
+        kind: 'external';
+        id: string;
+        item: {
+          arrItemId: number | null;
+          estimatedCompletionTime: string | null;
+          id: string;
+          kind: 'movie' | 'series';
+          progress: number | null;
+          sourceService: 'radarr' | 'sonarr';
+          status: string;
+          timeLeft: string | null;
+          title: string;
+        };
+      }
+  >;
   total: number;
   updatedAt: string;
 };
@@ -219,6 +240,20 @@ async function queueResponse(): Promise<QueueResponse> {
   return getJson<QueueResponse>(`${config.baseUrl}/api/queue`);
 }
 
+function queueLiveItems(queue: QueueResponse) {
+  return queue.entries.flatMap((entry) => {
+    if (entry.kind === 'managed') {
+      return entry.liveQueueItems;
+    }
+
+    return [entry.item];
+  });
+}
+
+function queueJobs(queue: QueueResponse) {
+  return queue.entries.flatMap((entry) => (entry.kind === 'managed' ? [entry.job] : []));
+}
+
 async function acquisitionResponse(): Promise<AcquisitionResponse> {
   return getJson<AcquisitionResponse>(`${config.baseUrl}/api/acquisition`);
 }
@@ -294,12 +329,12 @@ async function waitForQueueDownload(
   kind: 'movie' | 'series',
   sourceService: 'radarr' | 'sonarr',
   timeoutMs = 120_000,
-): Promise<QueueResponse['items'][number]> {
+): Promise<ReturnType<typeof queueLiveItems>[number]> {
   return pollUntil(
     async () => {
       const queue = await queueResponse();
       return (
-        queue.items.find(
+        queueLiveItems(queue).find(
           (item) =>
             item.title === title &&
             item.kind === kind &&
@@ -315,12 +350,12 @@ async function waitForQueueDownload(
 
 async function findAnyLiveDownload(
   timeoutMs = 20_000,
-): Promise<QueueResponse['items'][number] | null> {
+): Promise<ReturnType<typeof queueLiveItems>[number] | null> {
   try {
     return await pollUntil(
       async () => {
         const queue = await queueResponse();
-        return queue.items.find((item) => item.progress !== null) ?? null;
+        return queueLiveItems(queue).find((item) => item.progress !== null) ?? null;
       },
       timeoutMs,
       2_000,
@@ -338,10 +373,10 @@ async function waitForQueueToClear(
 ): Promise<void> {
   await pollUntil(async () => {
     const queue = await queueResponse();
-    const hasJob = queue.acquisitionJobs.some(
+    const hasJob = queueJobs(queue).some(
       (job) => job.title === title && job.kind === kind && job.sourceService === sourceService,
     );
-    const hasItem = queue.items.some(
+    const hasItem = queueLiveItems(queue).some(
       (item) => item.title === title && item.kind === kind && item.sourceService === sourceService,
     );
 
@@ -695,10 +730,10 @@ test('movie live UI can cancel from the queue item card when the downloader expo
   }
   await expect(page.getByRole('heading', { name: 'Grab Progress' })).toBeVisible();
 
-  const downloadCard = queueItemCard(page, config.untrackedMovie.title);
-  await expect(downloadCard).toBeVisible();
-  await expect(downloadCard).toContainText(`${Math.round(liveDownload.progress ?? 0)}%`);
-  await downloadCard.getByRole('button', { name: 'Cancel download' }).click();
+  const jobCard = acquisitionJobCard(page, config.untrackedMovie.title);
+  await expect(jobCard).toBeVisible();
+  await expect(jobCard).toContainText(`${Math.round(liveDownload.progress ?? 0)}%`);
+  await jobCard.getByRole('button', { name: 'Cancel download' }).click();
 
   await expect(page.getByText(/download was cancelled and unmonitored/i)).toBeVisible();
   await pollUntil(async () => {
@@ -897,7 +932,10 @@ test('live UI shows actual download progress when Arr already has an active down
   await page.getByRole('button', { name: 'Queue' }).click();
   await expect(page.getByRole('heading', { name: 'Grab Progress' })).toBeVisible();
 
-  const downloadCard = queueItemCard(page, liveDownload.title);
+  const downloadCard =
+    (await acquisitionJobCard(page, liveDownload.title).count())
+      ? acquisitionJobCard(page, liveDownload.title)
+      : queueItemCard(page, liveDownload.title);
   await expect(downloadCard).toBeVisible();
   await expect(downloadCard.getByText(`${Math.round(liveDownload.progress ?? 0)}%`)).toBeVisible();
   if (liveDownload.timeLeft) {

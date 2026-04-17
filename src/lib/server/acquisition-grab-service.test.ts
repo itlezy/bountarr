@@ -57,11 +57,19 @@ const createdJob: AcquisitionJob = {
     preferredLanguage: 'English',
     subtitleLanguage: 'Any',
   },
+  targetSeasonNumbers: [1, 2],
+  targetEpisodeIds: [101, 102],
   startedAt: '2026-04-02T10:05:00.000Z',
   updatedAt: '2026-04-02T10:05:00.000Z',
   completedAt: null,
   attempts: [],
 };
+
+const seriesEpisodeRecords = [
+  { id: 101, seasonNumber: 1 },
+  { id: 102, seasonNumber: 2 },
+  { id: 103, seasonNumber: 3 },
+];
 
 afterEach(() => {
   vi.resetModules();
@@ -81,7 +89,7 @@ describe('acquisition grab service', () => {
     });
     const recordJobCreated = vi.fn();
     const enqueue = vi.fn();
-    const createJob = vi.fn().mockReturnValue(createdJob);
+    const createOrReuseActiveJob = vi.fn().mockReturnValue({ created: true, job: createdJob });
     const fetchExistingSeries = vi.fn().mockResolvedValue({
       ...seriesItem,
       arrItemId: 80,
@@ -113,7 +121,7 @@ describe('acquisition grab service', () => {
     }));
     vi.doMock('$lib/server/acquisition-job-repository', () => ({
       getAcquisitionJobRepository: () => ({
-        createJob,
+        createOrReuseActiveJob,
         findActiveJob: vi.fn().mockReturnValue(null),
       }),
     }));
@@ -123,6 +131,7 @@ describe('acquisition grab service', () => {
     vi.doMock('$lib/server/lookup-service', () => ({
       fetchExistingMovie: vi.fn(),
       fetchExistingSeries,
+      fetchSeriesEpisodeRecords: vi.fn().mockResolvedValue(seriesEpisodeRecords),
     }));
 
     const module = await import('$lib/server/acquisition-grab-service');
@@ -170,7 +179,17 @@ describe('acquisition grab service', () => {
       null,
       null,
     );
-    expect(createJob).toHaveBeenCalledTimes(1);
+    expect(createOrReuseActiveJob).toHaveBeenCalledTimes(1);
+    expect(createOrReuseActiveJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        arrItemId: 80,
+        itemId: seriesItem.id,
+        kind: 'series',
+        sourceService: 'sonarr',
+        targetEpisodeIds: [101, 102],
+        targetSeasonNumbers: [1, 2],
+      }),
+    );
     expect(recordJobCreated).toHaveBeenCalledWith(createdJob);
     expect(enqueue).toHaveBeenCalledWith(createdJob.id);
   });
@@ -187,7 +206,7 @@ describe('acquisition grab service', () => {
 
       throw new Error(`Unexpected arrFetch path: ${path}`);
     });
-    const createJob = vi.fn().mockReturnValue(createdJob);
+    const createOrReuseActiveJob = vi.fn().mockReturnValue({ created: true, job: createdJob });
     const fetchExistingSeries = vi.fn().mockResolvedValue({
       ...seriesItem,
       arrItemId: 80,
@@ -219,7 +238,7 @@ describe('acquisition grab service', () => {
     }));
     vi.doMock('$lib/server/acquisition-job-repository', () => ({
       getAcquisitionJobRepository: () => ({
-        createJob,
+        createOrReuseActiveJob,
         findActiveJob: vi.fn().mockReturnValue(null),
       }),
     }));
@@ -229,6 +248,7 @@ describe('acquisition grab service', () => {
     vi.doMock('$lib/server/lookup-service', () => ({
       fetchExistingMovie: vi.fn(),
       fetchExistingSeries,
+      fetchSeriesEpisodeRecords: vi.fn().mockResolvedValue(seriesEpisodeRecords),
     }));
 
     const module = await import('$lib/server/acquisition-grab-service');
@@ -252,7 +272,7 @@ describe('acquisition grab service', () => {
 
     const [firstResult, secondResult] = await Promise.all([first, second]);
 
-    expect(createJob).toHaveBeenCalledTimes(1);
+    expect(createOrReuseActiveJob).toHaveBeenCalledTimes(1);
     expect(firstResult).toEqual(secondResult);
   });
 
@@ -285,9 +305,9 @@ describe('acquisition grab service', () => {
 
       throw new Error(`Unexpected arrFetch path: ${path}`);
     });
-    const createJob = vi.fn().mockImplementation(() => {
+    const createOrReuseActiveJob = vi.fn().mockImplementation(() => {
       activeJob = createdJob;
-      return createdJob;
+      return { created: true, job: createdJob };
     });
     const fetchExistingSeries = vi.fn().mockResolvedValue({
       ...seriesItem,
@@ -320,7 +340,7 @@ describe('acquisition grab service', () => {
     }));
     vi.doMock('$lib/server/acquisition-job-repository', () => ({
       getAcquisitionJobRepository: () => ({
-        createJob,
+        createOrReuseActiveJob,
         findActiveJob: vi.fn().mockImplementation(() => activeJob),
       }),
     }));
@@ -330,6 +350,7 @@ describe('acquisition grab service', () => {
     vi.doMock('$lib/server/lookup-service', () => ({
       fetchExistingMovie: vi.fn(),
       fetchExistingSeries,
+      fetchSeriesEpisodeRecords: vi.fn().mockResolvedValue(seriesEpisodeRecords),
     }));
 
     const module = await import('$lib/server/acquisition-grab-service');
@@ -347,7 +368,7 @@ describe('acquisition grab service', () => {
     expect(second.job?.id).toBe(first.job?.id);
     expect(second.item.arrItemId).toBe(first.item.arrItemId);
     expect(second.message).toContain('Reusing the active alternate-release grab');
-    expect(createJob).toHaveBeenCalledTimes(1);
+    expect(createOrReuseActiveJob).toHaveBeenCalledTimes(1);
     expect(fetchExistingSeries).toHaveBeenCalledTimes(2);
   });
 
@@ -361,7 +382,7 @@ describe('acquisition grab service', () => {
 
       throw new Error(`Unexpected arrFetch path: ${path}`);
     });
-    const createJob = vi.fn().mockReturnValue(createdJob);
+    const createOrReuseActiveJob = vi.fn().mockReturnValue({ created: true, job: createdJob });
     const fetchExistingSeries = vi
       .fn()
       .mockRejectedValueOnce(new Error('temporary Arr lookup failure'))
@@ -396,7 +417,7 @@ describe('acquisition grab service', () => {
     }));
     vi.doMock('$lib/server/acquisition-job-repository', () => ({
       getAcquisitionJobRepository: () => ({
-        createJob,
+        createOrReuseActiveJob,
         findActiveJob: vi.fn().mockReturnValue(null),
       }),
     }));
@@ -406,6 +427,7 @@ describe('acquisition grab service', () => {
     vi.doMock('$lib/server/lookup-service', () => ({
       fetchExistingMovie: vi.fn(),
       fetchExistingSeries,
+      fetchSeriesEpisodeRecords: vi.fn().mockResolvedValue(seriesEpisodeRecords),
     }));
 
     const module = await import('$lib/server/acquisition-grab-service');
@@ -415,7 +437,7 @@ describe('acquisition grab service', () => {
     });
 
     expect(fetchExistingSeries).toHaveBeenCalledTimes(2);
-    expect(createJob).toHaveBeenCalledTimes(1);
+    expect(createOrReuseActiveJob).toHaveBeenCalledTimes(1);
     expect(result.job?.id).toBe(createdJob.id);
     expect(result.item.arrItemId).toBe(80);
   });
@@ -435,7 +457,7 @@ describe('acquisition grab service', () => {
       canAdd: false,
       sourceService: 'sonarr',
     } satisfies MediaItem);
-    const createJob = vi.fn().mockReturnValue(createdJob);
+    const createOrReuseActiveJob = vi.fn().mockReturnValue({ created: true, job: createdJob });
     const arrFetch = vi.fn();
 
     vi.doMock('$lib/server/arr-client', () => ({
@@ -457,7 +479,7 @@ describe('acquisition grab service', () => {
     }));
     vi.doMock('$lib/server/acquisition-job-repository', () => ({
       getAcquisitionJobRepository: () => ({
-        createJob,
+        createOrReuseActiveJob,
         findActiveJob: vi.fn().mockReturnValue(null),
       }),
     }));
@@ -467,12 +489,15 @@ describe('acquisition grab service', () => {
     vi.doMock('$lib/server/lookup-service', () => ({
       fetchExistingMovie: vi.fn(),
       fetchExistingSeries,
+      fetchSeriesEpisodeRecords: vi.fn().mockResolvedValue(seriesEpisodeRecords),
     }));
 
     const module = await import('$lib/server/acquisition-grab-service');
     const result = await module.grabItem(trackedSeriesItem, {
       preferredLanguage: 'English',
       subtitleLanguage: 'Any',
+    }, {
+      seasonNumbers: [2],
     });
 
     expect(arrFetch).not.toHaveBeenCalled();
@@ -485,7 +510,14 @@ describe('acquisition grab service', () => {
       null,
       null,
     );
-    expect(createJob).toHaveBeenCalledTimes(1);
+    expect(createOrReuseActiveJob).toHaveBeenCalledTimes(1);
+    expect(createOrReuseActiveJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        arrItemId: 80,
+        targetEpisodeIds: [102],
+        targetSeasonNumbers: [2],
+      }),
+    );
     expect(result.existing).toBe(true);
     expect(result.job?.id).toBe(createdJob.id);
     expect(result.message).toContain('Alternate-release acquisition started');

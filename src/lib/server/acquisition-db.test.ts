@@ -41,6 +41,33 @@ function indexColumns(database: DatabaseSync, indexName: string): string[] {
     .flatMap((column) => (typeof column.name === 'string' ? [column.name] : []));
 }
 
+function indexMetadata(
+  database: DatabaseSync,
+  tableName: string,
+  indexName: string,
+): { partial: boolean; sql: string | null; unique: boolean } {
+  const index =
+    (
+      database.prepare(`PRAGMA index_list(${tableName})`).all() as Array<{
+        name?: unknown;
+        partial?: unknown;
+        unique?: unknown;
+      }>
+    ).find((candidate) => candidate.name === indexName) ?? null;
+  const sql =
+    (
+      database
+        .prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?")
+        .get(indexName) as { sql?: unknown } | undefined
+    )?.sql ?? null;
+
+  return {
+    partial: index?.partial === 1,
+    sql: typeof sql === 'string' ? sql : null,
+    unique: index?.unique === 1,
+  };
+}
+
 function journalMode(database: DatabaseSync): string {
   const row = database.prepare('PRAGMA journal_mode').get() as
     | { journal_mode?: unknown }
@@ -59,6 +86,34 @@ afterEach(() => {
 });
 
 describe('ensureAcquisitionSchema', () => {
+  it('creates the current acquisition schema with target scope columns and an active identity guard', () => {
+    const database = createMemoryDatabase();
+
+    ensureAcquisitionSchema(database);
+
+    const columns = (
+      database.prepare('PRAGMA table_info(acquisition_jobs)').all() as Array<{ name?: unknown }>
+    ).flatMap((column) => (typeof column.name === 'string' ? [column.name] : []));
+    const activeIdentityIndex = indexMetadata(
+      database,
+      'acquisition_jobs',
+      'acquisition_jobs_active_identity_idx',
+    );
+
+    expect(columns).toContain('target_season_numbers_json');
+    expect(columns).toContain('target_episode_ids_json');
+    expect(indexColumns(database, 'acquisition_jobs_active_identity_idx')).toEqual([
+      'arr_item_id',
+      'kind',
+      'source_service',
+    ]);
+    expect(activeIdentityIndex.unique).toBe(true);
+    expect(activeIdentityIndex.partial).toBe(true);
+    expect(activeIdentityIndex.sql).toContain(
+      "WHERE status NOT IN ('completed', 'failed', 'cancelled')",
+    );
+  });
+
   it('drops and recreates acquisition storage when table columns drift', () => {
     const database = createMemoryDatabase();
     database.exec(`

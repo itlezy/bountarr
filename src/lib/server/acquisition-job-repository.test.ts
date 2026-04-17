@@ -259,6 +259,97 @@ describe('AcquisitionJobRepository', () => {
     expect(jobs.listActiveJobsByArrItem(606, 'movie', 'sonarr')).toHaveLength(1);
   });
 
+  it('reuses the active job for a matching Arr identity and preserves target scope', () => {
+    const database = createDatabase();
+    const jobs = new AcquisitionJobRepository(database);
+    const first = jobs.createOrReuseActiveJob({
+      arrItemId: 909,
+      itemId: 'series:909',
+      kind: 'series',
+      maxRetries: 4,
+      preferredReleaser: 'flux',
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      sourceService: 'sonarr',
+      targetEpisodeIds: [101, 102],
+      targetSeasonNumbers: [1],
+      title: 'Andor',
+    });
+    const second = jobs.createOrReuseActiveJob({
+      arrItemId: 909,
+      itemId: 'series:909',
+      kind: 'series',
+      maxRetries: 4,
+      preferredReleaser: 'framestor',
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      sourceService: 'sonarr',
+      targetEpisodeIds: [201],
+      targetSeasonNumbers: [2],
+      title: 'Andor',
+    });
+
+    expect(first.created).toBe(true);
+    expect(second.created).toBe(false);
+    expect(second.job.id).toBe(first.job.id);
+    expect(second.job.targetSeasonNumbers).toEqual([1]);
+    expect(second.job.targetEpisodeIds).toEqual([101, 102]);
+    expect(jobs.listActiveJobsByArrItem(909, 'series', 'sonarr')).toHaveLength(1);
+  });
+
+  it('allows a fresh active job after the previous one becomes terminal', () => {
+    const database = createDatabase();
+    const jobs = new AcquisitionJobRepository(database);
+    const first = jobs.createOrReuseActiveJob({
+      arrItemId: 910,
+      itemId: 'series:910',
+      kind: 'series',
+      maxRetries: 4,
+      preferredReleaser: null,
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'Any',
+      },
+      sourceService: 'sonarr',
+      targetEpisodeIds: [301, 302],
+      targetSeasonNumbers: [3],
+      title: 'Fresh Start',
+    });
+
+    jobs.updateJob(first.job.id, {
+      completedAt: '2026-04-13T12:30:00.000Z',
+      reasonCode: 'cancelled',
+      status: 'cancelled',
+      validationSummary: 'Cancelled by user',
+    });
+
+    const second = jobs.createOrReuseActiveJob({
+      arrItemId: 910,
+      itemId: 'series:910',
+      kind: 'series',
+      maxRetries: 4,
+      preferredReleaser: null,
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'Any',
+      },
+      sourceService: 'sonarr',
+      targetEpisodeIds: [401],
+      targetSeasonNumbers: [4],
+      title: 'Fresh Start',
+    });
+
+    expect(second.created).toBe(true);
+    expect(second.job.id).not.toBe(first.job.id);
+    expect(second.job.targetSeasonNumbers).toEqual([4]);
+    expect(second.job.targetEpisodeIds).toEqual([401]);
+    expect(jobs.listActiveJobsByArrItem(910, 'series', 'sonarr')).toHaveLength(1);
+  });
+
   it('rejects illegal acquisition status transitions', () => {
     const database = createDatabase();
     const jobs = new AcquisitionJobRepository(database);

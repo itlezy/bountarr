@@ -6,10 +6,11 @@ import {
   queueItemSummary,
 } from '$lib/client/app-ui';
 import type { AppState } from '$lib/client/app-state.svelte';
-import type { QueueItem } from '$lib/shared/types';
+import type { ExternalQueueEntry } from '$lib/shared/types';
 
-let { item, state }: { item: QueueItem; state: AppState } = $props();
+let { entry, state }: { entry: ExternalQueueEntry; state: AppState } = $props();
 
+const item = $derived(entry.item);
 const etaLabel = $derived(queueEtaLabel(item));
 </script>
 
@@ -69,28 +70,34 @@ const etaLabel = $derived(queueEtaLabel(item));
         </div>
       </div>
 
-      {#if item.canCancel || state.hasQueueOperatorActions(item)}
+      {#if entry.canCancel || state.hasQueueOperatorActions(entry)}
         <div class="mt-3 space-y-2">
           {#if item.canCancel && item.queueId !== null}
             <button
               class="control-shell min-h-10 w-full border-amber-300 px-4 text-sm font-700 text-amber-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-700 dark:text-amber-200"
               type="button"
-              onclick={() => void state.cancelQueueItem(item)}
-              disabled={state.cancelingQueueItemId === item.id || state.deletingItemId === item.id}
+              onclick={() => void state.cancelQueueEntry(entry)}
+              disabled={state.cancelingQueueEntryId === entry.id || state.deletingItemId === entry.id}
             >
-              {state.cancelingQueueItemId === item.id ? 'Cancelling...' : 'Cancel download'}
+              {state.cancelingQueueEntryId === entry.id ? 'Cancelling...' : 'Cancel download'}
             </button>
           {/if}
 
-          {#if state.hasQueueOperatorActions(item)}
-          <button
-            class="control-shell min-h-10 w-full border-rose-300 px-4 text-sm font-700 text-rose-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-700 dark:text-rose-200"
-            type="button"
-            onclick={() => void state.deleteQueueArrItem(item)}
-            disabled={state.deletingItemId === item.id || state.cancelingQueueItemId === item.id}
-          >
-            {state.deletingItemId === item.id ? 'Removing...' : 'Remove from Library'}
-          </button>
+          {#if state.hasQueueOperatorActions(entry)}
+            <button
+              class="control-shell min-h-10 w-full border-rose-300 px-4 text-sm font-700 text-rose-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-700 dark:text-rose-200"
+              type="button"
+              onclick={() => void state.deleteQueueEntry(entry)}
+              disabled={state.deletingItemId === entry.id || state.cancelingQueueEntryId === entry.id}
+            >
+              {state.deletingItemId === entry.id ? 'Removing...' : 'Remove from Library'}
+            </button>
+          {/if}
+
+          {#if state.queueEntryError(entry.id)}
+            <div class="overflow-safe-text rounded-[14px] border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-200">
+              {state.queueEntryError(entry.id)}
+            </div>
           {/if}
         </div>
       {/if}

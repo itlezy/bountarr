@@ -5,19 +5,25 @@ import {
   acquisitionNextStep,
   acquisitionReasonSummary,
   acquisitionStatusLabel,
+  downloadedSummary,
   queueEtaLabel,
 } from '$lib/client/app-ui';
 import type { AppState } from '$lib/client/app-state.svelte';
-import type { AcquisitionJob } from '$lib/shared/types';
+import type { ManagedQueueEntry } from '$lib/shared/types';
 
-let { job, state }: { job: AcquisitionJob; state: AppState } = $props();
+let { entry, state }: { entry: ManagedQueueEntry; state: AppState } = $props();
 
-const matchedQueueItem = $derived(state.queueItemForAcquisitionJob(job));
-const displayProgress = $derived(matchedQueueItem?.progress ?? job.progress);
+const job = $derived(entry.job);
+const liveQueueItems = $derived(entry.liveQueueItems);
+const liveSummary = $derived(entry.liveSummary);
+const displayProgress = $derived(liveSummary?.progress ?? job.progress);
 const displayQueueStatus = $derived(
-  matchedQueueItem?.status ?? job.queueStatus ?? job.validationSummary ?? 'Waiting for more progress',
+  liveSummary?.status ?? job.queueStatus ?? job.validationSummary ?? 'Waiting for more progress',
 );
-const etaLabel = $derived(matchedQueueItem ? queueEtaLabel(matchedQueueItem) : null);
+const etaLabel = $derived(liveSummary ? queueEtaLabel(liveSummary) : null);
+const downloadSummary = $derived(
+  liveSummary && !liveSummary.byteMetricsPartial ? downloadedSummary(liveSummary) : null,
+);
 </script>
 
 <article
@@ -61,13 +67,61 @@ const etaLabel = $derived(matchedQueueItem ? queueEtaLabel(matchedQueueItem) : n
       <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Queue check</div>
       <div class="overflow-safe-text">{displayQueueStatus}</div>
     </div>
+    {#if downloadSummary}
+      <div class="min-w-0">
+        <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Downloaded</div>
+        <div class="overflow-safe-text">{downloadSummary}</div>
+      </div>
+    {/if}
     {#if etaLabel}
-      <div class="min-w-0 sm:col-span-2">
+      <div class="min-w-0">
         <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">ETA</div>
         <div class="overflow-safe-text">{etaLabel}</div>
       </div>
     {/if}
+    {#if liveSummary}
+      <div class="min-w-0 sm:col-span-2">
+        <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Queue detail</div>
+        <div class="overflow-safe-text">
+          {displayQueueStatus}
+          {#if liveSummary.rowCount > 1}
+            · {liveSummary.rowCount} live downloads
+          {/if}
+        </div>
+      </div>
+    {/if}
   </div>
+
+  {#if liveQueueItems.length > 0}
+    <div class="mt-3 rounded-[14px] border border-[var(--line)] bg-[var(--surface)] p-3">
+      <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">
+        Live Arr Queue
+      </div>
+      <div class="mt-2 space-y-2">
+        {#each liveQueueItems as liveQueueItem (liveQueueItem.id)}
+          <div class="rounded-[12px] border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-2">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="overflow-safe-text text-sm font-700">
+                {liveQueueItem.detail ?? liveQueueItem.title}
+              </div>
+              {#if liveQueueItem.progress !== null}
+                <div class="text-sm font-700">{Math.round(liveQueueItem.progress)}%</div>
+              {/if}
+            </div>
+            <div class="mt-1 overflow-safe-text text-sm text-[var(--muted)]">{liveQueueItem.status}</div>
+            <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--muted)]">
+              {#if queueEtaLabel(liveQueueItem)}
+                <div>{queueEtaLabel(liveQueueItem)}</div>
+              {/if}
+              {#if downloadedSummary(liveQueueItem) !== 'Unknown'}
+                <div>{downloadedSummary(liveQueueItem)}</div>
+              {/if}
+            </div>
+          </div>
+        {/each}
+      </div>
+    </div>
+  {/if}
 
   {#if job.failureReason}
     <div class="mt-3 overflow-safe-text rounded-[14px] border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--muted)]">
@@ -108,31 +162,31 @@ const etaLabel = $derived(matchedQueueItem ? queueEtaLabel(matchedQueueItem) : n
       </div>
     </div>
 
-    {#if job.status !== 'completed' && job.status !== 'cancelled'}
+    {#if entry.canCancel}
       <button
         class="control-shell min-h-10 w-full border-amber-300 px-4 text-sm font-700 text-amber-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-700 dark:text-amber-200"
         type="button"
-        onclick={() => void state.cancelAcquisitionJob(job.id)}
-        disabled={state.cancelingAcquisitionJobId === job.id || state.deletingItemId === job.id}
+        onclick={() => void state.cancelQueueEntry(entry)}
+        disabled={state.cancelingQueueEntryId === entry.id || state.deletingItemId === entry.id}
       >
-        {state.cancelingAcquisitionJobId === job.id ? 'Cancelling...' : 'Cancel download'}
+        {state.cancelingQueueEntryId === entry.id ? 'Cancelling...' : 'Cancel download'}
       </button>
     {/if}
 
-    {#if job.status !== 'cancelled'}
+    {#if entry.canRemove}
       <button
         class="control-shell min-h-10 w-full border-rose-300 px-4 text-sm font-700 text-rose-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-700 dark:text-rose-200"
         type="button"
-        onclick={() => void state.deleteAcquisitionJob(job)}
-        disabled={state.deletingItemId === job.id || state.cancelingAcquisitionJobId === job.id}
+        onclick={() => void state.deleteQueueEntry(entry)}
+        disabled={state.deletingItemId === entry.id || state.cancelingQueueEntryId === entry.id}
       >
-        {state.deletingItemId === job.id ? 'Removing...' : 'Remove from Library'}
+        {state.deletingItemId === entry.id ? 'Removing...' : 'Remove from Library'}
       </button>
     {/if}
 
-    {#if state.manualSelectionError[job.id]}
+    {#if state.queueEntryError(entry.id)}
       <div class="overflow-safe-text rounded-[14px] border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-200">
-        {state.manualSelectionError[job.id]}
+        {state.queueEntryError(entry.id)}
       </div>
     {/if}
 

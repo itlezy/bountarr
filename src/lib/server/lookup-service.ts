@@ -131,29 +131,29 @@ export async function fetchEpisodeFile(
   }
 }
 
-async function discoverSeriesEpisodeFileId(seriesId: number): Promise<number | null> {
+export async function fetchSeriesEpisodeRecords(seriesId: number): Promise<Record<string, unknown>[]> {
   try {
-    const episodes = (
-      await arrFetch<unknown[]>('sonarr', '/api/v3/episode', undefined, {
-        seriesId,
-      })
-    )
-      .map(asRecord)
-      .filter((episode) => (asNumber(episode.episodeFileId) ?? 0) > 0)
-      .sort((left, right) => {
-        const seasonDifference =
-          (asNumber(right.seasonNumber) ?? 0) - (asNumber(left.seasonNumber) ?? 0);
-        if (seasonDifference !== 0) {
-          return seasonDifference;
-        }
-
-        return (asNumber(right.episodeNumber) ?? 0) - (asNumber(left.episodeNumber) ?? 0);
-      });
-
-    return asNumber(episodes[0]?.episodeFileId);
+    return (await arrFetch<unknown[]>('sonarr', '/api/v3/episode', undefined, { seriesId })).map(
+      asRecord,
+    );
   } catch {
-    return null;
+    return [];
   }
+}
+
+async function discoverSeriesEpisodeFileId(seriesId: number): Promise<number | null> {
+  const episodes = (await fetchSeriesEpisodeRecords(seriesId))
+    .filter((episode) => (asNumber(episode.episodeFileId) ?? 0) > 0)
+    .sort((left, right) => {
+      const seasonDifference = (asNumber(right.seasonNumber) ?? 0) - (asNumber(left.seasonNumber) ?? 0);
+      if (seasonDifference !== 0) {
+        return seasonDifference;
+      }
+
+      return (asNumber(right.episodeNumber) ?? 0) - (asNumber(left.episodeNumber) ?? 0);
+    });
+
+  return asNumber(episodes[0]?.episodeFileId);
 }
 
 export async function fetchExistingMovie(id: number, preferences: Preferences): Promise<MediaItem> {

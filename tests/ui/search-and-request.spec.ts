@@ -557,8 +557,17 @@ test('duplicate tracked movie submit still moves to queue and keeps alternate-re
   const api = await mockAppApi(page, {
     queue: {
       updatedAt: '2026-04-13T12:00:00.000Z',
-      items: [],
-      acquisitionJobs: [duplicateJob],
+      entries: [
+        {
+          kind: 'managed',
+          id: duplicateJob.id,
+          job: duplicateJob,
+          liveQueueItems: [],
+          liveSummary: null,
+          canCancel: true,
+          canRemove: true,
+        },
+      ],
       total: 1,
     },
     searchResponse: () => [
