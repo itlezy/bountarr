@@ -10,6 +10,7 @@ import {
   emptyManualReleaseListFixture,
   manualReleaseFixture,
   manualReleaseListFixture,
+  manualReleaseRejectedFixture,
   queueItemFixture,
 } from './support/fixtures';
 import { mockAppApi, mockJson, mockTextError, type MockApiController } from './support/mock-api';
@@ -132,6 +133,65 @@ test('queued manual selections still expose manual release actions for replaceme
   await expect(dialog.getByRole('button', { name: 'Selected' })).toBeDisabled();
 });
 
+test('reopening manual release options refreshes queued selection state', async ({ page }) => {
+  const replacementRelease = {
+    ...manualReleaseFixture,
+    guid: 'guid-andor-replacement',
+    indexerId: 21,
+    title: 'Andor.S01.1080p.WEB-DL-REPLACEMENT',
+  };
+  let releaseCall = 0;
+  const api = await mockAppApi(page, {
+    queue: buildQueueResponse([
+      {
+        ...acquisitionJobFixture,
+        queueStatus: 'Manual selection queued',
+        status: 'queued',
+        validationSummary: 'User selected Andor.S01.1080p.WEB-DL-FLUX',
+      },
+    ], []),
+    manualReleaseResponse: () => {
+      releaseCall += 1;
+      if (releaseCall === 1) {
+        return buildSelectedManualReleaseList();
+      }
+
+      return {
+        ...manualReleaseListFixture,
+        releases: [
+          {
+            ...replacementRelease,
+            canSelect: false,
+            status: 'selected',
+          },
+          manualReleaseRejectedFixture,
+        ],
+        selectedGuid: replacementRelease.guid,
+        summary: 'Replacement manual release is queued.',
+      };
+    },
+  });
+
+  await openQueue(page, api);
+
+  let dialog = await openManualReleaseModal(page);
+  await expect(dialog.getByText(manualReleaseFixture.title, { exact: true })).toBeVisible();
+  await expect(dialog.getByText('One manual-search release was selected.', { exact: true })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Close manual release options' }).click();
+  await expect(page.getByRole('dialog', { name: 'Manual release options' })).toHaveCount(0);
+
+  dialog = await openManualReleaseModal(page);
+
+  await expect
+    .poll(() => api.manualReleaseRequests.length, {
+      message: 'reopening manual release options should request fresh release data',
+    })
+    .toBe(2);
+  await expect(dialog.getByText(replacementRelease.title, { exact: true })).toBeVisible();
+  await expect(dialog.getByText('Replacement manual release is queued.', { exact: true })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Selected' })).toBeDisabled();
+});
+
 test('queue item cancel refreshes queue and dashboard state', async ({ page }) => {
   let queueCall = 0;
   const refreshedQueue = buildQueueResponse([acquisitionJobFixture], []);
@@ -250,6 +310,55 @@ test('queue view shows explicit ETA for downloads and matched grab jobs', async 
   await expect(card.getByText('ETA', { exact: true }).first()).toBeVisible();
   await expect(card).toContainText('18m remaining');
   await expect(card).toContainText('Andor.S01.1080p.WEB-DL-FLUX');
+});
+
+test('queue keeps out-of-scope same-series downloads as external rows', async ({ page }) => {
+  const inScopeQueueItem = {
+    id: 'sonarr:queue:2',
+    arrItemId: acquisitionJobFixture.arrItemId,
+    canCancel: true,
+    kind: acquisitionJobFixture.kind,
+    title: acquisitionJobFixture.title,
+    year: 2022,
+    poster: 'https://img.example/andor.jpg',
+    sourceService: acquisitionJobFixture.sourceService,
+    status: 'Downloading',
+    progress: 58,
+    timeLeft: '18m',
+    estimatedCompletionTime: '2026-04-13T12:18:00.000Z',
+    size: 4_000_000_000,
+    sizeLeft: 1_200_000_000,
+    queueId: 2,
+    detail: 'Andor.S01.1080p.WEB-DL-FLUX',
+    episodeIds: [101, 102],
+    seasonNumbers: [1],
+  };
+  const outOfScopeQueueItem = {
+    ...inScopeQueueItem,
+    id: 'sonarr:queue:3',
+    progress: 12,
+    queueId: 3,
+    timeLeft: '1h',
+    estimatedCompletionTime: '2026-04-13T13:00:00.000Z',
+    detail: 'Andor.S02E01.1080p.WEB-DL-FLUX',
+    episodeIds: [201],
+    seasonNumbers: [2],
+  };
+  const api = await mockAppApi(page, {
+    queue: buildQueueResponse([acquisitionJobFixture], [inScopeQueueItem, outOfScopeQueueItem]),
+  });
+
+  await openQueue(page, api);
+
+  const managedCard = managedJobCard(page, acquisitionJobFixture.title);
+  await expect(managedCard).toBeVisible();
+  await expect(managedCard).toContainText('Andor.S01.1080p.WEB-DL-FLUX');
+  await expect(managedCard).not.toContainText('Andor.S02E01.1080p.WEB-DL-FLUX');
+
+  const externalCard = queueItemCard(page, acquisitionJobFixture.title);
+  await expect(externalCard).toBeVisible();
+  await expect(externalCard).toContainText('Andor.S02E01.1080p.WEB-DL-FLUX');
+  await expect(externalCard.getByRole('button', { name: 'Cancel download' })).toBeVisible();
 });
 
 test('queue and manual release long text wraps without breaking layout', async ({ page }) => {

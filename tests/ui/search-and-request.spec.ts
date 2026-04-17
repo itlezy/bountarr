@@ -300,6 +300,125 @@ test('series grab defaults to season 1 and allows changing seasons', async ({ pa
   ).toBeVisible();
 });
 
+test('tracked series alternate grabs submit the tracked quality profile and selected season scope', async ({
+  page,
+}) => {
+  const api = await mockAppApi(page, {
+    searchResponse: () => [
+      {
+        id: 'series:83867',
+        arrItemId: 83867,
+        kind: 'series',
+        title: 'Andor',
+        year: 2022,
+        rating: 8.4,
+        poster: 'https://img.example/andor.jpg',
+        overview: 'Cassian Andor begins the path toward rebellion.',
+        status: 'Already in Arr',
+        isExisting: true,
+        isRequested: true,
+        auditStatus: 'pending',
+        audioLanguages: [],
+        subtitleLanguages: [],
+        sourceService: 'sonarr',
+        origin: 'arr',
+        inArr: true,
+        inPlex: false,
+        plexLibraries: [],
+        canAdd: false,
+        detail: null,
+        requestPayload: {
+          id: 83867,
+          tvdbId: 361753,
+          title: 'Andor',
+          year: 2022,
+          qualityProfileId: 2,
+          seasons: [{ seasonNumber: 1 }, { seasonNumber: 2 }],
+        },
+      },
+    ],
+    grabResponse: (body) =>
+      mockJson({
+        existing: true,
+        item: {
+          ...(body.item as Record<string, unknown>),
+          arrItemId: 83867,
+          canAdd: false,
+          inArr: true,
+          isExisting: true,
+          isRequested: true,
+          status: 'Already in Arr',
+        },
+        message: 'Andor is already tracked in Sonarr. Alternate-release acquisition started.',
+        releaseDecision: null,
+        job: {
+          id: 'job-series-83867',
+          itemId: 'series:83867',
+          arrItemId: 83867,
+          kind: 'series',
+          title: 'Andor',
+          sourceService: 'sonarr',
+          status: 'queued',
+          attempt: 1,
+          maxRetries: 3,
+          currentRelease: null,
+          selectedReleaser: null,
+          preferredReleaser: null,
+          reasonCode: null,
+          failureReason: null,
+          validationSummary: 'Monitoring seasons 2',
+          autoRetrying: false,
+          progress: null,
+          queueStatus: null,
+          preferences: {
+            preferredLanguage: 'English',
+            subtitleLanguage: 'English',
+          },
+          targetSeasonNumbers: [2],
+          targetEpisodeIds: null,
+          startedAt: '2026-04-13T12:00:00.000Z',
+          updatedAt: '2026-04-13T12:00:00.000Z',
+          completedAt: null,
+          attempts: [],
+        },
+      }),
+  });
+  await openSearch(page, api, 'Andor', 'Andor');
+
+  const andorCard = page.locator('article').filter({
+    has: page.getByRole('heading', { name: 'Andor' }),
+  });
+  await andorCard.getByRole('button', { name: 'Grab' }).click();
+
+  const dialog = page.getByRole('dialog', { name: 'Grab title' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText(
+    'Arr is already tracking this title. Confirm to download an alternate release anyway.',
+  );
+
+  const season1 = dialog.getByRole('button', { name: 'Season 1' });
+  const season2 = dialog.getByRole('button', { name: 'Season 2' });
+  await season1.click();
+  await season2.click();
+  await expect(season1).toHaveAttribute('aria-pressed', 'false');
+  await expect(season2).toHaveAttribute('aria-pressed', 'true');
+
+  await dialog.getByRole('button', { name: 'Grab', exact: true }).click();
+
+  await expect
+    .poll(() => api.grabBodies.length, {
+      message: 'tracked series alternate grab should submit a single request body',
+    })
+    .toBe(1);
+
+  expect(api.grabBodies[0]?.qualityProfileId).toBe(2);
+  expect(api.grabBodies[0]?.seasonNumbers).toEqual([2]);
+  await expect(page.getByRole('status')).toContainText(
+    'Andor is already tracked in Sonarr. Alternate-release acquisition started.',
+  );
+  await expect(page.getByRole('heading', { name: 'Grab Progress' })).toBeVisible();
+});
+
 test('plex-available search results still use the normal grab dialog with confirmation', async ({
   page,
 }) => {
