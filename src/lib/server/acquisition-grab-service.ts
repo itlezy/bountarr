@@ -145,10 +145,12 @@ async function buildRequestedJobInput(
   preferences: Preferences,
   options?: GrabItemOptions,
 ): Promise<CreateAcquisitionJobInput> {
-  const targetSeasonNumbers =
-    item.kind === 'series' ? explicitSeriesTargetSeasonNumbers(item, options) : null;
-  const targetEpisodeIds =
-    item.kind === 'series' ? await resolveSeriesTargetEpisodeIds(arrItemId, targetSeasonNumbers) : null;
+  let targetSeasonNumbers: number[] | null = null;
+  let targetEpisodeIds: number[] | null = null;
+  if (item.kind === 'series') {
+    targetSeasonNumbers = explicitSeriesTargetSeasonNumbers(item, options);
+    targetEpisodeIds = await resolveSeriesTargetEpisodeIds(arrItemId, targetSeasonNumbers);
+  }
 
   return {
     arrItemId,

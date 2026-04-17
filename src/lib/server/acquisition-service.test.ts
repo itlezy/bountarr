@@ -78,7 +78,18 @@ describe('acquisition service', () => {
       listQueueAcquisitionJobs: vi.fn(),
     }));
     vi.doMock('$lib/server/acquisition-validator-shared', () => ({
-      fetchQueueRecords: vi.fn().mockResolvedValue([{ id: 7, movieId: 603 }]),
+      fetchQueueRecords: vi.fn().mockResolvedValue([
+        {
+          id: 7,
+          movieId: 603,
+          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          movie: {
+            id: 603,
+            title: 'The Matrix',
+            year: 1999,
+          },
+        },
+      ]),
       queueRecordArrItemId: vi.fn().mockImplementation((_service: string, record: { movieId: number }) => record.movieId),
       queueRecordId: vi.fn().mockImplementation((record: { id: number }) => record.id),
     }));
@@ -266,8 +277,26 @@ describe('acquisition service', () => {
     }));
     vi.doMock('$lib/server/acquisition-validator-shared', () => ({
       fetchQueueRecords: vi.fn().mockResolvedValue([
-        { id: 7, movieId: 603 },
-        { id: 8, movieId: 603 },
+        {
+          id: 7,
+          movieId: 603,
+          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          movie: {
+            id: 603,
+            title: 'The Matrix',
+            year: 1999,
+          },
+        },
+        {
+          id: 8,
+          movieId: 603,
+          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          movie: {
+            id: 603,
+            title: 'The Matrix',
+            year: 1999,
+          },
+        },
       ]),
       queueRecordArrItemId: vi.fn().mockImplementation((_service: string, record: { movieId: number }) => record.movieId),
       queueRecordId: vi.fn().mockImplementation((record: { id: number }) => record.id),
@@ -302,8 +331,11 @@ describe('acquisition service', () => {
     const queueEntry: QueueCancelRequest = {
       kind: 'managed',
       arrItemId: 603,
+      currentRelease: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
       jobId: 'job-missing',
       sourceService: 'radarr',
+      targetEpisodeIds: null,
+      targetSeasonNumbers: null,
       title: 'The Matrix',
     };
 
@@ -334,8 +366,26 @@ describe('acquisition service', () => {
     }));
     vi.doMock('$lib/server/acquisition-validator-shared', () => ({
       fetchQueueRecords: vi.fn().mockResolvedValue([
-        { id: 7, movieId: 603 },
-        { id: 8, movieId: 603 },
+        {
+          id: 7,
+          movieId: 603,
+          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          movie: {
+            id: 603,
+            title: 'The Matrix',
+            year: 1999,
+          },
+        },
+        {
+          id: 8,
+          movieId: 603,
+          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          movie: {
+            id: 603,
+            title: 'The Matrix',
+            year: 1999,
+          },
+        },
       ]),
       queueRecordArrItemId: vi.fn().mockImplementation((_service: string, record: { movieId: number }) => record.movieId),
       queueRecordId: vi.fn().mockImplementation((record: { id: number }) => record.id),
@@ -355,6 +405,116 @@ describe('acquisition service', () => {
     expect(arrFetch).toHaveBeenCalledTimes(4);
     expect(arrFetch.mock.calls[0]?.[1]).toBe('/api/v3/queue/7');
     expect(arrFetch.mock.calls[1]?.[1]).toBe('/api/v3/queue/8');
+  });
+
+  it('cancels only queue rows whose Sonarr episode scope overlaps the managed job', async () => {
+    const seriesJob: AcquisitionJob = {
+      ...job,
+      id: 'job-series',
+      itemId: 'series:83867',
+      arrItemId: 83867,
+      kind: 'series',
+      title: 'Andor',
+      sourceService: 'sonarr',
+      currentRelease: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+      targetSeasonNumbers: [1],
+      targetEpisodeIds: [101, 102],
+    };
+    const cancelledSeriesJob: AcquisitionJob = {
+      ...cancelledJob,
+      id: seriesJob.id,
+      itemId: seriesJob.itemId,
+      arrItemId: seriesJob.arrItemId,
+      kind: 'series',
+      title: seriesJob.title,
+      sourceService: seriesJob.sourceService,
+      currentRelease: seriesJob.currentRelease,
+      targetSeasonNumbers: seriesJob.targetSeasonNumbers,
+      targetEpisodeIds: seriesJob.targetEpisodeIds,
+    };
+    const cancelJob = vi.fn().mockReturnValue(cancelledSeriesJob);
+    const arrFetch = vi
+      .fn()
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({
+        id: 83867,
+        monitored: true,
+        seasons: [{ seasonNumber: 1, monitored: true }],
+      })
+      .mockResolvedValueOnce({});
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        ensureWorkers: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        cancelJob,
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        getJob: vi.fn().mockReturnValue(seriesJob),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      getAcquisitionJobsResponse: vi.fn(),
+      listQueueAcquisitionJobs: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-validator-shared', () => ({
+      fetchQueueRecords: vi.fn().mockResolvedValue([
+        {
+          episode: {
+            id: 101,
+            seasonNumber: 1,
+            title: 'Kassa',
+          },
+          id: 7,
+          series: {
+            id: 83867,
+            title: 'Andor',
+            year: 2022,
+          },
+          seriesId: 83867,
+          title: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+        },
+        {
+          episode: {
+            id: 201,
+            seasonNumber: 2,
+            title: 'One Year Later',
+          },
+          id: 8,
+          series: {
+            id: 83867,
+            title: 'Andor',
+            year: 2022,
+          },
+          seriesId: 83867,
+          title: 'Andor.S02E01.1080p.WEB-DL-FLUX',
+        },
+      ]),
+      queueRecordArrItemId: vi.fn(),
+      queueRecordId: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-selection', () => ({
+      findManualReleaseSelection: vi.fn(),
+      getManualReleaseResults: vi.fn(),
+    }));
+
+    const module = await import('$lib/server/acquisition-service');
+    const result = await module.cancelAcquisitionJob(seriesJob.id);
+
+    expect(result.message).toBe('Andor download was cancelled and unmonitored.');
+    expect(cancelJob).toHaveBeenCalledWith(seriesJob);
+    expect(arrFetch).toHaveBeenCalledTimes(3);
+    expect(arrFetch.mock.calls[0]?.[1]).toBe('/api/v3/queue/7');
+    expect(arrFetch.mock.calls[1]?.[1]).toBe('/api/v3/series/83867');
+    expect(arrFetch.mock.calls[2]?.[1]).toBe('/api/v3/series/83867');
   });
 
   it('removes local jobs when the Arr item is already missing during delete', async () => {

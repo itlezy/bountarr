@@ -49,6 +49,8 @@ function releaseOptions(job: PersistedAcquisitionJob) {
   return {
     kind: job.kind,
     preferredReleaser: job.preferredReleaser,
+    targetEpisodeIds: job.targetEpisodeIds,
+    targetSeasonNumbers: job.targetSeasonNumbers,
     targetTitle: job.title,
   } as const;
 }

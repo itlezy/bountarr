@@ -6,6 +6,7 @@ import { ensureAcquisitionWorkers, getQueueAcquisitionJobs } from '$lib/server/a
 import { fetchExistingMovie, fetchExistingSeries } from '$lib/server/lookup-service';
 import { normalizeItem } from '$lib/server/media-normalize';
 import { buildManagedLiveSummary } from '$lib/server/queue-live-summary';
+import { queueItemMatchesManagedTarget } from '$lib/server/queue-matching';
 import { normalizeQueueItem } from '$lib/server/queue-normalize';
 import { asNumber, asRecord, asRecordsArray, asString } from '$lib/server/raw';
 import { getConfiguredServiceFlags } from '$lib/server/runtime';
@@ -217,12 +218,6 @@ async function buildQueueItems(service: ArrService): Promise<QueueItem[]> {
     .filter((item): item is QueueItem => item !== null);
 }
 
-function arrIdentityKey(
-  value: Pick<QueueItem | AcquisitionJob, 'arrItemId' | 'sourceService'>,
-): string | null {
-  return value.arrItemId === null ? null : `${value.sourceService}:${value.arrItemId}`;
-}
-
 function buildManagedQueueEntry(
   job: AcquisitionJob,
   liveQueueItems: QueueItem[],
@@ -275,35 +270,17 @@ export function composeQueueEntries(
   acquisitionJobs: AcquisitionJob[],
   items: QueueItem[],
 ): QueueEntry[] {
-  const itemsByIdentity = new Map<string, QueueItem[]>();
-  for (const item of items) {
-    const key = arrIdentityKey(item);
-    if (!key) {
-      continue;
-    }
-
-    const existing = itemsByIdentity.get(key) ?? [];
-    existing.push(item);
-    itemsByIdentity.set(key, existing);
-  }
-
-  const consumedIdentities = new Set<string>();
-  const matchedItemIds = new Set<string>();
+  let unmatchedItems = [...items];
   const managedEntries = acquisitionJobs.map((job) => {
-    const key = arrIdentityKey(job);
-    const liveQueueItems =
-      key && !consumedIdentities.has(key) ? (itemsByIdentity.get(key) ?? []) : [];
-    if (key) {
-      consumedIdentities.add(key);
+    const liveQueueItems = unmatchedItems.filter((item) => queueItemMatchesManagedTarget(job, item));
+    if (liveQueueItems.length > 0) {
+      const matchedIds = new Set(liveQueueItems.map((item) => item.id));
+      unmatchedItems = unmatchedItems.filter((item) => !matchedIds.has(item.id));
     }
-    for (const item of liveQueueItems) {
-      matchedItemIds.add(item.id);
-    }
+
     return buildManagedQueueEntry(job, liveQueueItems);
   });
-  const externalEntries = items
-    .filter((item) => !matchedItemIds.has(item.id))
-    .map((item) => buildExternalQueueEntry(item));
+  const externalEntries = unmatchedItems.map((item) => buildExternalQueueEntry(item));
 
   return [...managedEntries, ...externalEntries].sort((left, right) => {
     if (left.kind !== right.kind) {

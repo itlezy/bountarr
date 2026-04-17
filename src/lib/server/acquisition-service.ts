@@ -27,6 +27,8 @@ import {
   queueRecordArrItemId,
   queueRecordId,
 } from '$lib/server/acquisition-validator-shared';
+import { queueItemMatchesManagedTarget } from '$lib/server/queue-matching';
+import { normalizeQueueItem } from '$lib/server/queue-normalize';
 import { asArray, asRecord } from '$lib/server/raw';
 import { grabItem as grabItemInternal } from '$lib/server/acquisition-grab-service';
 import {
@@ -160,6 +162,29 @@ async function findQueueEntryIdsForArrItem(
   ];
 }
 
+async function findQueueEntryIdsForManagedTarget(target: {
+  arrItemId: number;
+  currentRelease: string | null;
+  kind: 'movie' | 'series';
+  sourceService: 'radarr' | 'sonarr';
+  targetEpisodeIds: number[] | null;
+  targetSeasonNumbers: number[] | null;
+}): Promise<number[]> {
+  const queueRecords = await fetchQueueRecords(target.sourceService);
+  return [
+    ...new Set(
+      queueRecords
+        .map((record) => normalizeQueueItem(target.sourceService, record))
+        .filter(
+          (item): item is NonNullable<typeof item> =>
+            item !== null && queueItemMatchesManagedTarget(target, item),
+        )
+        .map((item) => item.queueId)
+        .filter((queueId): queueId is number => queueId !== null),
+    ),
+  ];
+}
+
 async function deleteQueueEntries(
   service: 'radarr' | 'sonarr',
   queueIds: number[],
@@ -229,7 +254,7 @@ export async function cancelAcquisitionJob(jobId: string): Promise<AcquisitionJo
 
   await deleteQueueEntries(
     job.sourceService,
-    await findQueueEntryIdsForArrItem(job.sourceService, job.arrItemId),
+    await findQueueEntryIdsForManagedTarget(job),
   );
   await unmonitorTrackedItem(job.sourceService, job.arrItemId);
   const cancelled = getAcquisitionLifecycle().cancelJob(job);
@@ -269,7 +294,14 @@ export async function cancelQueueEntry(entry: QueueCancelRequest): Promise<Queue
 
     await deleteQueueEntries(
       entry.sourceService,
-      await findQueueEntryIdsForArrItem(entry.sourceService, entry.arrItemId),
+      await findQueueEntryIdsForManagedTarget({
+        arrItemId: entry.arrItemId,
+        currentRelease: entry.currentRelease,
+        kind: entry.sourceService === 'radarr' ? 'movie' : 'series',
+        sourceService: entry.sourceService,
+        targetEpisodeIds: entry.targetEpisodeIds,
+        targetSeasonNumbers: entry.targetSeasonNumbers,
+      }),
     );
     await unmonitorTrackedItem(entry.sourceService, entry.arrItemId);
     return {

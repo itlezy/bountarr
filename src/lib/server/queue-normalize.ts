@@ -1,5 +1,6 @@
 import { extractPoster } from '$lib/server/media-normalize';
 import { asNumber, asRecord, asString } from '$lib/server/raw';
+import { extractSeriesScope } from '$lib/server/series-scope';
 import type { ArrService } from '$lib/server/acquisition-domain';
 import type { QueueItem } from '$lib/shared/types';
 
@@ -35,6 +36,7 @@ export function normalizeQueueItem(service: ArrService, rawValue: unknown): Queu
       : null;
   const progress = asNumber(record.progress) ?? computedProgress;
   const episode = asRecord(record.episode);
+  const seriesScope = service === 'sonarr' ? extractSeriesScope(record) : null;
 
   return {
     id: `${service}:queue:${asString(record.downloadId) ?? asString(record.id) ?? crypto.randomUUID()}`,
@@ -60,5 +62,7 @@ export function normalizeQueueItem(service: ArrService, rawValue: unknown): Queu
       title
         ? null
         : (asString(record.title) ?? asString(record.sourceTitle) ?? asString(episode.title) ?? null),
+    episodeIds: seriesScope?.episodeIds ?? null,
+    seasonNumbers: seriesScope?.seasonNumbers ?? null,
   };
 }

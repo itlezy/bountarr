@@ -193,6 +193,8 @@ const queueItemFixture: QueueItem = {
   sizeLeft: 250_000_000,
   queueId: 1,
   detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+  episodeIds: null,
+  seasonNumbers: null,
 };
 
 const acquisitionJobFixture: AcquisitionJob = {

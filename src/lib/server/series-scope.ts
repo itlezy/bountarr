@@ -1,4 +1,5 @@
 import type { AcquisitionJob } from '$lib/shared/types';
+import { normalizeToken } from '$lib/server/media-identity';
 import { asArray, asNumber, asRecord } from '$lib/server/raw';
 
 export type SeriesScope = {
@@ -48,13 +49,49 @@ function seriesEpisodeRecords(raw: Record<string, unknown>): Record<string, unkn
   return records;
 }
 
+function titleSeasonNumbers(value: string | null): number[] {
+  if (!value) {
+    return [];
+  }
+
+  const seasonNumbers: Array<number | null> = [];
+  for (const pattern of [
+    /\bs(?:eason)?[ ._-]?(\d{1,2})(?=e\d{1,2}|[ ._-]|$)/giu,
+    /\bseason[ ._-]?(\d{1,2})\b/giu,
+    /\b(\d{1,2})x\d{1,2}\b/giu,
+  ]) {
+    for (const match of value.matchAll(pattern)) {
+      const seasonNumber = Number.parseInt(match[1] ?? '', 10);
+      seasonNumbers.push(Number.isFinite(seasonNumber) ? seasonNumber : null);
+    }
+  }
+
+  return uniqueSortedNumbers(seasonNumbers) ?? [];
+}
+
 export function normalizeNumberArray(value: number[] | null | undefined): number[] | null {
   return uniqueSortedNumbers(value ?? []);
+}
+
+export function scopeFromTarget(value: {
+  targetEpisodeIds?: number[] | null;
+  targetSeasonNumbers?: number[] | null;
+}): SeriesScope {
+  return {
+    episodeIds: normalizeNumberArray(value.targetEpisodeIds),
+    seasonNumbers: normalizeNumberArray(value.targetSeasonNumbers),
+  };
 }
 
 export function extractSeriesScope(rawValue: unknown): SeriesScope {
   const raw = asRecord(rawValue);
   const episodeRecords = seriesEpisodeRecords(raw);
+  const inferredSeasonNumbers = uniqueSortedNumbers([
+    ...titleSeasonNumbers(typeof raw.title === 'string' ? raw.title : null),
+    ...titleSeasonNumbers(typeof raw.sourceTitle === 'string' ? raw.sourceTitle : null),
+    ...titleSeasonNumbers(typeof raw.releaseTitle === 'string' ? raw.releaseTitle : null),
+    ...titleSeasonNumbers(typeof raw.detail === 'string' ? raw.detail : null),
+  ]);
   const episodeIds = uniqueSortedNumbers([
     asNumber(raw.episodeId),
     ...asArray(raw.episodeIds).map(asNumber),
@@ -72,6 +109,7 @@ export function extractSeriesScope(rawValue: unknown): SeriesScope {
       ];
     }),
     ...episodeRecords.map((episode) => asNumber(episode.seasonNumber)),
+    ...(inferredSeasonNumbers ?? []),
   ]);
 
   return {
@@ -87,10 +125,7 @@ export function scopeFromSeriesJob(
     return null;
   }
 
-  return {
-    episodeIds: normalizeNumberArray(job.targetEpisodeIds),
-    seasonNumbers: normalizeNumberArray(job.targetSeasonNumbers),
-  };
+  return scopeFromTarget(job);
 }
 
 export function classifySeriesScopeMatch(
@@ -181,4 +216,16 @@ export function describeSeriesScope(scope: SeriesScope | null): string | null {
   }
 
   return null;
+}
+
+export function titleSuggestsCompleteSeriesPack(value: string | null): boolean {
+  if (!value) {
+    return false;
+  }
+
+  const normalized = normalizeToken(value);
+  return (
+    (/\bcomplete\b/.test(normalized) || /\bfull\b/.test(normalized)) &&
+    /\bseries\b|\bseasons\b/.test(normalized)
+  );
 }

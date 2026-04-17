@@ -1,6 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 import { cancelQueueEntry } from '$lib/server/acquisition-service';
-import { asNumber, asRecord, asString } from '$lib/server/raw';
+import { asArray, asNumber, asRecord, asString } from '$lib/server/raw';
 import { createAreaLogger, getErrorMessage, toErrorLogContext } from '$lib/server/logger';
 import type { QueueCancelRequest } from '$lib/shared/types';
 
@@ -12,6 +12,18 @@ function queueCancelTargetId(target: QueueCancelRequest): string {
 
 function queueCancelTargetQueueId(target: QueueCancelRequest): number | null {
   return target.kind === 'external' ? target.queueId : null;
+}
+
+function sanitizeNumberArray(value: unknown): number[] | null {
+  const normalized = [...new Set(
+    asArray(value)
+      .map((entry) => asNumber(entry))
+      .filter((entry): entry is number => entry !== null)
+      .map((entry) => Math.trunc(entry))
+      .filter((entry) => entry >= 0),
+  )].sort((left, right) => left - right);
+
+  return normalized.length > 0 ? normalized : null;
 }
 
 export const POST = async ({ request }: { request: Request }) => {
@@ -30,10 +42,16 @@ export const POST = async ({ request }: { request: Request }) => {
 
   if (kind === 'managed') {
     const jobId = asString(payload.jobId);
+    const currentRelease =
+      payload.currentRelease === null || payload.currentRelease === undefined
+        ? null
+        : asString(payload.currentRelease);
     const sourceService =
       payload.sourceService === 'radarr' || payload.sourceService === 'sonarr'
         ? payload.sourceService
         : null;
+    const targetEpisodeIds = sanitizeNumberArray(payload.targetEpisodeIds);
+    const targetSeasonNumbers = sanitizeNumberArray(payload.targetSeasonNumbers);
     const title = asString(payload.title);
 
     if (
@@ -50,7 +68,10 @@ export const POST = async ({ request }: { request: Request }) => {
       kind: 'managed',
       jobId,
       arrItemId,
+      currentRelease,
       sourceService,
+      targetEpisodeIds,
+      targetSeasonNumbers,
       title,
     };
   } else if (kind === 'external') {

@@ -274,4 +274,77 @@ describe('selectBestRelease', () => {
     expect(result.decision.selected).toBeNull();
     expect(result.decision.reason).toContain('No acceptable release');
   });
+
+  it('keeps out-of-scope series seasons out of automatic selection', () => {
+    const result = selectBestRelease(
+      [
+        {
+          guid: 'wrong-season',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Andor.S02.1080p.WEB-DL-FLUX',
+          seriesTitles: 'Andor',
+          languages: [{ name: 'English' }],
+          qualityWeight: 100,
+          releaseWeight: 80,
+          customFormatScore: 0,
+          size: 8_000_000_000,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+        {
+          guid: 'target-season',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Andor.S01.1080p.WEB-DL-FLUX',
+          seriesTitles: 'Andor',
+          languages: [{ name: 'English' }],
+          qualityWeight: 100,
+          releaseWeight: 70,
+          customFormatScore: 0,
+          size: 7_000_000_000,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+      ],
+      defaultPreferences,
+      {
+        kind: 'series',
+        targetSeasonNumbers: [1],
+        targetTitle: 'Andor',
+      },
+    );
+
+    expect(result.decision.selected?.guid).toBe('target-season');
+  });
+
+  it('rejects complete-series packs for season-limited grabs', () => {
+    const result = selectBestRelease(
+      [
+        {
+          guid: 'complete-series',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Andor.Complete.Series.1080p.WEB-DL-FLUX',
+          seriesTitles: 'Andor',
+          languages: [{ name: 'English' }],
+          qualityWeight: 140,
+          releaseWeight: 80,
+          customFormatScore: 0,
+          size: 20_000_000_000,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+      ],
+      defaultPreferences,
+      {
+        kind: 'series',
+        targetSeasonNumbers: [1],
+        targetTitle: 'Andor',
+      },
+    );
+
+    expect(result.decision.selected).toBeNull();
+    expect(result.decision.reason).toContain('No acceptable release');
+  });
 });

@@ -140,7 +140,10 @@ function queueCancelPayload(entry: QueueEntry): QueueCancelRequest {
       kind: 'managed',
       jobId: entry.job.id,
       arrItemId: entry.job.arrItemId,
+      currentRelease: entry.job.currentRelease,
       sourceService: entry.job.sourceService,
+      targetEpisodeIds: entry.job.targetEpisodeIds,
+      targetSeasonNumbers: entry.job.targetSeasonNumbers,
       title: entry.job.title,
     };
   }

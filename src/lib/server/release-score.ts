@@ -1,4 +1,10 @@
 import { languageMatchesPreferred } from '$lib/shared/languages';
+import {
+  classifySeriesScopeMatch,
+  extractSeriesScope,
+  scopeFromTarget,
+  titleSuggestsCompleteSeriesPack,
+} from '$lib/server/series-scope';
 import type {
   Preferences,
   ReleaseDecision,
@@ -25,6 +31,8 @@ export type EvaluatedRelease = {
 type ReleaseSelectionOptions = {
   kind: 'movie' | 'series';
   preferredReleaser?: string | null;
+  targetEpisodeIds?: number[] | null;
+  targetSeasonNumbers?: number[] | null;
   targetTitle: string;
 };
 
@@ -293,7 +301,7 @@ function isWeakTitleMatch(target: string, candidate: string): boolean {
   );
 }
 
-function classifyIdentity(
+function classifyTitleIdentity(
   release: Record<string, unknown>,
   options: ReleaseSelectionOptions,
 ): { reason: string; status: ReleaseIdentityStatus } {
@@ -344,6 +352,62 @@ function classifyIdentity(
   return {
     status: 'mismatch',
     reason: `Release title points to ${titleSegment}`,
+  };
+}
+
+function classifyIdentity(
+  release: Record<string, unknown>,
+  options: ReleaseSelectionOptions,
+): { autoSelectable: boolean; reason: string; status: ReleaseIdentityStatus } {
+  const titleIdentity = classifyTitleIdentity(release, options);
+  if (titleIdentity.status === 'mismatch') {
+    return {
+      ...titleIdentity,
+      autoSelectable: false,
+    };
+  }
+
+  if (
+    options.kind !== 'series' ||
+    (!options.targetEpisodeIds?.length && !options.targetSeasonNumbers?.length)
+  ) {
+    return {
+      ...titleIdentity,
+      autoSelectable: true,
+    };
+  }
+
+  const targetScope = scopeFromTarget(options);
+  const scopeMatch = classifySeriesScopeMatch(targetScope, extractSeriesScope(release));
+  if (scopeMatch.status === 'mismatch') {
+    return {
+      autoSelectable: false,
+      reason: `${titleIdentity.reason}; ${scopeMatch.reason}`,
+      status: 'mismatch',
+    };
+  }
+
+  if (scopeMatch.status === 'exact') {
+    return {
+      autoSelectable: true,
+      reason: `${titleIdentity.reason}; ${scopeMatch.reason}`,
+      status: titleIdentity.status,
+    };
+  }
+
+  const releaseTitle = asString(release.title);
+  if (titleSuggestsCompleteSeriesPack(releaseTitle)) {
+    return {
+      autoSelectable: false,
+      reason: `${titleIdentity.reason}; release looks like a complete-series pack outside the targeted scope`,
+      status: 'mismatch',
+    };
+  }
+
+  return {
+    autoSelectable: false,
+    reason: `${titleIdentity.reason}; ${scopeMatch.reason}`,
+    status: 'weak-match',
   };
 }
 
@@ -527,7 +591,7 @@ function buildCandidate(
   const releaseRejectionReasons = rejectionReasons(release);
   const acceptedByLocalRules = state.score > ACCEPTED_SCORE_FLOOR;
   // Manual selection may still allow mismatches, but auto-selection must never promote them.
-  const autoSelectable = acceptedByLocalRules && identity.status !== 'mismatch';
+  const autoSelectable = acceptedByLocalRules && identity.autoSelectable;
 
   return {
     acceptedByLocalRules,
