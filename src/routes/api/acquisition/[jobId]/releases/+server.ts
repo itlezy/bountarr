@@ -23,6 +23,13 @@ export const GET = async ({ params }: { params: { jobId: string } }) => {
       ...toErrorLogContext(requestError),
     });
 
-    throw error(message.includes('was not found') ? 404 : 500, message);
+    throw error(
+      message.includes('was not found')
+        ? 404
+        : message.includes('can no longer accept manual release selections')
+          ? 409
+          : 500,
+      message,
+    );
   }
 };

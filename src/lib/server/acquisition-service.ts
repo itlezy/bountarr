@@ -2,6 +2,7 @@ import type {
   ArrDeleteTarget,
   AcquisitionJobActionResponse,
   AcquisitionResponse,
+  AcquisitionStatus,
   GrabResponse,
   ManualReleaseListResponse,
   MediaItemActionResponse,
@@ -36,6 +37,13 @@ import {
   getManualReleaseResults as getManualReleaseResultsInternal,
   persistManualSelection,
 } from '$lib/server/acquisition-selection';
+
+const manualReleaseEligibleStatuses = new Set<AcquisitionStatus>([
+  'failed',
+  'queued',
+  'retrying',
+  'searching',
+]);
 
 export function ensureAcquisitionWorkers(): void {
   getAcquisitionRunner().ensureWorkers();
@@ -148,6 +156,10 @@ function invalidateQueueCache(): void {
   queueCache.delete('queue');
 }
 
+function canAcceptManualRelease(status: AcquisitionStatus): boolean {
+  return manualReleaseEligibleStatuses.has(status);
+}
+
 async function findQueueEntryIdsForArrItem(
   service: 'radarr' | 'sonarr',
   arrItemId: number,
@@ -206,6 +218,9 @@ export async function getManualReleaseResults(jobId: string): Promise<ManualRele
   if (!job) {
     throw new Error(`Acquisition job ${jobId} was not found.`);
   }
+  if (!canAcceptManualRelease(job.status)) {
+    throw new Error(`Acquisition job ${jobId} can no longer accept manual release selections.`);
+  }
 
   return getManualReleaseResultsInternal(job);
 }
@@ -221,7 +236,7 @@ export async function selectManualRelease(
   if (!job) {
     throw new Error(`Acquisition job ${jobId} was not found.`);
   }
-  if (!['failed', 'queued', 'retrying', 'searching'].includes(job.status)) {
+  if (!canAcceptManualRelease(job.status)) {
     throw new Error(`Acquisition job ${jobId} can no longer accept manual release selections.`);
   }
 
@@ -284,31 +299,15 @@ async function cancelExternalQueueItem(
 
 export async function cancelQueueEntry(entry: QueueCancelRequest): Promise<QueueActionResponse> {
   if (entry.kind === 'managed') {
-    invalidateQueueCache();
     const job = getAcquisitionJobRepository().getJob(entry.jobId);
-    if (job) {
-      const result = await cancelAcquisitionJob(entry.jobId);
-      return {
-        itemId: entry.jobId,
-        message: result.message,
-      };
+    if (!job) {
+      throw new Error('This queue entry is no longer current. Refresh the queue and try again.');
     }
 
-    await deleteQueueEntries(
-      entry.sourceService,
-      await findQueueEntryIdsForManagedTarget({
-        arrItemId: entry.arrItemId,
-        currentRelease: entry.currentRelease,
-        kind: entry.sourceService === 'radarr' ? 'movie' : 'series',
-        sourceService: entry.sourceService,
-        targetEpisodeIds: entry.targetEpisodeIds,
-        targetSeasonNumbers: entry.targetSeasonNumbers,
-      }),
-    );
-    await unmonitorTrackedItem(entry.sourceService, entry.arrItemId);
+    const result = await cancelAcquisitionJob(entry.jobId);
     return {
       itemId: entry.jobId,
-      message: `${entry.title} download was cancelled and unmonitored.`,
+      message: result.message,
     };
   }
 

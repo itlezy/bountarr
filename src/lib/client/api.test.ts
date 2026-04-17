@@ -330,12 +330,6 @@ describe('client api', () => {
     expect(JSON.parse(String(init.body))).toEqual({
       kind: 'managed',
       jobId: 'job-1',
-      arrItemId: 603,
-      currentRelease: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
-      sourceService: 'radarr',
-      targetEpisodeIds: null,
-      targetSeasonNumbers: null,
-      title: 'The Matrix',
     });
   });
 

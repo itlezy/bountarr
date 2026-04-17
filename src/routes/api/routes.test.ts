@@ -194,6 +194,59 @@ describe('API routes', () => {
     expect(payload.jobs[0]?.title).toBe('The Matrix');
   });
 
+  it('passes managed queue cancels through as job-id-only requests', async () => {
+    const cancelQueueEntry = vi.fn().mockResolvedValue({
+      itemId: 'job-1',
+      message: 'Cancelled',
+    });
+    const route = await loadRouteModule<{
+      POST: (event: { request: Request }) => Promise<Response>;
+    }>('../../routes/api/queue/cancel/+server', {
+      '$lib/server/acquisition-service': () => ({
+        cancelQueueEntry,
+      }),
+    });
+
+    const response = await route.POST(
+      createPostEvent('http://local.test/api/queue/cancel', {
+        kind: 'managed',
+        jobId: 'job-1',
+      }),
+    );
+    const payload = await readJson<{ itemId: string; message: string }>(response);
+
+    expect(response.status).toBe(200);
+    expect(cancelQueueEntry).toHaveBeenCalledWith({
+      kind: 'managed',
+      jobId: 'job-1',
+    });
+    expect(payload).toEqual({
+      itemId: 'job-1',
+      message: 'Cancelled',
+    });
+  });
+
+  it('returns conflict for manual release lists on terminal jobs', async () => {
+    const getManualReleaseResults = vi
+      .fn()
+      .mockRejectedValue(new Error('Acquisition job job-1 can no longer accept manual release selections.'));
+    const route = await loadRouteModule<{
+      GET: (event: { params: { jobId: string } }) => Promise<Response>;
+    }>('../../routes/api/acquisition/[jobId]/releases/+server', {
+      '$lib/server/acquisition-service': () => ({
+        getManualReleaseResults,
+      }),
+    });
+
+    await expect(route.GET({ params: { jobId: 'job-1' } })).rejects.toMatchObject({
+      body: {
+        message: 'Acquisition job job-1 can no longer accept manual release selections.',
+      },
+      status: 409,
+    });
+    expect(getManualReleaseResults).toHaveBeenCalledWith('job-1');
+  });
+
   it('rejects grab calls without a media item', async () => {
     const route = await loadRouteModule<{
       POST: (event: { request: Request }) => Promise<Response>;

@@ -318,32 +318,15 @@ describe('acquisition service', () => {
     expect(arrFetch.mock.calls[3]?.[1]).toBe('/api/v3/movie/603');
   });
 
-  it('falls back to deleting every live row when a managed queue job is already gone', async () => {
-    const arrFetch = vi
-      .fn()
-      .mockResolvedValueOnce({})
-      .mockResolvedValueOnce({})
-      .mockResolvedValueOnce({
-        id: 603,
-        monitored: true,
-      })
-      .mockResolvedValueOnce({});
+  it('rejects stale managed queue cancels when the job is already gone', async () => {
+    const arrFetch = vi.fn();
     const queueEntry: QueueCancelRequest = {
       kind: 'managed',
-      arrItemId: 603,
-      currentRelease: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
       jobId: 'job-missing',
-      sourceService: 'radarr',
-      targetEpisodeIds: null,
-      targetSeasonNumbers: null,
-      title: 'The Matrix',
     };
 
     vi.doMock('$lib/server/arr-client', () => ({
       arrFetch,
-    }));
-    vi.doMock('$lib/server/app-cache', () => ({
-      queueCache: new Map(),
     }));
     vi.doMock('$lib/server/acquisition-runner', () => ({
       getAcquisitionRunner: () => ({
@@ -396,15 +379,10 @@ describe('acquisition service', () => {
     }));
 
     const module = await import('$lib/server/acquisition-service');
-    const result = await module.cancelQueueEntry(queueEntry);
-
-    expect(result).toEqual({
-      itemId: 'job-missing',
-      message: 'The Matrix download was cancelled and unmonitored.',
-    });
-    expect(arrFetch).toHaveBeenCalledTimes(4);
-    expect(arrFetch.mock.calls[0]?.[1]).toBe('/api/v3/queue/7');
-    expect(arrFetch.mock.calls[1]?.[1]).toBe('/api/v3/queue/8');
+    await expect(module.cancelQueueEntry(queueEntry)).rejects.toThrow(
+      'This queue entry is no longer current. Refresh the queue and try again.',
+    );
+    expect(arrFetch).not.toHaveBeenCalled();
   });
 
   it('cancels only queue rows whose Sonarr episode scope overlaps the managed job', async () => {
@@ -771,5 +749,52 @@ describe('acquisition service', () => {
     await expect(module.selectManualRelease(job.id, 'guid-1', 11)).rejects.toThrow(
       'can no longer accept manual release selections',
     );
+  });
+
+  it('rejects loading manual release results once a job is completed', async () => {
+    const getManualReleaseResults = vi.fn();
+
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        ensureWorkers: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        cancelJob: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        getJob: vi.fn().mockReturnValue({
+          ...job,
+          completedAt: '2026-04-13T12:10:00.000Z',
+          reasonCode: 'validated',
+          status: 'completed',
+          validationSummary: 'Ready to watch.',
+        }),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      getAcquisitionJobsResponse: vi.fn(),
+      listQueueAcquisitionJobs: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-validator-shared', () => ({
+      fetchQueueRecords: vi.fn().mockResolvedValue([]),
+      queueRecordArrItemId: vi.fn(),
+      queueRecordId: vi.fn().mockReturnValue(null),
+    }));
+    vi.doMock('$lib/server/acquisition-selection', () => ({
+      findManualReleaseSelection: vi.fn(),
+      getManualReleaseResults,
+      persistManualSelection: vi.fn(),
+    }));
+
+    const module = await import('$lib/server/acquisition-service');
+
+    await expect(module.getManualReleaseResults(job.id)).rejects.toThrow(
+      'can no longer accept manual release selections',
+    );
+    expect(getManualReleaseResults).not.toHaveBeenCalled();
   });
 });

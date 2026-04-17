@@ -14,16 +14,8 @@ function queueCancelTargetQueueId(target: QueueCancelRequest): number | null {
   return target.kind === 'external' ? target.queueId : null;
 }
 
-function sanitizeNumberArray(value: unknown): number[] | null {
-  const normalized = [...new Set(
-    asArray(value)
-      .map((entry) => asNumber(entry))
-      .filter((entry): entry is number => entry !== null)
-      .map((entry) => Math.trunc(entry))
-      .filter((entry) => entry >= 0),
-  )].sort((left, right) => left - right);
-
-  return normalized.length > 0 ? normalized : null;
+function queueCancelTargetService(target: QueueCancelRequest): 'radarr' | 'sonarr' | null {
+  return target.kind === 'external' ? target.sourceService : null;
 }
 
 export const POST = async ({ request }: { request: Request }) => {
@@ -42,37 +34,13 @@ export const POST = async ({ request }: { request: Request }) => {
 
   if (kind === 'managed') {
     const jobId = asString(payload.jobId);
-    const currentRelease =
-      payload.currentRelease === null || payload.currentRelease === undefined
-        ? null
-        : asString(payload.currentRelease);
-    const sourceService =
-      payload.sourceService === 'radarr' || payload.sourceService === 'sonarr'
-        ? payload.sourceService
-        : null;
-    const targetEpisodeIds = sanitizeNumberArray(payload.targetEpisodeIds);
-    const targetSeasonNumbers = sanitizeNumberArray(payload.targetSeasonNumbers);
-    const title = asString(payload.title);
-
-    if (
-      !jobId ||
-      arrItemId === null ||
-      arrItemId === undefined ||
-      !sourceService ||
-      !title
-    ) {
+    if (!jobId) {
       throw error(400, 'A cancelable managed queue entry is required.');
     }
 
     cancelTarget = {
       kind: 'managed',
       jobId,
-      arrItemId,
-      currentRelease,
-      sourceService,
-      targetEpisodeIds,
-      targetSeasonNumbers,
-      title,
     };
   } else if (kind === 'external') {
     const id = asString(payload.id);
@@ -104,7 +72,7 @@ export const POST = async ({ request }: { request: Request }) => {
     itemId: queueCancelTargetId(target),
     kind: target.kind,
     queueId: queueCancelTargetQueueId(target),
-    service: target.sourceService,
+    service: queueCancelTargetService(target),
   });
 
   try {
@@ -113,21 +81,27 @@ export const POST = async ({ request }: { request: Request }) => {
       itemId: queueCancelTargetId(target),
       kind: target.kind,
       queueId: queueCancelTargetQueueId(target),
-      service: target.sourceService,
+      service: queueCancelTargetService(target),
     });
     return json(result);
   } catch (requestError) {
     const message = getErrorMessage(requestError, 'Unable to cancel the selected download.');
+    const status =
+      message.includes('was not found')
+        ? 404
+        : message.includes('no longer current')
+          ? 409
+          : 500;
     logger.error('Queue cancel request failed', {
       itemId: queueCancelTargetId(target),
       kind: target.kind,
       queueId: queueCancelTargetQueueId(target),
-      service: target.sourceService,
+      service: queueCancelTargetService(target),
       ...toErrorLogContext(requestError),
     });
 
     return new Response(message, {
-      status: 500,
+      status,
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
       },

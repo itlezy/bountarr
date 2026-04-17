@@ -353,12 +353,6 @@ export type QueueCancelRequest =
   | {
       kind: 'managed';
       jobId: string;
-      arrItemId: number;
-      currentRelease: string | null;
-      sourceService: 'radarr' | 'sonarr';
-      targetEpisodeIds: number[] | null;
-      targetSeasonNumbers: number[] | null;
-      title: string;
     }
   | {
       kind: 'external';

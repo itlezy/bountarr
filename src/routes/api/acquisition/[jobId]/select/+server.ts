@@ -40,6 +40,12 @@ export const POST = async ({
     return json(result);
   } catch (requestError) {
     const message = getErrorMessage(requestError, 'Unable to select the requested release.');
+    const status =
+      message.includes('was not found') || message.includes('no longer available')
+        ? 404
+        : message.includes('can no longer accept manual release selections')
+          ? 409
+          : 500;
     logger.error('Acquisition manual-select request failed', {
       guid,
       indexerId,
@@ -48,8 +54,7 @@ export const POST = async ({
     });
 
     return new Response(message, {
-      status:
-        message.includes('was not found') || message.includes('no longer available') ? 404 : 500,
+      status,
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
       },
