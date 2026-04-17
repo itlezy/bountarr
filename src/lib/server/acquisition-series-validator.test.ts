@@ -53,26 +53,61 @@ describe('validateSeriesAttempt', () => {
       fetchQueueRecords: vi.fn().mockResolvedValue([
         {
           id: 7,
+          episode: {
+            id: 101,
+            seasonNumber: 1,
+            title: 'Kassa',
+          },
           seriesId: 701,
-          status: 'Downloading',
           trackedDownloadStatus: 'downloading',
           size: 1000,
           sizeleft: 750,
-          title: 'Andor',
+          title: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+          series: {
+            id: 701,
+            title: 'Andor',
+            year: 2022,
+          },
         },
         {
           id: 8,
+          episode: {
+            id: 102,
+            seasonNumber: 1,
+            title: 'That Would Be Me',
+          },
           seriesId: 701,
           status: 'Downloading',
           trackedDownloadStatus: 'downloading',
           size: 1000,
           sizeleft: 250,
-          title: 'Andor',
+          title: 'Andor.S01E02.1080p.WEB-DL-FLUX',
+          series: {
+            id: 701,
+            title: 'Andor',
+            year: 2022,
+          },
+        },
+        {
+          id: 9,
+          episode: {
+            id: 201,
+            seasonNumber: 2,
+            title: 'One Year Later',
+          },
+          seriesId: 701,
+          status: 'Downloading',
+          trackedDownloadStatus: 'downloading',
+          size: 1000,
+          sizeleft: 100,
+          title: 'Andor.S02E01.1080p.WEB-DL-FLUX',
+          series: {
+            id: 701,
+            title: 'Andor',
+            year: 2022,
+          },
         },
       ]),
-      findQueueRecordsForArrItem: vi.fn().mockImplementation((records: Array<Record<string, unknown>>, _service: string, arrItemId: number) =>
-        records.filter((record) => record.seriesId === arrItemId),
-      ),
       historySince: vi.fn().mockImplementation((records: Array<Record<string, unknown>>) => records),
     }));
     vi.doMock('$lib/server/lookup-service', () => ({
@@ -141,7 +176,6 @@ describe('validateSeriesAttempt', () => {
         },
       ]),
       fetchQueueRecords: vi.fn().mockResolvedValue([]),
-      findQueueRecordsForArrItem: vi.fn().mockReturnValue([]),
       historySince: vi.fn().mockImplementation((records: Array<Record<string, unknown>>) => records),
     }));
     vi.doMock('$lib/server/lookup-service', () => ({
@@ -170,5 +204,69 @@ describe('validateSeriesAttempt', () => {
     expect(fetchEpisodeFile).toHaveBeenCalledTimes(2);
     expect(fetchEpisodeFile).toHaveBeenNthCalledWith(1, 5001);
     expect(fetchEpisodeFile).toHaveBeenNthCalledWith(2, 5002);
+  });
+
+  it('ignores unrelated same-series queue rows when reporting targeted validation progress', async () => {
+    vi.doMock('$lib/server/acquisition-validator-shared', () => ({
+      fetchHistoryRecords: vi.fn().mockResolvedValue([]),
+      fetchQueueRecords: vi.fn().mockResolvedValue([
+        {
+          id: 10,
+          seasonNumbers: [1],
+          series: {
+            id: 701,
+            title: 'Andor',
+            year: 2022,
+          },
+          seriesId: 701,
+          size: 4000,
+          sizeleft: 2000,
+          status: 'Downloading',
+          title: 'Andor.S01.1080p.WEB-DL-FLUX',
+        },
+        {
+          id: 11,
+          episode: {
+            id: 201,
+            seasonNumber: 2,
+            title: 'One Year Later',
+          },
+          series: {
+            id: 701,
+            title: 'Andor',
+            year: 2022,
+          },
+          seriesId: 701,
+          size: 1000,
+          sizeleft: 50,
+          status: 'Downloading',
+          title: 'Andor.S02E01.1080p.WEB-DL-FLUX',
+        },
+      ]),
+      historySince: vi.fn().mockImplementation((records: Array<Record<string, unknown>>) => records),
+    }));
+    vi.doMock('$lib/server/lookup-service', () => ({
+      fetchEpisodeFile: vi.fn(),
+      fetchSeriesEpisodeRecords: vi.fn().mockResolvedValue([
+        { episodeFileId: 5001, id: 101, seasonNumber: 1 },
+        { episodeFileId: 5002, id: 102, seasonNumber: 1 },
+        { episodeFileId: 6001, id: 201, seasonNumber: 2 },
+      ]),
+    }));
+
+    const module = await import('$lib/server/acquisition-series-validator');
+    const result = await module.validateSeriesAttempt(
+      seriesJob,
+      '2026-04-13T12:00:00.000Z',
+    );
+
+    expect(result).toEqual({
+      outcome: 'pending',
+      preferredReleaser: null,
+      progress: 50,
+      queueStatus: 'Downloading',
+      reasonCode: null,
+      summary: null,
+    });
   });
 });

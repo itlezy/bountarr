@@ -2,12 +2,12 @@ import { jobStatusLabel } from '$lib/server/acquisition-domain';
 import {
   fetchHistoryRecords,
   fetchQueueRecords,
-  findQueueRecordsForArrItem,
   historySince,
   type ValidationProbe,
 } from '$lib/server/acquisition-validator-shared';
 import { buildManagedLiveSummary } from '$lib/server/queue-live-summary';
 import { normalizeItem, normalizeLanguageEntries } from '$lib/server/media-normalize';
+import { queueItemMatchesManagedTarget } from '$lib/server/queue-matching';
 import { normalizeQueueItem } from '$lib/server/queue-normalize';
 import { asNumber, asRecord } from '$lib/server/raw';
 import { fetchEpisodeFile, fetchSeriesEpisodeRecords } from '$lib/server/lookup-service';
@@ -62,9 +62,11 @@ export async function validateSeriesAttempt(
     fetchHistoryRecords('sonarr', job.arrItemId),
     fetchSeriesEpisodeRecords(job.arrItemId),
   ]);
-  const queueItems = findQueueRecordsForArrItem(queueRecords, 'sonarr', job.arrItemId)
+  const queueItems = queueRecords
     .map((record) => normalizeQueueItem('sonarr', record))
-    .filter((item): item is QueueItem => item !== null);
+    .filter(
+      (item): item is QueueItem => item !== null && queueItemMatchesManagedTarget(job, item),
+    );
   const relevantHistory = historySince(historyRecords, attemptStart, job.currentRelease);
   const historyEpisodeFileIds = new Set(
     relevantHistory
