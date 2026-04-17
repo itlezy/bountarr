@@ -35,6 +35,18 @@ const job: PersistedAcquisitionJob = {
   failedGuids: [],
 };
 
+const seriesJob: PersistedAcquisitionJob = {
+  ...job,
+  id: 'job-2',
+  itemId: 'series:83867',
+  arrItemId: 83867,
+  kind: 'series',
+  title: 'Andor',
+  sourceService: 'sonarr',
+  targetSeasonNumbers: [1],
+  targetEpisodeIds: [101, 102],
+};
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -109,6 +121,75 @@ describe('acquisition selection', () => {
 
     await expect(findManualReleaseSelection(job, 'guid-rejected', 12)).rejects.toThrow(
       'Rejected by Arr custom format rules',
+    );
+  });
+
+  it('marks scope-mismatched series releases as not selectable in manual results', async () => {
+    vi.spyOn(arrClient, 'arrFetch').mockResolvedValue([
+      {
+        guid: 'guid-right-season',
+        indexerId: 11,
+        indexer: 'Indexer',
+        title: 'Andor.S01.1080p.WEB-DL-FLUX',
+        seriesTitles: 'Andor',
+        mappedSeriesId: 83867,
+        languages: [{ name: 'English' }],
+        qualityWeight: 70,
+        releaseWeight: 70,
+        customFormatScore: 0,
+        size: 8_000_000_000,
+        protocol: 'torrent',
+        downloadAllowed: true,
+      },
+      {
+        guid: 'guid-wrong-season',
+        indexerId: 12,
+        indexer: 'Indexer',
+        title: 'Andor.S02.1080p.WEB-DL-FLUX',
+        seriesTitles: 'Andor',
+        mappedSeriesId: 83867,
+        languages: [{ name: 'English' }],
+        qualityWeight: 80,
+        releaseWeight: 80,
+        customFormatScore: 0,
+        size: 8_500_000_000,
+        protocol: 'torrent',
+        downloadAllowed: true,
+      },
+    ]);
+
+    const results = await getManualReleaseResults(seriesJob);
+    const wrongSeason = results.releases.find((release) => release.guid === 'guid-wrong-season');
+
+    expect(wrongSeason).toMatchObject({
+      canSelect: false,
+      scopeStatus: 'mismatch',
+      selectionBlockedReason: 'Release scope targets different seasons.',
+      status: 'locally-rejected',
+    });
+  });
+
+  it('rejects manual selection for releases outside the targeted series scope', async () => {
+    vi.spyOn(arrClient, 'arrFetch').mockResolvedValue([
+      {
+        guid: 'guid-wrong-season',
+        indexerId: 12,
+        indexer: 'Indexer',
+        title: 'Andor.S02.1080p.WEB-DL-FLUX',
+        seriesTitles: 'Andor',
+        mappedSeriesId: 83867,
+        languages: [{ name: 'English' }],
+        qualityWeight: 80,
+        releaseWeight: 80,
+        customFormatScore: 0,
+        size: 8_500_000_000,
+        protocol: 'torrent',
+        downloadAllowed: true,
+      },
+    ]);
+
+    await expect(findManualReleaseSelection(seriesJob, 'guid-wrong-season', 12)).rejects.toThrow(
+      'Release scope targets different seasons.',
     );
   });
 });

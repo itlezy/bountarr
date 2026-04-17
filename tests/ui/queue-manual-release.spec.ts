@@ -385,6 +385,9 @@ test('manual release dialog shows title-mismatch warnings while still allowing m
           title: 'Who.Am.I.1998.1080p.WEBRip.DD2.0.x264-NTb',
           identityReason: 'Structured movie titles point to a different title: Who Am I',
           identityStatus: 'mismatch',
+          scopeReason: null,
+          scopeStatus: 'not-applicable',
+          selectionBlockedReason: null,
           reason: 'Preferred releaser NTB would normally score highest.',
           status: 'locally-rejected',
         },
@@ -401,4 +404,35 @@ test('manual release dialog shows title-mismatch warnings while still allowing m
     dialog.getByText('Structured movie titles point to a different title: Who Am I'),
   ).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Select release' })).toBeEnabled();
+});
+
+test('manual release dialog blocks releases that are outside the targeted series scope', async ({
+  page,
+}) => {
+  const api = await mockAppApi(page, {
+    queue: buildQueueResponse(),
+    manualReleaseResponse: () => ({
+      ...manualReleaseListFixture,
+      releases: [
+        {
+          ...manualReleaseFixture,
+          title: 'Andor.S02.1080p.WEB-DL-FLUX',
+          canSelect: false,
+          reason: 'Preferred releaser FLUX would normally score highest.',
+          scopeReason: 'Release scope targets different seasons.',
+          scopeStatus: 'mismatch',
+          selectionBlockedReason: 'Release scope targets different seasons.',
+          status: 'locally-rejected',
+        },
+      ],
+      summary: 'One release is available, but it does not match the targeted scope safely.',
+    }),
+  });
+
+  await openQueue(page, api);
+  const dialog = await openManualReleaseModal(page);
+
+  await expect(dialog.getByText(/Scope mismatch:/)).toBeVisible();
+  await expect(dialog.getByText('Release scope targets different seasons.')).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Out of scope' })).toBeDisabled();
 });

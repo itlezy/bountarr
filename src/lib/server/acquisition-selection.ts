@@ -105,7 +105,23 @@ function canSelectManualRelease(
   release: EvaluatedRelease,
   selectedGuid: string | null,
 ): boolean {
-  return !release.arrRejected && release.candidate.guid !== selectedGuid;
+  return (
+    !release.arrRejected &&
+    manualSelectionBlockedReason(release) === null &&
+    release.candidate.guid !== selectedGuid
+  );
+}
+
+function manualSelectionBlockedReason(release: EvaluatedRelease): string | null {
+  if (release.arrRejected) {
+    return null;
+  }
+
+  if (release.scopeStatus === 'mismatch') {
+    return release.scopeReason ?? 'This release is outside the targeted scope for the active grab.';
+  }
+
+  return null;
 }
 
 function toManualReleaseResult(
@@ -119,6 +135,9 @@ function toManualReleaseResult(
     downloadAllowed: !release.arrRejected || release.rejectionReasons.length === 0,
     identityReason: release.identityReason,
     identityStatus: release.identityStatus,
+    scopeReason: release.scopeReason,
+    scopeStatus: release.scopeStatus,
+    selectionBlockedReason: manualSelectionBlockedReason(release),
     rejectedByArr: release.arrRejected,
     rejectionReasons: release.rejectionReasons,
     status: mapManualReleaseStatus(release, selectedGuid, failedGuids),
@@ -220,6 +239,11 @@ export async function findManualReleaseSelection(
     throw new Error(
       rejectionReason,
     );
+  }
+
+  const blockedReason = manualSelectionBlockedReason(matched);
+  if (blockedReason) {
+    throw new Error(blockedReason);
   }
 
   const selection = {

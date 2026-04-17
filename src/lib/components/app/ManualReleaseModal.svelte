@@ -1,7 +1,8 @@
 <script lang="ts">
-import type { AppState } from '$lib/client/app-state.svelte';
-import { formatBytes, manualReleaseStatusLabel, manualReleaseStatusTone } from '$lib/client/app-ui';
-import OverlayDialog from '$lib/components/app/OverlayDialog.svelte';
+  import type { AppState } from '$lib/client/app-state.svelte';
+  import { formatBytes, manualReleaseStatusLabel, manualReleaseStatusTone } from '$lib/client/app-ui';
+  import OverlayDialog from '$lib/components/app/OverlayDialog.svelte';
+  import type { ManualReleaseResult } from '$lib/shared/types';
 
 let { state }: { state: AppState } = $props();
 
@@ -11,6 +12,33 @@ const releaseList = $derived(activeJobId ? state.manualReleaseList(activeJobId) 
 const releaseError = $derived(activeJobId ? state.manualReleaseError[activeJobId] : null);
 const selectionError = $derived(activeJobId ? state.manualSelectionError[activeJobId] : null);
 const isLoading = $derived(activeJobId ? state.manualReleaseLoading[activeJobId] === true : false);
+
+function manualReleaseActionLabel(
+  release: ManualReleaseResult,
+  selecting: boolean,
+): string {
+  if (selecting) {
+    return 'Selecting...';
+  }
+
+  if (release.status === 'selected') {
+    return 'Selected';
+  }
+
+  if (!release.canSelect) {
+    if (release.rejectedByArr) {
+      return 'Not downloadable';
+    }
+
+    if (release.scopeStatus === 'mismatch') {
+      return 'Out of scope';
+    }
+
+    return 'Unavailable';
+  }
+
+  return 'Select release';
+}
 </script>
 
 {#if activeJobId}
@@ -89,6 +117,16 @@ const isLoading = $derived(activeJobId ? state.manualReleaseLoading[activeJobId]
                       Title mismatch: {release.identityReason}
                     </div>
                   {/if}
+                  {#if release.scopeStatus === 'mismatch' && release.scopeReason}
+                    <div class="mt-2 overflow-safe-text rounded-[14px] border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-200">
+                      Scope mismatch: {release.scopeReason}
+                    </div>
+                  {/if}
+                  {#if release.selectionBlockedReason && !release.rejectedByArr && release.scopeStatus !== 'mismatch'}
+                    <div class="mt-2 overflow-safe-text text-sm text-[var(--muted)]">
+                      {release.selectionBlockedReason}
+                    </div>
+                  {/if}
                   {#if release.rejectionReasons.length > 0}
                     <div class="mt-2 overflow-safe-text text-sm text-[var(--muted)]">
                       Arr: {release.rejectionReasons.join('; ')}
@@ -106,13 +144,7 @@ const isLoading = $derived(activeJobId ? state.manualReleaseLoading[activeJobId]
                         state.deletingItemId === activeJobId
                       }
                     >
-                      {#if state.manualSelectingJobId === activeJobId}
-                        Selecting...
-                      {:else if !release.canSelect}
-                        {release.status === 'selected' ? 'Selected' : 'Not downloadable'}
-                      {:else}
-                        Select release
-                      {/if}
+                      {manualReleaseActionLabel(release, state.manualSelectingJobId === activeJobId)}
                     </button>
                   </div>
                 </article>

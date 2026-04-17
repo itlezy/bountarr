@@ -10,6 +10,7 @@ import type {
   ReleaseDecision,
   ReleaseDecisionCandidate,
   ReleaseIdentityStatus,
+  ReleaseScopeStatus,
 } from '$lib/shared/types';
 
 type ReleaseSelection = {
@@ -26,6 +27,8 @@ export type EvaluatedRelease = {
   identityStatus: ReleaseIdentityStatus;
   payload: Record<string, unknown>;
   rejectionReasons: string[];
+  scopeReason: string | null;
+  scopeStatus: ReleaseScopeStatus;
 };
 
 type ReleaseSelectionOptions = {
@@ -358,12 +361,20 @@ function classifyTitleIdentity(
 function classifyIdentity(
   release: Record<string, unknown>,
   options: ReleaseSelectionOptions,
-): { autoSelectable: boolean; reason: string; status: ReleaseIdentityStatus } {
+): {
+  autoSelectable: boolean;
+  reason: string;
+  scopeReason: string | null;
+  scopeStatus: ReleaseScopeStatus;
+  status: ReleaseIdentityStatus;
+} {
   const titleIdentity = classifyTitleIdentity(release, options);
   if (titleIdentity.status === 'mismatch') {
     return {
       ...titleIdentity,
       autoSelectable: false,
+      scopeReason: null,
+      scopeStatus: 'not-applicable',
     };
   }
 
@@ -374,6 +385,8 @@ function classifyIdentity(
     return {
       ...titleIdentity,
       autoSelectable: true,
+      scopeReason: null,
+      scopeStatus: 'not-applicable',
     };
   }
 
@@ -383,6 +396,8 @@ function classifyIdentity(
     return {
       autoSelectable: false,
       reason: `${titleIdentity.reason}; ${scopeMatch.reason}`,
+      scopeReason: scopeMatch.reason,
+      scopeStatus: scopeMatch.status,
       status: 'mismatch',
     };
   }
@@ -391,15 +406,20 @@ function classifyIdentity(
     return {
       autoSelectable: true,
       reason: `${titleIdentity.reason}; ${scopeMatch.reason}`,
+      scopeReason: scopeMatch.reason,
+      scopeStatus: scopeMatch.status,
       status: titleIdentity.status,
     };
   }
 
   const releaseTitle = asString(release.title);
   if (titleSuggestsCompleteSeriesPack(releaseTitle)) {
+    const scopeReason = 'Release looks like a complete-series pack outside the targeted scope.';
     return {
       autoSelectable: false,
-      reason: `${titleIdentity.reason}; release looks like a complete-series pack outside the targeted scope`,
+      reason: `${titleIdentity.reason}; ${scopeReason}`,
+      scopeReason,
+      scopeStatus: 'mismatch',
       status: 'mismatch',
     };
   }
@@ -407,6 +427,8 @@ function classifyIdentity(
   return {
     autoSelectable: false,
     reason: `${titleIdentity.reason}; ${scopeMatch.reason}`,
+    scopeReason: scopeMatch.reason,
+    scopeStatus: scopeMatch.status,
     status: 'weak-match',
   };
 }
@@ -612,6 +634,8 @@ function buildCandidate(
     identityStatus: identity.status,
     payload: release,
     rejectionReasons: releaseRejectionReasons,
+    scopeReason: identity.scopeReason,
+    scopeStatus: identity.scopeStatus,
   };
 }
 

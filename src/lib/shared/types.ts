@@ -173,6 +173,7 @@ export interface ReleaseDecisionCandidate {
 }
 
 export type ReleaseIdentityStatus = 'exact-match' | 'weak-match' | 'mismatch';
+export type ReleaseScopeStatus = 'not-applicable' | 'exact' | 'partial' | 'mismatch' | 'unknown';
 
 export type ManualReleaseStatus =
   | 'selected'
@@ -186,6 +187,9 @@ export interface ManualReleaseResult extends ReleaseDecisionCandidate {
   downloadAllowed: boolean;
   identityReason: string;
   identityStatus: ReleaseIdentityStatus;
+  scopeReason: string | null;
+  scopeStatus: ReleaseScopeStatus;
+  selectionBlockedReason: string | null;
   rejectedByArr: boolean;
   rejectionReasons: string[];
   status: ManualReleaseStatus;
