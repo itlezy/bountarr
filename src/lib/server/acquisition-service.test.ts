@@ -677,11 +677,182 @@ describe('acquisition service', () => {
     const module = await import('$lib/server/acquisition-service');
     const result = await module.cancelAcquisitionJob(seriesJob.id);
 
-    expect(result.message).toBe('Andor download was cancelled and unmonitored.');
+    expect(result.message).toBe(
+      'Andor grab was cancelled and unmonitored, but no matching Arr queue rows were found. Refresh the queue if a live download is still running.',
+    );
     expect(cancelJob).toHaveBeenCalledWith(seriesJob);
     expect(arrFetch).toHaveBeenCalledTimes(2);
     expect(arrFetch.mock.calls[0]?.[1]).toBe('/api/v3/series/83867');
     expect(arrFetch.mock.calls[1]?.[1]).toBe('/api/v3/series/83867');
+  });
+
+  it('reports when a queued managed grab is cancelled before Arr creates a live queue row', async () => {
+    const queuedSeriesJob: AcquisitionJob = {
+      ...job,
+      id: 'job-series-pre-live',
+      itemId: 'series:83867',
+      arrItemId: 83867,
+      kind: 'series',
+      title: 'Andor',
+      sourceService: 'sonarr',
+      status: 'queued',
+      queueStatus: 'Queued',
+      currentRelease: null,
+      targetSeasonNumbers: [1],
+      targetEpisodeIds: [101, 102],
+    };
+    const cancelledSeriesJob: AcquisitionJob = {
+      ...cancelledJob,
+      id: queuedSeriesJob.id,
+      itemId: queuedSeriesJob.itemId,
+      arrItemId: queuedSeriesJob.arrItemId,
+      kind: queuedSeriesJob.kind,
+      title: queuedSeriesJob.title,
+      sourceService: queuedSeriesJob.sourceService,
+      currentRelease: queuedSeriesJob.currentRelease,
+      targetSeasonNumbers: queuedSeriesJob.targetSeasonNumbers,
+      targetEpisodeIds: queuedSeriesJob.targetEpisodeIds,
+    };
+    const cancelJob = vi.fn().mockReturnValue(cancelledSeriesJob);
+    const arrFetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        id: 83867,
+        monitored: true,
+        seasons: [{ seasonNumber: 1, monitored: true }],
+      })
+      .mockResolvedValueOnce({});
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        ensureWorkers: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        cancelJob,
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        getJob: vi.fn().mockReturnValue(queuedSeriesJob),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      getAcquisitionJobsResponse: vi.fn(),
+      listQueueAcquisitionJobs: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-validator-shared', () => ({
+      fetchQueueRecords: vi.fn().mockResolvedValue([]),
+      queueRecordArrItemId: vi.fn(),
+      queueRecordId: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-selection', () => ({
+      findManualReleaseSelection: vi.fn(),
+      getManualReleaseResults: vi.fn(),
+    }));
+
+    const module = await import('$lib/server/acquisition-service');
+    const result = await module.cancelAcquisitionJob(queuedSeriesJob.id);
+
+    expect(result.message).toBe(
+      'Andor grab was cancelled and unmonitored before Arr created a live queue entry.',
+    );
+    expect(cancelJob).toHaveBeenCalledWith(queuedSeriesJob);
+    expect(arrFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('warns when a managed grab is cancelled but no matching live Arr queue rows are found', async () => {
+    const activeSeriesJob: AcquisitionJob = {
+      ...job,
+      id: 'job-series-ambiguous-live-row',
+      itemId: 'series:83867',
+      arrItemId: 83867,
+      kind: 'series',
+      title: 'Andor',
+      sourceService: 'sonarr',
+      status: 'grabbing',
+      queueStatus: 'Downloading',
+      currentRelease: 'Andor.S01.1080p.WEB-DL-FLUX',
+      targetSeasonNumbers: [1],
+      targetEpisodeIds: [101, 102],
+    };
+    const cancelledSeriesJob: AcquisitionJob = {
+      ...cancelledJob,
+      id: activeSeriesJob.id,
+      itemId: activeSeriesJob.itemId,
+      arrItemId: activeSeriesJob.arrItemId,
+      kind: activeSeriesJob.kind,
+      title: activeSeriesJob.title,
+      sourceService: activeSeriesJob.sourceService,
+      currentRelease: activeSeriesJob.currentRelease,
+      targetSeasonNumbers: activeSeriesJob.targetSeasonNumbers,
+      targetEpisodeIds: activeSeriesJob.targetEpisodeIds,
+    };
+    const cancelJob = vi.fn().mockReturnValue(cancelledSeriesJob);
+    const arrFetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        id: 83867,
+        monitored: true,
+        seasons: [{ seasonNumber: 1, monitored: true }],
+      })
+      .mockResolvedValueOnce({});
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        ensureWorkers: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        cancelJob,
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        getJob: vi.fn().mockReturnValue(activeSeriesJob),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      getAcquisitionJobsResponse: vi.fn(),
+      listQueueAcquisitionJobs: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-validator-shared', () => ({
+      fetchQueueRecords: vi.fn().mockResolvedValue([
+        {
+          id: 11,
+          series: {
+            id: 83867,
+            title: 'Andor',
+            year: 2022,
+          },
+          seriesId: 83867,
+          title: 'Andor.Release.Alpha.2026-REPACK',
+        },
+      ]),
+      queueRecordArrItemId: vi.fn(),
+      queueRecordId: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-selection', () => ({
+      findManualReleaseSelection: vi.fn(),
+      getManualReleaseResults: vi.fn(),
+    }));
+
+    const module = await import('$lib/server/acquisition-service');
+    const result = await module.cancelAcquisitionJob(activeSeriesJob.id);
+
+    expect(result.message).toBe(
+      'Andor grab was cancelled and unmonitored, but no matching Arr queue rows were found. Refresh the queue if a live download is still running.',
+    );
+    expect(cancelJob).toHaveBeenCalledWith(activeSeriesJob);
+    expect(arrFetch).toHaveBeenCalledTimes(2);
   });
 
   it('removes local jobs when the Arr item is already missing during delete', async () => {

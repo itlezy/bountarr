@@ -172,6 +172,25 @@ function manualReleaseConflictMessage(job: {
   return `Acquisition job ${job.id} can no longer accept manual release selections.`;
 }
 
+function managedCancelMessage(
+  job: Pick<MediaItem, 'title'> & { status: AcquisitionStatus },
+  deletedQueueEntries: number,
+): string {
+  if (deletedQueueEntries > 0) {
+    return `${job.title} download was cancelled and unmonitored.`;
+  }
+
+  if (
+    job.status === 'queued' ||
+    job.status === 'searching' ||
+    job.status === 'retrying'
+  ) {
+    return `${job.title} grab was cancelled and unmonitored before Arr created a live queue entry.`;
+  }
+
+  return `${job.title} grab was cancelled and unmonitored, but no matching Arr queue rows were found. Refresh the queue if a live download is still running.`;
+}
+
 async function findQueueEntryIdsForArrItem(
   service: 'radarr' | 'sonarr',
   arrItemId: number,
@@ -288,7 +307,7 @@ export async function cancelAcquisitionJob(jobId: string): Promise<AcquisitionJo
     throw new Error(`Acquisition job ${jobId} was not found.`);
   }
 
-  await deleteQueueEntries(
+  const deletedQueueEntries = await deleteQueueEntries(
     job.sourceService,
     await findQueueEntryIdsForManagedTarget(job),
   );
@@ -297,7 +316,7 @@ export async function cancelAcquisitionJob(jobId: string): Promise<AcquisitionJo
 
   return {
     job: cancelled,
-    message: `${job.title} download was cancelled and unmonitored.`,
+    message: managedCancelMessage(job, deletedQueueEntries),
   };
 }
 
