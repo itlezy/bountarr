@@ -221,7 +221,7 @@ describe('acquisition selection', () => {
     expect(partialTarget).toMatchObject({
       canSelect: false,
       scopeStatus: 'partial',
-      selectionBlockedReason: 'Release scope overlaps the targeted episodes but does not match exactly.',
+      selectionBlockedReason: 'Release scope only covers part of the targeted seasons.',
       status: 'locally-rejected',
     });
   });
@@ -248,7 +248,7 @@ describe('acquisition selection', () => {
     ]);
 
     await expect(findManualReleaseSelection(seriesJob, 'guid-partial-target', 13)).rejects.toThrow(
-      'Release scope overlaps the targeted episodes but does not match exactly.',
+      'Release scope only covers part of the targeted seasons.',
     );
   });
 

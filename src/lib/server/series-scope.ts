@@ -4,6 +4,7 @@ import { asArray, asNumber, asRecord } from '$lib/server/raw';
 
 export type SeriesScope = {
   episodeIds: number[] | null;
+  episodeScopedHint?: boolean;
   seasonNumbers: number[] | null;
 };
 
@@ -39,6 +40,15 @@ function overlaps(left: number[] | null, right: number[] | null): boolean {
   return left.some((value) => rightSet.has(value));
 }
 
+function isSubset(left: number[] | null, right: number[] | null): boolean {
+  if (!left || !right) {
+    return false;
+  }
+
+  const rightSet = new Set(right);
+  return left.every((value) => rightSet.has(value));
+}
+
 function seriesEpisodeRecords(raw: Record<string, unknown>): Record<string, unknown>[] {
   const records = asArray(raw.episodes).map(asRecord);
   const singleEpisode = asRecord(raw.episode);
@@ -69,6 +79,16 @@ function titleSeasonNumbers(value: string | null): number[] {
   return uniqueSortedNumbers(seasonNumbers) ?? [];
 }
 
+function titleLooksEpisodeScoped(value: string | null): boolean {
+  if (!value) {
+    return false;
+  }
+
+  return /\bs\d{1,2}e\d{1,3}(?:[ ._-]*e?\d{1,3})*\b|\b\d{1,2}x\d{1,3}(?:[ ._-]*\d{1,3})*\b/iu.test(
+    value,
+  );
+}
+
 export function normalizeNumberArray(value: number[] | null | undefined): number[] | null {
   return uniqueSortedNumbers(value ?? []);
 }
@@ -79,6 +99,7 @@ export function scopeFromTarget(value: {
 }): SeriesScope {
   return {
     episodeIds: normalizeNumberArray(value.targetEpisodeIds),
+    episodeScopedHint: false,
     seasonNumbers: normalizeNumberArray(value.targetSeasonNumbers),
   };
 }
@@ -114,6 +135,13 @@ export function extractSeriesScope(rawValue: unknown): SeriesScope {
 
   return {
     episodeIds,
+    episodeScopedHint:
+      episodeIds !== null ||
+      episodeRecords.length > 0 ||
+      titleLooksEpisodeScoped(typeof raw.title === 'string' ? raw.title : null) ||
+      titleLooksEpisodeScoped(typeof raw.sourceTitle === 'string' ? raw.sourceTitle : null) ||
+      titleLooksEpisodeScoped(typeof raw.releaseTitle === 'string' ? raw.releaseTitle : null) ||
+      titleLooksEpisodeScoped(typeof raw.detail === 'string' ? raw.detail : null),
     seasonNumbers,
   };
 }
@@ -146,6 +174,51 @@ export function classifySeriesScopeMatch(
     };
   }
 
+  if (candidate.seasonNumbers && target.seasonNumbers) {
+    if (sameNumbers(candidate.seasonNumbers, target.seasonNumbers)) {
+      if (candidate.episodeIds && target.episodeIds) {
+        if (sameNumbers(candidate.episodeIds, target.episodeIds)) {
+          return {
+            reason: 'Release scope matches the targeted seasons and episodes exactly.',
+            status: 'exact',
+          };
+        }
+
+        return isSubset(candidate.episodeIds, target.episodeIds)
+          ? {
+              reason: 'Release scope only covers part of the targeted seasons.',
+              status: 'partial',
+            }
+          : {
+              reason: 'Release scope matches the targeted seasons and covers the known episodes.',
+              status: 'exact',
+            };
+      }
+
+      if (candidate.episodeScopedHint && (!target.episodeIds || target.episodeIds.length !== 1)) {
+        return {
+          reason: 'Release appears to cover individual episodes within the targeted seasons.',
+          status: 'partial',
+        };
+      }
+
+      return {
+        reason: 'Release scope matches the targeted seasons exactly.',
+        status: 'exact',
+      };
+    }
+
+    return overlaps(candidate.seasonNumbers, target.seasonNumbers)
+      ? {
+          reason: 'Release scope overlaps the targeted seasons but does not match exactly.',
+          status: 'partial',
+        }
+      : {
+          reason: 'Release scope targets different seasons.',
+          status: 'mismatch',
+        };
+  }
+
   if (candidate.episodeIds && target.episodeIds) {
     if (sameNumbers(candidate.episodeIds, target.episodeIds)) {
       return {
@@ -161,25 +234,6 @@ export function classifySeriesScopeMatch(
         }
       : {
           reason: 'Release scope targets different episodes.',
-          status: 'mismatch',
-        };
-  }
-
-  if (candidate.seasonNumbers && target.seasonNumbers) {
-    if (sameNumbers(candidate.seasonNumbers, target.seasonNumbers)) {
-      return {
-        reason: 'Release scope matches the targeted seasons exactly.',
-        status: 'exact',
-      };
-    }
-
-    return overlaps(candidate.seasonNumbers, target.seasonNumbers)
-      ? {
-          reason: 'Release scope overlaps the targeted seasons but does not match exactly.',
-          status: 'partial',
-        }
-      : {
-          reason: 'Release scope targets different seasons.',
           status: 'mismatch',
         };
   }

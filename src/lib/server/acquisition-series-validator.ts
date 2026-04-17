@@ -9,7 +9,7 @@ import { buildManagedLiveSummary } from '$lib/server/queue-live-summary';
 import { normalizeItem, normalizeLanguageEntries } from '$lib/server/media-normalize';
 import { queueItemMatchesManagedTarget } from '$lib/server/queue-matching';
 import { normalizeQueueItem } from '$lib/server/queue-normalize';
-import { asNumber, asRecord } from '$lib/server/raw';
+import { asNumber, asRecord, asString } from '$lib/server/raw';
 import { fetchEpisodeFile, fetchSeriesEpisodeRecords } from '$lib/server/lookup-service';
 import type { PersistedAcquisitionJob } from '$lib/server/acquisition-domain';
 import { defaultPreferences } from '$lib/shared/preferences';
@@ -24,21 +24,30 @@ type SeriesEpisodeRecord = {
 function targetEpisodesForJob(
   job: PersistedAcquisitionJob,
   episodeRecords: Record<string, unknown>[],
+  attemptStart: string,
 ): SeriesEpisodeRecord[] {
   const targetEpisodeIds = job.targetEpisodeIds ? new Set(job.targetEpisodeIds) : null;
   const targetSeasonNumbers = job.targetSeasonNumbers ? new Set(job.targetSeasonNumbers) : null;
+  const attemptStartedAtMs = Date.parse(attemptStart);
 
   return episodeRecords
     .map((episode) => ({
+      airedAtMs: Date.parse(
+        asString(episode.airDateUtc) ?? asString(episode.airDate) ?? '',
+      ),
       episodeFileId: asNumber(episode.episodeFileId),
       episodeId: asNumber(episode.id),
       seasonNumber: asNumber(episode.seasonNumber),
     }))
     .filter(
-      (episode): episode is SeriesEpisodeRecord =>
+      (episode): episode is SeriesEpisodeRecord & { airedAtMs: number } =>
         episode.episodeId !== null &&
-        (targetEpisodeIds?.has(episode.episodeId) ??
-          (targetSeasonNumbers ? targetSeasonNumbers.has(episode.seasonNumber ?? Number.NaN) : true)),
+        (
+          targetSeasonNumbers
+            ? targetSeasonNumbers.has(episode.seasonNumber ?? Number.NaN) &&
+              (!Number.isFinite(episode.airedAtMs) || episode.airedAtMs <= attemptStartedAtMs)
+            : (targetEpisodeIds?.has(episode.episodeId) ?? true)
+        ),
     );
 }
 
@@ -73,7 +82,7 @@ export async function validateSeriesAttempt(
       .map((record) => asNumber(record.episodeFileId) ?? asNumber(asRecord(record.data).episodeFileId))
       .filter((value): value is number => value !== null && value > 0),
   );
-  const targetEpisodes = targetEpisodesForJob(job, episodeRecords);
+  const targetEpisodes = targetEpisodesForJob(job, episodeRecords, attemptStart);
   const importedTargetEpisodes = targetEpisodes.filter(
     (episode) =>
       episode.episodeFileId !== null && historyEpisodeFileIds.has(episode.episodeFileId),

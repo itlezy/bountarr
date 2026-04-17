@@ -114,9 +114,9 @@ describe('validateSeriesAttempt', () => {
     vi.doMock('$lib/server/lookup-service', () => ({
       fetchEpisodeFile,
       fetchSeriesEpisodeRecords: vi.fn().mockResolvedValue([
-        { episodeFileId: 5001, id: 101, seasonNumber: 1 },
-        { episodeFileId: 5002, id: 102, seasonNumber: 1 },
-        { episodeFileId: 6001, id: 201, seasonNumber: 2 },
+        { airDateUtc: '2026-04-01T00:00:00.000Z', episodeFileId: 5001, id: 101, seasonNumber: 1 },
+        { airDateUtc: '2026-04-08T00:00:00.000Z', episodeFileId: 5002, id: 102, seasonNumber: 1 },
+        { airDateUtc: '2026-04-15T00:00:00.000Z', episodeFileId: 6001, id: 201, seasonNumber: 2 },
       ]),
     }));
 
@@ -182,9 +182,9 @@ describe('validateSeriesAttempt', () => {
     vi.doMock('$lib/server/lookup-service', () => ({
       fetchEpisodeFile,
       fetchSeriesEpisodeRecords: vi.fn().mockResolvedValue([
-        { episodeFileId: 5001, id: 101, seasonNumber: 1 },
-        { episodeFileId: 5002, id: 102, seasonNumber: 1 },
-        { episodeFileId: 6001, id: 201, seasonNumber: 2 },
+        { airDateUtc: '2026-04-01T00:00:00.000Z', episodeFileId: 5001, id: 101, seasonNumber: 1 },
+        { airDateUtc: '2026-04-08T00:00:00.000Z', episodeFileId: 5002, id: 102, seasonNumber: 1 },
+        { airDateUtc: '2026-04-15T00:00:00.000Z', episodeFileId: 6001, id: 201, seasonNumber: 2 },
       ]),
     }));
 
@@ -249,9 +249,9 @@ describe('validateSeriesAttempt', () => {
     vi.doMock('$lib/server/lookup-service', () => ({
       fetchEpisodeFile: vi.fn(),
       fetchSeriesEpisodeRecords: vi.fn().mockResolvedValue([
-        { episodeFileId: 5001, id: 101, seasonNumber: 1 },
-        { episodeFileId: 5002, id: 102, seasonNumber: 1 },
-        { episodeFileId: 6001, id: 201, seasonNumber: 2 },
+        { airDateUtc: '2026-04-01T00:00:00.000Z', episodeFileId: 5001, id: 101, seasonNumber: 1 },
+        { airDateUtc: '2026-04-08T00:00:00.000Z', episodeFileId: 5002, id: 102, seasonNumber: 1 },
+        { airDateUtc: '2026-04-15T00:00:00.000Z', episodeFileId: 6001, id: 201, seasonNumber: 2 },
       ]),
     }));
 
@@ -269,5 +269,64 @@ describe('validateSeriesAttempt', () => {
       reasonCode: null,
       summary: null,
     });
+  });
+
+  it('uses the selected seasons as the canonical scope while excluding future unaired episodes', async () => {
+    const fetchEpisodeFile = vi
+      .fn()
+      .mockResolvedValue({
+        mediaInfo: {
+          audioLanguages: ['English'],
+          subtitles: ['English'],
+        },
+      });
+
+    vi.doMock('$lib/server/acquisition-validator-shared', () => ({
+      fetchHistoryRecords: vi.fn().mockResolvedValue([
+        {
+          date: '2026-04-13T12:05:00.000Z',
+          episodeFileId: 5001,
+          sourceTitle: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+        },
+        {
+          date: '2026-04-13T12:06:00.000Z',
+          episodeFileId: 5002,
+          sourceTitle: 'Andor.S01E02.1080p.WEB-DL-FLUX',
+        },
+        {
+          date: '2026-04-13T12:07:00.000Z',
+          episodeFileId: 5003,
+          sourceTitle: 'Andor.S01E03.1080p.WEB-DL-FLUX',
+        },
+      ]),
+      fetchQueueRecords: vi.fn().mockResolvedValue([]),
+      historySince: vi.fn().mockImplementation((records: Array<Record<string, unknown>>) => records),
+    }));
+    vi.doMock('$lib/server/lookup-service', () => ({
+      fetchEpisodeFile,
+      fetchSeriesEpisodeRecords: vi.fn().mockResolvedValue([
+        { airDateUtc: '2026-04-01T00:00:00.000Z', episodeFileId: 5001, id: 101, seasonNumber: 1 },
+        { airDateUtc: '2026-04-08T00:00:00.000Z', episodeFileId: 5002, id: 102, seasonNumber: 1 },
+        { airDateUtc: '2026-04-10T00:00:00.000Z', episodeFileId: 5003, id: 103, seasonNumber: 1 },
+        { airDateUtc: '2026-04-20T00:00:00.000Z', episodeFileId: 5004, id: 104, seasonNumber: 1 },
+      ]),
+    }));
+
+    const module = await import('$lib/server/acquisition-series-validator');
+    const result = await module.validateSeriesAttempt(
+      seriesJob,
+      '2026-04-13T12:00:00.000Z',
+    );
+
+    expect(result).toEqual({
+      outcome: 'success',
+      preferredReleaser: 'flux',
+      progress: 100,
+      queueStatus: 'Imported',
+      reasonCode: 'validated',
+      summary: 'Validated 3 targeted episodes',
+    });
+    expect(fetchEpisodeFile).toHaveBeenCalledTimes(3);
+    expect(fetchEpisodeFile).not.toHaveBeenCalledWith(5004);
   });
 });

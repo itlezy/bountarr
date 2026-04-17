@@ -176,13 +176,19 @@ function sameRequestedJob(
   >,
   requested: CreateAcquisitionJobInput,
 ): boolean {
+  const sameSeriesScope =
+    job.kind !== 'series'
+      ? true
+      : requested.targetSeasonNumbers && job.targetSeasonNumbers
+        ? sameNumbers(job.targetSeasonNumbers, requested.targetSeasonNumbers ?? null)
+        : sameNumbers(job.targetEpisodeIds, requested.targetEpisodeIds ?? null);
+
   return (
     job.kind === requested.kind &&
     job.sourceService === requested.sourceService &&
     job.preferences.preferredLanguage === requested.preferences.preferredLanguage &&
     job.preferences.subtitleLanguage === requested.preferences.subtitleLanguage &&
-    sameNumbers(job.targetSeasonNumbers, requested.targetSeasonNumbers ?? null) &&
-    sameNumbers(job.targetEpisodeIds, requested.targetEpisodeIds ?? null)
+    sameSeriesScope
   );
 }
 

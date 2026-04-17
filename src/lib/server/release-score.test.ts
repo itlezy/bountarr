@@ -347,4 +347,69 @@ describe('selectBestRelease', () => {
     expect(result.decision.selected).toBeNull();
     expect(result.decision.reason).toContain('No acceptable release');
   });
+
+  it('accepts season-matching releases that cover more known episodes than the stale target snapshot', () => {
+    const result = selectBestRelease(
+      [
+        {
+          guid: 'season-pack',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Andor.S01.1080p.WEB-DL-FLUX',
+          seriesTitles: 'Andor',
+          episodeIds: [101, 102, 103],
+          seasonNumbers: [1],
+          languages: [{ name: 'English' }],
+          qualityWeight: 120,
+          releaseWeight: 80,
+          customFormatScore: 0,
+          size: 12_000_000_000,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+      ],
+      defaultPreferences,
+      {
+        kind: 'series',
+        targetEpisodeIds: [101, 102],
+        targetSeasonNumbers: [1],
+        targetTitle: 'Andor',
+      },
+    );
+
+    expect(result.decision.selected?.guid).toBe('season-pack');
+  });
+
+  it('keeps single-episode releases out of automatic selection for season-limited grabs', () => {
+    const result = selectBestRelease(
+      [
+        {
+          guid: 'single-episode',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+          seriesTitles: 'Andor',
+          episodeIds: [101],
+          seasonNumbers: [1],
+          languages: [{ name: 'English' }],
+          qualityWeight: 140,
+          releaseWeight: 90,
+          customFormatScore: 0,
+          size: 4_000_000_000,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+      ],
+      defaultPreferences,
+      {
+        kind: 'series',
+        targetEpisodeIds: [101, 102],
+        targetSeasonNumbers: [1],
+        targetTitle: 'Andor',
+      },
+    );
+
+    expect(result.decision.selected).toBeNull();
+    expect(result.decision.reason).toContain('No acceptable release');
+  });
 });
