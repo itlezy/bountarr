@@ -863,6 +863,14 @@ export class AcquisitionJobRepository {
     this.invalidateQueueCache();
   }
 
+  deleteJob(jobId: string): void {
+    this.withTransaction(() => {
+      this.database.prepare('DELETE FROM acquisition_jobs WHERE id = ?').run(jobId);
+    });
+
+    this.invalidateQueueCache();
+  }
+
   deleteJobsByArrItem(arrItemId: number, kind: MediaKind, sourceService: ArrService): void {
     this.withTransaction(() => {
       this.database

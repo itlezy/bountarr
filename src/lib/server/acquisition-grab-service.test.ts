@@ -323,6 +323,10 @@ describe('acquisition grab service', () => {
       throw new Error(`Unexpected arrFetch path: ${path}`);
     });
     const createOrReuseActiveJob = vi.fn().mockImplementation(() => {
+      if (activeJob) {
+        return { created: false, job: activeJob };
+      }
+
       activeJob = createdJob;
       return { created: true, job: createdJob };
     });
@@ -363,7 +367,7 @@ describe('acquisition grab service', () => {
     vi.doMock('$lib/server/acquisition-job-repository', () => ({
       getAcquisitionJobRepository: () => ({
         createOrReuseActiveJob,
-        findActiveJob: vi.fn().mockImplementation(() => activeJob),
+        deleteJob: vi.fn(),
       }),
     }));
     vi.doMock('$lib/server/acquisition-query', () => ({
@@ -394,7 +398,7 @@ describe('acquisition grab service', () => {
     expect(second.job?.id).toBe(first.job?.id);
     expect(second.item.arrItemId).toBe(first.item.arrItemId);
     expect(second.message).toContain('Reusing the active alternate-release grab');
-    expect(createOrReuseActiveJob).toHaveBeenCalledTimes(1);
+    expect(createOrReuseActiveJob).toHaveBeenCalledTimes(2);
     expect(fetchExistingSeries).toHaveBeenCalledTimes(2);
   });
 
@@ -682,6 +686,182 @@ describe('acquisition grab service', () => {
     expect(result.item.requestPayload?.qualityProfileId).toBe(22);
   });
 
+  it('does not update the tracked Arr title when claiming the active job resolves to a conflicting grab', async () => {
+    const trackedSeriesItem: MediaItem = {
+      ...seriesItem,
+      arrItemId: 80,
+      canAdd: true,
+      inArr: true,
+      isExisting: true,
+      isRequested: true,
+      status: 'Already in Arr',
+    };
+    const conflictingJob: AcquisitionJob = {
+      ...createdJob,
+      preferences: {
+        preferredLanguage: 'Spanish',
+        subtitleLanguage: 'Any',
+      },
+      qualityProfileId: 11,
+      targetSeasonNumbers: [1],
+    };
+    const fetchExistingSeries = vi.fn().mockResolvedValue({
+      ...trackedSeriesItem,
+      canAdd: false,
+      requestPayload: {
+        ...seriesItem.requestPayload,
+        id: 80,
+        qualityProfileId: 11,
+      },
+      sourceService: 'sonarr',
+    } satisfies MediaItem);
+    const arrFetch = vi.fn();
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      acquisitionMaxRetries: () => 4,
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/config-service', () => ({
+      fetchServiceDefaults: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        recordJobCreated: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        enqueue: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        createOrReuseActiveJob: vi.fn().mockReturnValue({
+          created: false,
+          job: conflictingJob,
+        }),
+        deleteJob: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      findPreferredReleaser: vi.fn().mockReturnValue('flux'),
+    }));
+    vi.doMock('$lib/server/lookup-service', () => ({
+      fetchExistingMovie: vi.fn(),
+      fetchExistingSeries,
+    }));
+
+    const module = await import('$lib/server/acquisition-grab-service');
+
+    await expect(
+      module.grabItem(
+        trackedSeriesItem,
+        {
+          preferredLanguage: 'English',
+          subtitleLanguage: 'Any',
+        },
+        {
+          qualityProfileId: 22,
+          seasonNumbers: [2],
+        },
+      ),
+    ).rejects.toThrow('Cancel the current grab before starting a different one.');
+
+    expect(arrFetch).not.toHaveBeenCalled();
+  });
+
+  it('rolls back a newly claimed tracked job when the Arr quality update fails', async () => {
+    const trackedSeriesItem: MediaItem = {
+      ...seriesItem,
+      arrItemId: 80,
+      canAdd: true,
+      inArr: true,
+      isExisting: true,
+      isRequested: true,
+      status: 'Already in Arr',
+    };
+    const recordJobCreated = vi.fn();
+    const enqueue = vi.fn();
+    const deleteJob = vi.fn();
+    const fetchExistingSeries = vi.fn().mockResolvedValue({
+      ...trackedSeriesItem,
+      canAdd: false,
+      requestPayload: {
+        ...seriesItem.requestPayload,
+        id: 80,
+        qualityProfileId: 11,
+      },
+      sourceService: 'sonarr',
+    } satisfies MediaItem);
+    const arrFetch = vi.fn().mockImplementation(async (_service: string, path: string, init?: RequestInit) => {
+      if (!init && path === '/api/v3/series/80') {
+        return {
+          id: 80,
+          monitored: false,
+          qualityProfileId: 11,
+          seasons: [{ seasonNumber: 2, monitored: false }],
+        };
+      }
+
+      if (init?.method === 'PUT' && path === '/api/v3/series/80') {
+        throw new Error('Unable to update tracked quality profile');
+      }
+
+      throw new Error(`Unexpected arrFetch path: ${path}`);
+    });
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      acquisitionMaxRetries: () => 4,
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/config-service', () => ({
+      fetchServiceDefaults: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        recordJobCreated,
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        enqueue,
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        createOrReuseActiveJob: vi.fn().mockReturnValue({ created: true, job: createdJob }),
+        deleteJob,
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      findPreferredReleaser: vi.fn().mockReturnValue('flux'),
+    }));
+    vi.doMock('$lib/server/lookup-service', () => ({
+      fetchExistingMovie: vi.fn(),
+      fetchExistingSeries,
+    }));
+
+    const module = await import('$lib/server/acquisition-grab-service');
+
+    await expect(
+      module.grabItem(
+        trackedSeriesItem,
+        {
+          preferredLanguage: 'English',
+          subtitleLanguage: 'Any',
+        },
+        {
+          qualityProfileId: 22,
+          seasonNumbers: [2],
+        },
+      ),
+    ).rejects.toThrow('Unable to update tracked quality profile');
+
+    expect(deleteJob).toHaveBeenCalledWith(createdJob.id);
+    expect(recordJobCreated).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
   it('reuses an active season-scoped grab even when the stored episode snapshot drifted', async () => {
     const trackedSeriesItem: MediaItem = {
       ...seriesItem,
@@ -727,8 +907,11 @@ describe('acquisition grab service', () => {
     }));
     vi.doMock('$lib/server/acquisition-job-repository', () => ({
       getAcquisitionJobRepository: () => ({
-        createOrReuseActiveJob: vi.fn(),
-        findActiveJob: vi.fn().mockReturnValue(activeSeasonJob),
+        createOrReuseActiveJob: vi.fn().mockReturnValue({
+          created: false,
+          job: activeSeasonJob,
+        }),
+        deleteJob: vi.fn(),
       }),
     }));
     vi.doMock('$lib/server/acquisition-query', () => ({
@@ -884,8 +1067,11 @@ describe('acquisition grab service', () => {
     }));
     vi.doMock('$lib/server/acquisition-job-repository', () => ({
       getAcquisitionJobRepository: () => ({
-        createOrReuseActiveJob: vi.fn(),
-        findActiveJob: vi.fn().mockReturnValue(conflictingJob),
+        createOrReuseActiveJob: vi.fn().mockReturnValue({
+          created: false,
+          job: conflictingJob,
+        }),
+        deleteJob: vi.fn(),
       }),
     }));
     vi.doMock('$lib/server/acquisition-query', () => ({
@@ -961,8 +1147,11 @@ describe('acquisition grab service', () => {
     }));
     vi.doMock('$lib/server/acquisition-job-repository', () => ({
       getAcquisitionJobRepository: () => ({
-        createOrReuseActiveJob: vi.fn(),
-        findActiveJob: vi.fn().mockReturnValue(conflictingJob),
+        createOrReuseActiveJob: vi.fn().mockReturnValue({
+          created: false,
+          job: conflictingJob,
+        }),
+        deleteJob: vi.fn(),
       }),
     }));
     vi.doMock('$lib/server/acquisition-query', () => ({

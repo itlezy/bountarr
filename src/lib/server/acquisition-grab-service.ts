@@ -5,6 +5,7 @@ import { acquisitionMaxRetries, arrFetch } from '$lib/server/arr-client';
 import {
   AcquisitionGrabError,
   cloneJob,
+  type PersistedAcquisitionJob,
   type ArrService,
   type GrabItemOptions,
 } from '$lib/server/acquisition-domain';
@@ -380,40 +381,45 @@ async function trackedResponse(
     preferences,
     options,
   );
-  const activeJob = getAcquisitionJobRepository().findActiveJob(
-    existingArrItemId,
-    item.kind,
-    spec.service,
+  const claimedJob = claimOrReuseJob(
+    {
+      kind: item.kind,
+      title: item.title,
+    },
+    requestedJob,
   );
-  if (activeJob) {
-    assertReusableActiveJob(item, activeJob, requestedJob);
-    return {
-      existing: true,
-      item: existingItem,
-      job: cloneJob(activeJob),
-      message: `${item.title} is already tracked in ${spec.trackedName}. Reusing the active alternate-release grab.`,
-      releaseDecision: null,
-    };
-  }
 
   const currentQualityProfileId = requestedQualityProfileId(existingItem);
-  const qualityProfileUpdated =
-    (requestedJob.qualityProfileId ?? null) !== currentQualityProfileId &&
-    await updateTrackedQualityProfile(
-      spec.service,
-      existingArrItemId,
-      requestedJob.qualityProfileId ?? null,
-    );
-  const responseItem = qualityProfileUpdated
-    ? await spec.fetchExisting(existingArrItemId, preferences, item)
-    : existingItem;
+  let qualityProfileUpdated = false;
+  let responseItem = existingItem;
+  try {
+    qualityProfileUpdated =
+      (requestedJob.qualityProfileId ?? null) !== currentQualityProfileId &&
+      await updateTrackedQualityProfile(
+        spec.service,
+        existingArrItemId,
+        requestedJob.qualityProfileId ?? null,
+      );
+    responseItem = qualityProfileUpdated
+      ? await spec.fetchExisting(existingArrItemId, preferences, item)
+      : existingItem;
+  } catch (error) {
+    if (claimedJob.created) {
+      getAcquisitionJobRepository().deleteJob(claimedJob.job.id);
+    }
 
-  const { created, job } = await createOrReuseJob(requestedJob);
+    throw error;
+  }
+
+  if (claimedJob.created) {
+    startCreatedJob(claimedJob.persistedJob);
+  }
+
   return {
     existing: true,
     item: responseItem,
-    job,
-    message: created
+    job: claimedJob.job,
+    message: claimedJob.created
       ? `${item.title} is already tracked in ${spec.trackedName}. Alternate-release acquisition started.`
       : `${item.title} is already tracked in ${spec.trackedName}. Reusing the active alternate-release grab.`,
     releaseDecision: null,
@@ -484,18 +490,29 @@ async function findExistingTrackedItem(
 async function createOrReuseJob(
   requestedJob: CreateAcquisitionJobInput,
 ): Promise<{ created: boolean; job: AcquisitionJob }> {
+  const claimed = claimOrReuseJob(
+    {
+      kind: requestedJob.kind,
+      title: requestedJob.title,
+    },
+    requestedJob,
+  );
+  if (claimed.created) {
+    startCreatedJob(claimed.persistedJob);
+  }
+
+  return claimed;
+}
+
+function claimOrReuseJob(
+  item: Pick<MediaItem, 'kind' | 'title'>,
+  requestedJob: CreateAcquisitionJobInput,
+): { created: boolean; job: AcquisitionJob; persistedJob: PersistedAcquisitionJob } {
   const jobs = getAcquisitionJobRepository();
   const result = jobs.createOrReuseActiveJob(requestedJob);
 
   if (!result.created) {
-    assertReusableActiveJob(
-      {
-        kind: requestedJob.kind,
-        title: requestedJob.title,
-      },
-      result.job,
-      requestedJob,
-    );
+    assertReusableActiveJob(item, result.job, requestedJob);
     logger.info('Reusing existing acquisition job', {
       arrItemId: requestedJob.arrItemId,
       itemTitle: result.job.title,
@@ -503,18 +520,18 @@ async function createOrReuseJob(
       kind: result.job.kind,
       service: result.job.sourceService,
     });
-    return {
-      created: false,
-      job: cloneJob(result.job),
-    };
   }
 
-  getAcquisitionLifecycle().recordJobCreated(result.job);
-  getAcquisitionRunner().enqueue(result.job.id);
   return {
-    created: true,
+    created: result.created,
     job: cloneJob(result.job),
+    persistedJob: result.job,
   };
+}
+
+function startCreatedJob(job: PersistedAcquisitionJob): void {
+  getAcquisitionLifecycle().recordJobCreated(job);
+  getAcquisitionRunner().enqueue(job.id);
 }
 
 async function grabTrackedItem(
