@@ -216,6 +216,18 @@ function buildManagedLiveSummary(items: QueueItem[]): ManagedQueueLiveSummary | 
   };
 }
 
+function queueEntryId(item: QueueItem): string {
+  if (item.queueId !== null) {
+    return `${item.sourceService}:queue:${item.queueId}`;
+  }
+
+  if (item.downloadId) {
+    return `${item.sourceService}:download:${item.downloadId}`;
+  }
+
+  return item.id;
+}
+
 function buildQueueEntries(acquisitionJobs: AcquisitionJob[], items: QueueItem[]): QueueEntry[] {
   const unmatchedItems = [...items];
   const managedEntries: QueueEntry[] = acquisitionJobs.map((job) => {
@@ -236,7 +248,7 @@ function buildQueueEntries(acquisitionJobs: AcquisitionJob[], items: QueueItem[]
               item.detail.toLowerCase() === job.currentRelease.toLowerCase()))),
     );
     for (const liveQueueItem of liveQueueItems) {
-      const matchIndex = unmatchedItems.findIndex((item) => item.id === liveQueueItem.id);
+      const matchIndex = unmatchedItems.findIndex((item) => queueEntryId(item) === queueEntryId(liveQueueItem));
       if (matchIndex >= 0) {
         unmatchedItems.splice(matchIndex, 1);
       }
@@ -255,7 +267,7 @@ function buildQueueEntries(acquisitionJobs: AcquisitionJob[], items: QueueItem[]
 
   const externalEntries: QueueEntry[] = unmatchedItems.map((item) => ({
     kind: 'external',
-    id: item.id,
+    id: queueEntryId(item),
     item,
     canCancel: item.canCancel && item.queueId !== null,
     canRemove: item.arrItemId === null && item.queueId !== null,

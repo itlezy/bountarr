@@ -106,7 +106,7 @@
         Live Arr Queue
       </div>
       <div class="mt-2 space-y-2">
-        {#each liveQueueItems as liveQueueItem (liveQueueItem.id)}
+        {#each liveQueueItems as liveQueueItem (liveQueueItem.queueId ?? liveQueueItem.id)}
           <div class="rounded-[12px] border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-2">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div class="overflow-safe-text text-sm font-700">

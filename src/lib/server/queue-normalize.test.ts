@@ -5,6 +5,7 @@ describe('normalizeQueueItem', () => {
   it('computes progress and detail from Arr queue payloads', () => {
     const item = normalizeQueueItem('sonarr', {
       id: 22,
+      downloadId: 'sonarr-download-shared',
       title: 'Episode source title',
       status: 'downloading',
       size: 2_000,
@@ -22,6 +23,8 @@ describe('normalizeQueueItem', () => {
     });
 
     expect(item).toMatchObject({
+      downloadId: 'sonarr-download-shared',
+      id: 'sonarr:queue:22',
       kind: 'series',
       title: 'Andor',
       year: 2022,
@@ -30,6 +33,24 @@ describe('normalizeQueueItem', () => {
       progress: 75,
       timeLeft: '10m',
       detail: 'Episode source title',
+    });
+  });
+
+  it('falls back to download id when the Arr queue row id is missing', () => {
+    const item = normalizeQueueItem('radarr', {
+      downloadId: 'radarr-download-7',
+      movieId: 793,
+      title: 'American.Rickshaw.1989.1080p.BluRay.x265',
+      status: 'downloading',
+      trackedDownloadStatus: 'ok',
+      trackedDownloadState: 'downloading',
+    });
+
+    expect(item).toMatchObject({
+      id: 'radarr:download:radarr-download-7',
+      downloadId: 'radarr-download-7',
+      canCancel: false,
+      queueId: null,
     });
   });
 

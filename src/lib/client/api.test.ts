@@ -360,6 +360,64 @@ describe('client api', () => {
     });
   });
 
+  it('posts external queue cancels using the queue-entry id instead of the raw item id', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          itemId: 'sonarr:queue:23',
+          message: 'Cancelled',
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await cancelQueueEntry({
+      kind: 'external',
+      id: 'sonarr:queue:23',
+      item: {
+        id: 'sonarr:download:download-shared',
+        downloadId: 'download-shared',
+        arrItemId: 83867,
+        canCancel: true,
+        kind: 'series',
+        title: 'Andor',
+        year: 2022,
+        poster: null,
+        sourceService: 'sonarr',
+        status: 'Downloading',
+        progress: 50,
+        timeLeft: '5m',
+        estimatedCompletionTime: null,
+        size: 1_000,
+        sizeLeft: 500,
+        queueId: 23,
+        detail: 'Andor.S02E01.1080p.WEB-DL-FLUX',
+        episodeIds: [201],
+        seasonNumbers: [2],
+      },
+      canCancel: true,
+      canRemove: false,
+    });
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/queue/cancel');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({
+      kind: 'external',
+      id: 'sonarr:queue:23',
+      arrItemId: 83867,
+      queueId: 23,
+      sourceService: 'sonarr',
+      title: 'Andor',
+    });
+  });
+
   it('posts Arr delete payloads with Arr identity metadata', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(

@@ -172,7 +172,7 @@ describe('queue dashboard service', () => {
     });
     expect(entries[1]).toEqual({
       kind: 'external',
-      id: externalQueueItem.id,
+      id: 'radarr:queue:1',
       item: externalQueueItem,
       canCancel: true,
       canRemove: false,
@@ -333,7 +333,7 @@ describe('queue dashboard service', () => {
     });
     expect(entries[1]).toEqual({
       kind: 'external',
-      id: unrelatedQueueItem.id,
+      id: 'sonarr:queue:3',
       item: unrelatedQueueItem,
       canCancel: true,
       canRemove: false,
@@ -419,6 +419,95 @@ describe('queue dashboard service', () => {
       kind: 'external',
       id: unrelatedSeasonQueueItem.id,
       item: unrelatedSeasonQueueItem,
+      canCancel: true,
+      canRemove: false,
+    });
+  });
+
+  it('keeps distinct queue rows when Arr reuses one download id across multiple queue ids', async () => {
+    const { composeQueueEntries } = await import('$lib/server/queue-dashboard-service');
+
+    const acquisitionJob: AcquisitionJob = {
+      id: 'job-5',
+      itemId: 'series:83867',
+      arrItemId: 83867,
+      kind: 'series',
+      title: 'Andor',
+      sourceService: 'sonarr',
+      status: 'grabbing',
+      attempt: 1,
+      maxRetries: 3,
+      currentRelease: 'Andor.S01.1080p.WEB-DL-FLUX',
+      selectedReleaser: 'flux',
+      preferredReleaser: 'flux',
+      reasonCode: null,
+      failureReason: null,
+      validationSummary: null,
+      autoRetrying: false,
+      progress: 40,
+      queueStatus: 'Queued',
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      targetSeasonNumbers: [1],
+      targetEpisodeIds: [101, 102],
+      startedAt: '2026-04-13T12:00:00.000Z',
+      updatedAt: '2026-04-13T12:05:00.000Z',
+      completedAt: null,
+      attempts: [],
+    };
+    const sharedDownloadId = 'download-shared';
+    const matchingQueueItem: QueueItem = {
+      id: 'sonarr:download:download-shared',
+      downloadId: sharedDownloadId,
+      arrItemId: 83867,
+      canCancel: true,
+      kind: 'series',
+      title: 'Andor',
+      year: 2022,
+      poster: null,
+      sourceService: 'sonarr',
+      status: 'Downloading',
+      progress: 25,
+      timeLeft: '18m',
+      estimatedCompletionTime: '2026-04-13T12:18:00.000Z',
+      size: 2_000_000_000,
+      sizeLeft: 1_500_000_000,
+      queueId: 21,
+      detail: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+      episodeIds: [101],
+      seasonNumbers: [1],
+    };
+    const siblingQueueItem: QueueItem = {
+      ...matchingQueueItem,
+      queueId: 22,
+      detail: 'Andor.S01E02.1080p.WEB-DL-FLUX',
+      episodeIds: [102],
+    };
+    const unrelatedQueueItem: QueueItem = {
+      ...matchingQueueItem,
+      queueId: 23,
+      detail: 'Andor.S02E01.1080p.WEB-DL-FLUX',
+      episodeIds: [201],
+      seasonNumbers: [2],
+    };
+
+    const entries = composeQueueEntries(acquisitionJob ? [acquisitionJob] : [], [
+      matchingQueueItem,
+      siblingQueueItem,
+      unrelatedQueueItem,
+    ]);
+
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toMatchObject({
+      kind: 'managed',
+      liveQueueItems: [matchingQueueItem, siblingQueueItem],
+    });
+    expect(entries[1]).toEqual({
+      kind: 'external',
+      id: 'sonarr:queue:23',
+      item: unrelatedQueueItem,
       canCancel: true,
       canRemove: false,
     });

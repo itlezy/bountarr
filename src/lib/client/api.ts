@@ -148,7 +148,7 @@ function queueCancelPayload(entry: QueueEntry): QueueCancelRequest {
 
   return {
     kind: 'external',
-    id: entry.item.id,
+    id: entry.id,
     arrItemId: entry.item.arrItemId,
     queueId: entry.item.queueId,
     sourceService: entry.item.sourceService,

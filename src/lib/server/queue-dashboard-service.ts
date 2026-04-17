@@ -23,6 +23,27 @@ import type {
   QueueResponse,
 } from '$lib/shared/types';
 
+function queueRecordIdentitySuffix(record: Record<string, unknown>): string {
+  const queueId = asNumber(record.id);
+  if (queueId !== null) {
+    return `${queueId}`;
+  }
+
+  return asString(record.downloadId) ?? crypto.randomUUID();
+}
+
+function queueItemEntryId(item: QueueItem): string {
+  if (item.queueId !== null) {
+    return `${item.sourceService}:queue:${item.queueId}`;
+  }
+
+  if (item.downloadId) {
+    return `${item.sourceService}:download:${item.downloadId}`;
+  }
+
+  return item.id;
+}
+
 function summarizeDashboard(items: MediaItem[]) {
   return {
     total: items.length,
@@ -69,7 +90,7 @@ async function buildMovieHistoryItems(preferences: Preferences): Promise<MediaIt
     items.push(
       normalizeItem('movie', movie, preferences, {
         arrItemId: movieId ?? null,
-        id: `movie:queue:${asString(record.downloadId) ?? crypto.randomUUID()}`,
+        id: `movie:queue:${queueRecordIdentitySuffix(record)}`,
         status: 'Queued',
         isExisting: true,
         isRequested: true,
@@ -142,7 +163,7 @@ async function buildSeriesHistoryItems(preferences: Preferences): Promise<MediaI
     items.push(
       normalizeItem('series', series, preferences, {
         arrItemId: seriesId ?? null,
-        id: `series:queue:${asString(record.downloadId) ?? crypto.randomUUID()}`,
+        id: `series:queue:${queueRecordIdentitySuffix(record)}`,
         status: 'Queued',
         isExisting: true,
         isRequested: true,
@@ -239,7 +260,7 @@ function buildManagedQueueEntry(
 function buildExternalQueueEntry(item: QueueItem): ExternalQueueEntry {
   return {
     kind: 'external',
-    id: item.id,
+    id: queueItemEntryId(item),
     item,
     canCancel: item.canCancel && item.queueId !== null,
     canRemove: item.arrItemId === null && item.queueId !== null,
@@ -274,8 +295,8 @@ export function composeQueueEntries(
   const managedEntries = acquisitionJobs.map((job) => {
     const liveQueueItems = unmatchedItems.filter((item) => queueItemMatchesManagedTarget(job, item));
     if (liveQueueItems.length > 0) {
-      const matchedIds = new Set(liveQueueItems.map((item) => item.id));
-      unmatchedItems = unmatchedItems.filter((item) => !matchedIds.has(item.id));
+      const matchedIds = new Set(liveQueueItems.map((item) => queueItemEntryId(item)));
+      unmatchedItems = unmatchedItems.filter((item) => !matchedIds.has(queueItemEntryId(item)));
     }
 
     return buildManagedQueueEntry(job, liveQueueItems);

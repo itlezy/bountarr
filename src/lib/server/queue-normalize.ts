@@ -15,6 +15,22 @@ function formatQueueStatus(record: Record<string, unknown>): string {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function queueItemId(
+  service: ArrService,
+  queueId: number | null,
+  downloadId: string | null,
+): string {
+  if (queueId !== null) {
+    return `${service}:queue:${queueId}`;
+  }
+
+  if (downloadId) {
+    return `${service}:download:${downloadId}`;
+  }
+
+  return `${service}:queue:${crypto.randomUUID()}`;
+}
+
 export function normalizeQueueItem(service: ArrService, rawValue: unknown): QueueItem | null {
   const record = asRecord(rawValue);
   const parent = service === 'radarr' ? asRecord(record.movie) : asRecord(record.series);
@@ -37,14 +53,17 @@ export function normalizeQueueItem(service: ArrService, rawValue: unknown): Queu
   const progress = asNumber(record.progress) ?? computedProgress;
   const episode = asRecord(record.episode);
   const seriesScope = service === 'sonarr' ? extractSeriesScope(record) : null;
+  const queueId = asNumber(record.id);
+  const downloadId = asString(record.downloadId);
 
   return {
-    id: `${service}:queue:${asString(record.downloadId) ?? asString(record.id) ?? crypto.randomUUID()}`,
+    id: queueItemId(service, queueId, downloadId),
+    downloadId,
     arrItemId:
       service === 'radarr'
         ? (asNumber(record.movieId) ?? asNumber(parent.id))
         : (asNumber(record.seriesId) ?? asNumber(parent.id)),
-    canCancel: asNumber(record.id) !== null,
+    canCancel: queueId !== null,
     kind: service === 'radarr' ? 'movie' : 'series',
     title,
     year: asNumber(parent.year),
@@ -56,7 +75,7 @@ export function normalizeQueueItem(service: ArrService, rawValue: unknown): Queu
     estimatedCompletionTime: asString(record.estimatedCompletionTime),
     size,
     sizeLeft,
-    queueId: asNumber(record.id),
+    queueId,
     detail:
       (asString(record.title) ?? asString(record.sourceTitle) ?? asString(episode.title) ?? null) ===
       title

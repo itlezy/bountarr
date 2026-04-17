@@ -293,6 +293,7 @@ export interface SearchState {
 
 export interface QueueItem {
   id: string;
+  downloadId?: string | null;
   arrItemId: number | null;
   canCancel: boolean;
   kind: MediaKind;
