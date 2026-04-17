@@ -517,6 +517,106 @@ describe('acquisition service', () => {
     expect(arrFetch.mock.calls[2]?.[1]).toBe('/api/v3/series/83867');
   });
 
+  it('cancels season-pack queue rows for a scoped Sonarr job when the live row exposes only season numbers', async () => {
+    const seriesJob: AcquisitionJob = {
+      ...job,
+      id: 'job-series-season-pack',
+      itemId: 'series:83867',
+      arrItemId: 83867,
+      kind: 'series',
+      title: 'Andor',
+      sourceService: 'sonarr',
+      currentRelease: 'Andor.S01.1080p.WEB-DL-FLUX',
+      targetSeasonNumbers: [1],
+      targetEpisodeIds: [101, 102],
+    };
+    const cancelledSeriesJob: AcquisitionJob = {
+      ...cancelledJob,
+      id: seriesJob.id,
+      itemId: seriesJob.itemId,
+      arrItemId: seriesJob.arrItemId,
+      kind: 'series',
+      title: seriesJob.title,
+      sourceService: seriesJob.sourceService,
+      currentRelease: seriesJob.currentRelease,
+      targetSeasonNumbers: seriesJob.targetSeasonNumbers,
+      targetEpisodeIds: seriesJob.targetEpisodeIds,
+    };
+    const cancelJob = vi.fn().mockReturnValue(cancelledSeriesJob);
+    const arrFetch = vi
+      .fn()
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({
+        id: 83867,
+        monitored: true,
+        seasons: [{ seasonNumber: 1, monitored: true }],
+      })
+      .mockResolvedValueOnce({});
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        ensureWorkers: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        cancelJob,
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        getJob: vi.fn().mockReturnValue(seriesJob),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      getAcquisitionJobsResponse: vi.fn(),
+      listQueueAcquisitionJobs: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-validator-shared', () => ({
+      fetchQueueRecords: vi.fn().mockResolvedValue([
+        {
+          id: 9,
+          series: {
+            id: 83867,
+            title: 'Andor',
+            year: 2022,
+          },
+          seriesId: 83867,
+          title: 'Andor.S01.1080p.WEB-DL-FLUX',
+        },
+        {
+          id: 10,
+          series: {
+            id: 83867,
+            title: 'Andor',
+            year: 2022,
+          },
+          seriesId: 83867,
+          title: 'Andor.S02.1080p.WEB-DL-FLUX',
+        },
+      ]),
+      queueRecordArrItemId: vi.fn(),
+      queueRecordId: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-selection', () => ({
+      findManualReleaseSelection: vi.fn(),
+      getManualReleaseResults: vi.fn(),
+    }));
+
+    const module = await import('$lib/server/acquisition-service');
+    const result = await module.cancelAcquisitionJob(seriesJob.id);
+
+    expect(result.message).toBe('Andor download was cancelled and unmonitored.');
+    expect(cancelJob).toHaveBeenCalledWith(seriesJob);
+    expect(arrFetch).toHaveBeenCalledTimes(3);
+    expect(arrFetch.mock.calls[0]?.[1]).toBe('/api/v3/queue/9');
+    expect(arrFetch.mock.calls[1]?.[1]).toBe('/api/v3/series/83867');
+    expect(arrFetch.mock.calls[2]?.[1]).toBe('/api/v3/series/83867');
+  });
+
   it('removes local jobs when the Arr item is already missing during delete', async () => {
     const deleteJobsByArrItem = vi.fn();
     const arrFetch = vi.fn().mockRejectedValue(new Error('radarr 404: Movie missing'));

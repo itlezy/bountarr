@@ -55,7 +55,7 @@ export function queueItemMatchesManagedTarget(
     return true;
   }
 
-  if (!targetScope.episodeIds && itemHasSeasonNumbers && seriesScopeOverlapsTarget(targetScope, item)) {
+  if (itemHasSeasonNumbers && seriesScopeOverlapsTarget(targetScope, item)) {
     return true;
   }
 

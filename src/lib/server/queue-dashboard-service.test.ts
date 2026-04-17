@@ -340,6 +340,90 @@ describe('queue dashboard service', () => {
     });
   });
 
+  it('matches season-pack queue rows even when the managed series job persists target episode ids', async () => {
+    const { composeQueueEntries } = await import('$lib/server/queue-dashboard-service');
+
+    const acquisitionJob: AcquisitionJob = {
+      id: 'job-4',
+      itemId: 'series:83867',
+      arrItemId: 83867,
+      kind: 'series',
+      title: 'Andor',
+      sourceService: 'sonarr',
+      status: 'grabbing',
+      attempt: 1,
+      maxRetries: 3,
+      currentRelease: 'Andor.S01.1080p.WEB-DL-FLUX',
+      selectedReleaser: 'flux',
+      preferredReleaser: 'flux',
+      reasonCode: null,
+      failureReason: null,
+      validationSummary: null,
+      autoRetrying: false,
+      progress: 15,
+      queueStatus: 'Queued',
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      targetSeasonNumbers: [1],
+      targetEpisodeIds: [101, 102],
+      startedAt: '2026-04-13T12:00:00.000Z',
+      updatedAt: '2026-04-13T12:05:00.000Z',
+      completedAt: null,
+      attempts: [],
+    };
+    const seasonPackQueueItem: QueueItem = {
+      id: 'sonarr:queue:11',
+      arrItemId: 83867,
+      canCancel: true,
+      kind: 'series',
+      title: 'Andor',
+      year: 2022,
+      poster: null,
+      sourceService: 'sonarr',
+      status: 'Downloading',
+      progress: 61,
+      timeLeft: '22m',
+      estimatedCompletionTime: '2026-04-13T12:22:00.000Z',
+      size: 8_000_000_000,
+      sizeLeft: 3_120_000_000,
+      queueId: 11,
+      detail: 'Andor.S01.1080p.WEB-DL-FLUX',
+      episodeIds: null,
+      seasonNumbers: [1],
+    };
+    const unrelatedSeasonQueueItem: QueueItem = {
+      ...seasonPackQueueItem,
+      id: 'sonarr:queue:12',
+      queueId: 12,
+      detail: 'Andor.S02.1080p.WEB-DL-FLUX',
+      seasonNumbers: [2],
+    };
+
+    const entries = composeQueueEntries(acquisitionJob ? [acquisitionJob] : [], [
+      seasonPackQueueItem,
+      unrelatedSeasonQueueItem,
+    ]);
+
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toMatchObject({
+      kind: 'managed',
+      liveQueueItems: [seasonPackQueueItem],
+      liveSummary: {
+        rowCount: 1,
+        progress: 61,
+      },
+    });
+    expect(entries[1]).toEqual({
+      kind: 'external',
+      id: unrelatedSeasonQueueItem.id,
+      item: unrelatedSeasonQueueItem,
+      canCancel: true,
+      canRemove: false,
+    });
+  });
+
   it('keeps Arr ids on dashboard fallback items so audit cards can delete them', async () => {
     const arrFetch = vi.fn().mockImplementation(async (_service: string, path: string) => {
       if (path === '/api/v3/history') {
