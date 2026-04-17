@@ -337,9 +337,37 @@ describe('AcquisitionJobRepository', () => {
     expect(first.created).toBe(true);
     expect(second.created).toBe(false);
     expect(second.job.id).toBe(first.job.id);
+    expect(second.job.completionEpisodeIds).toEqual(null);
     expect(second.job.targetSeasonNumbers).toEqual([1]);
     expect(second.job.targetEpisodeIds).toEqual([101, 102]);
     expect(jobs.listActiveJobsByArrItem(909, 'series', 'sonarr')).toHaveLength(1);
+  });
+
+  it('round-trips the internal completion episode scope for series jobs', () => {
+    const database = createDatabase();
+    const jobs = new AcquisitionJobRepository(database);
+    const created = jobs.createJob({
+      arrItemId: 911,
+      completionEpisodeIds: [301, 302],
+      itemId: 'series:911',
+      kind: 'series',
+      maxRetries: 4,
+      preferredReleaser: null,
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'Any',
+      },
+      sourceService: 'sonarr',
+      targetEpisodeIds: [301, 302, 303],
+      targetSeasonNumbers: [3],
+      title: 'Scoped Season',
+    });
+
+    const loaded = jobs.getJob(created.id);
+
+    expect(loaded?.completionEpisodeIds).toEqual([301, 302]);
+    expect(loaded?.targetEpisodeIds).toEqual([301, 302, 303]);
+    expect(loaded?.targetSeasonNumbers).toEqual([3]);
   });
 
   it('allows a fresh active job after the previous one becomes terminal', () => {

@@ -31,6 +31,7 @@ type JobRow = {
   progress: number | null;
   queue_status: string | null;
   queued_manual_selection_json: string | null;
+  completion_episode_ids_json: string | null;
   target_season_numbers_json: string | null;
   target_episode_ids_json: string | null;
   preferred_language: string;
@@ -68,6 +69,7 @@ export type CreateAcquisitionJobInput = {
   preferredReleaser: string | null;
   preferences: PersistedAcquisitionJob['preferences'];
   sourceService: PersistedAcquisitionJob['sourceService'];
+  completionEpisodeIds?: number[] | null;
   targetEpisodeIds?: number[] | null;
   targetSeasonNumbers?: number[] | null;
   title: string;
@@ -80,14 +82,15 @@ export type UpdateAcquisitionJobPatch = Partial<
     | 'attempts'
     | 'failedGuids'
     | 'id'
-     | 'itemId'
-     | 'kind'
-     | 'maxRetries'
-     | 'preferences'
-     | 'sourceService'
-     | 'targetEpisodeIds'
-     | 'targetSeasonNumbers'
-     | 'title'
+    | 'itemId'
+    | 'kind'
+    | 'maxRetries'
+    | 'completionEpisodeIds'
+    | 'preferences'
+    | 'sourceService'
+    | 'targetEpisodeIds'
+    | 'targetSeasonNumbers'
+    | 'title'
   >
 > & {
   preferences?: Partial<PersistedAcquisitionJob['preferences']>;
@@ -300,6 +303,7 @@ export class AcquisitionJobRepository {
         progress: row.progress,
         queueStatus: row.queue_status,
         queuedManualSelection: parseManualSelectionJson(row.queued_manual_selection_json),
+        completionEpisodeIds: parseNumberArrayJson(row.completion_episode_ids_json),
         preferences: {
           preferredLanguage: sanitizePreferredLanguage(row.preferred_language),
           subtitleLanguage: sanitizePreferredLanguage(row.subtitle_language, 'Any'),
@@ -431,6 +435,7 @@ export class AcquisitionJobRepository {
       progress: null,
       queueStatus: 'Queued',
       queuedManualSelection: null,
+      completionEpisodeIds: normalizeNumberArray(input.completionEpisodeIds),
       preferences: input.preferences,
       targetSeasonNumbers: normalizeNumberArray(input.targetSeasonNumbers),
       targetEpisodeIds: normalizeNumberArray(input.targetEpisodeIds),
@@ -457,9 +462,9 @@ export class AcquisitionJobRepository {
               id, item_id, arr_item_id, kind, title, source_service, status, attempt,
               max_retries, current_release, selected_releaser, preferred_releaser,
               reason_code, failure_reason, validation_summary, auto_retrying, progress, queue_status,
-              queued_manual_selection_json, target_season_numbers_json, target_episode_ids_json, preferred_language,
+              queued_manual_selection_json, completion_episode_ids_json, target_season_numbers_json, target_episode_ids_json, preferred_language,
               subtitle_language, started_at, updated_at, completed_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .run(
             job.id,
@@ -481,6 +486,7 @@ export class AcquisitionJobRepository {
             job.progress,
             job.queueStatus,
             serializeManualSelection(job.queuedManualSelection),
+            serializeNumberArray(job.completionEpisodeIds),
             serializeNumberArray(job.targetSeasonNumbers),
             serializeNumberArray(job.targetEpisodeIds),
             job.preferences.preferredLanguage,

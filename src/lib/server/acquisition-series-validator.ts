@@ -24,29 +24,26 @@ type SeriesEpisodeRecord = {
 function targetEpisodesForJob(
   job: PersistedAcquisitionJob,
   episodeRecords: Record<string, unknown>[],
-  attemptStart: string,
 ): SeriesEpisodeRecord[] {
+  const completionEpisodeIds = job.completionEpisodeIds ? new Set(job.completionEpisodeIds) : null;
   const targetEpisodeIds = job.targetEpisodeIds ? new Set(job.targetEpisodeIds) : null;
   const targetSeasonNumbers = job.targetSeasonNumbers ? new Set(job.targetSeasonNumbers) : null;
-  const attemptStartedAtMs = Date.parse(attemptStart);
 
   return episodeRecords
     .map((episode) => ({
-      airedAtMs: Date.parse(
-        asString(episode.airDateUtc) ?? asString(episode.airDate) ?? '',
-      ),
       episodeFileId: asNumber(episode.episodeFileId),
       episodeId: asNumber(episode.id),
       seasonNumber: asNumber(episode.seasonNumber),
     }))
     .filter(
-      (episode): episode is SeriesEpisodeRecord & { airedAtMs: number } =>
+      (episode): episode is SeriesEpisodeRecord =>
         episode.episodeId !== null &&
         (
-          targetSeasonNumbers
-            ? targetSeasonNumbers.has(episode.seasonNumber ?? Number.NaN) &&
-              (!Number.isFinite(episode.airedAtMs) || episode.airedAtMs <= attemptStartedAtMs)
-            : (targetEpisodeIds?.has(episode.episodeId) ?? true)
+          completionEpisodeIds
+            ? completionEpisodeIds.has(episode.episodeId)
+            : targetEpisodeIds
+              ? targetEpisodeIds.has(episode.episodeId)
+              : (targetSeasonNumbers?.has(episode.seasonNumber ?? Number.NaN) ?? true)
         ),
     );
 }
@@ -82,7 +79,7 @@ export async function validateSeriesAttempt(
       .map((record) => asNumber(record.episodeFileId) ?? asNumber(asRecord(record.data).episodeFileId))
       .filter((value): value is number => value !== null && value > 0),
   );
-  const targetEpisodes = targetEpisodesForJob(job, episodeRecords, attemptStart);
+  const targetEpisodes = targetEpisodesForJob(job, episodeRecords);
   const importedTargetEpisodes = targetEpisodes.filter(
     (episode) =>
       episode.episodeFileId !== null && historyEpisodeFileIds.has(episode.episodeFileId),

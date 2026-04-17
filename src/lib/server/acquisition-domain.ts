@@ -17,6 +17,7 @@ export type PersistedManualSelection = {
 };
 
 export type PersistedAcquisitionJob = AcquisitionJob & {
+  completionEpisodeIds: number[] | null;
   failedGuids: string[];
   queuedManualSelection: PersistedManualSelection | null;
 };
@@ -54,6 +55,7 @@ export function isAcquisitionGrabError(error: unknown): error is AcquisitionGrab
 
 export function cloneJob(job: PersistedAcquisitionJob): AcquisitionJob {
   const {
+    completionEpisodeIds: _completionEpisodeIds,
     failedGuids: _failedGuids,
     queuedManualSelection: _queuedManualSelection,
     ...publicJob

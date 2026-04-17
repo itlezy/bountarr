@@ -27,6 +27,7 @@ const job: PersistedAcquisitionJob = {
   autoRetrying: false,
   progress: null,
   queueStatus: 'Searching releases',
+  completionEpisodeIds: null,
   preferences: {
     preferredLanguage: 'English',
     subtitleLanguage: 'English',

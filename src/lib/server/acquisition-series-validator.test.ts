@@ -20,6 +20,7 @@ const seriesJob: PersistedAcquisitionJob = {
   autoRetrying: false,
   progress: 10,
   queueStatus: 'Downloading',
+  completionEpisodeIds: [101, 102],
   preferences: {
     preferredLanguage: 'English',
     subtitleLanguage: 'English',
@@ -271,7 +272,7 @@ describe('validateSeriesAttempt', () => {
     });
   });
 
-  it('uses the selected seasons as the canonical scope while excluding future unaired episodes', async () => {
+  it('uses the persisted completion scope instead of re-deriving target episodes from attempt time', async () => {
     const fetchEpisodeFile = vi
       .fn()
       .mockResolvedValue({
@@ -314,7 +315,10 @@ describe('validateSeriesAttempt', () => {
 
     const module = await import('$lib/server/acquisition-series-validator');
     const result = await module.validateSeriesAttempt(
-      seriesJob,
+      {
+        ...seriesJob,
+        completionEpisodeIds: [101, 102, 103],
+      },
       '2026-04-13T12:00:00.000Z',
     );
 

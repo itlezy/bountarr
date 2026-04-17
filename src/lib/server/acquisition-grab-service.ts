@@ -121,21 +121,38 @@ function explicitSeriesTargetSeasonNumbers(
   throw new AcquisitionGrabError(400, `Select at least one season before grabbing ${item.title}.`);
 }
 
-async function resolveSeriesTargetEpisodeIds(
+async function resolveSeriesEpisodeScope(
   seriesId: number,
   targetSeasonNumbers: number[],
-): Promise<number[] | null> {
+): Promise<{ completionEpisodeIds: number[] | null; targetEpisodeIds: number[] | null }> {
   const targetSeasons = new Set(targetSeasonNumbers);
-  const episodeIds = normalizeNumberArray(
-    (await fetchSeriesEpisodeRecords(seriesId))
+  const nowMs = Date.now();
+  const episodeRecords = await fetchSeriesEpisodeRecords(seriesId);
+  const targetEpisodeIds = normalizeNumberArray(
+    episodeRecords
       .filter((episode) =>
         targetSeasons.has(asNumber(episode.seasonNumber) ?? Number.NaN),
       )
       .map((episode) => asNumber(episode.id))
       .filter((episodeId): episodeId is number => episodeId !== null && episodeId > 0),
   );
+  const completionEpisodeIds = normalizeNumberArray(
+    episodeRecords
+      .filter((episode) =>
+        targetSeasons.has(asNumber(episode.seasonNumber) ?? Number.NaN),
+      )
+      .filter((episode) => {
+        const airedAtMs = Date.parse(asString(episode.airDateUtc) ?? asString(episode.airDate) ?? '');
+        return !Number.isFinite(airedAtMs) || airedAtMs <= nowMs;
+      })
+      .map((episode) => asNumber(episode.id))
+      .filter((episodeId): episodeId is number => episodeId !== null && episodeId > 0),
+  );
 
-  return episodeIds;
+  return {
+    completionEpisodeIds,
+    targetEpisodeIds,
+  };
 }
 
 async function buildRequestedJobInput(
@@ -145,15 +162,19 @@ async function buildRequestedJobInput(
   preferences: Preferences,
   options?: GrabItemOptions,
 ): Promise<CreateAcquisitionJobInput> {
+  let completionEpisodeIds: number[] | null = null;
   let targetSeasonNumbers: number[] | null = null;
   let targetEpisodeIds: number[] | null = null;
   if (item.kind === 'series') {
     targetSeasonNumbers = explicitSeriesTargetSeasonNumbers(item, options);
-    targetEpisodeIds = await resolveSeriesTargetEpisodeIds(arrItemId, targetSeasonNumbers);
+    const resolvedScope = await resolveSeriesEpisodeScope(arrItemId, targetSeasonNumbers);
+    completionEpisodeIds = resolvedScope.completionEpisodeIds;
+    targetEpisodeIds = resolvedScope.targetEpisodeIds;
   }
 
   return {
     arrItemId,
+    completionEpisodeIds,
     itemId: item.id,
     kind: item.kind,
     maxRetries: acquisitionMaxRetries(),

@@ -184,6 +184,7 @@ describe('acquisition grab service', () => {
     expect(createOrReuseActiveJob).toHaveBeenCalledWith(
       expect.objectContaining({
         arrItemId: 80,
+        completionEpisodeIds: [101, 102],
         itemId: seriesItem.id,
         kind: 'series',
         sourceService: 'sonarr',
@@ -525,6 +526,7 @@ describe('acquisition grab service', () => {
     expect(createOrReuseActiveJob).toHaveBeenCalledWith(
       expect.objectContaining({
         arrItemId: 80,
+        completionEpisodeIds: [102],
         targetEpisodeIds: [102],
         targetSeasonNumbers: [2],
       }),
@@ -605,6 +607,82 @@ describe('acquisition grab service', () => {
     expect(result.existing).toBe(true);
     expect(result.job?.id).toBe(activeSeasonJob.id);
     expect(result.message).toContain('Reusing the active alternate-release grab');
+  });
+
+  it('persists completion scope without future-dated selected-season episodes', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-04-13T12:00:00.000Z'));
+    const trackedSeriesItem: MediaItem = {
+      ...seriesItem,
+      arrItemId: 80,
+      canAdd: true,
+      inArr: true,
+      isExisting: true,
+      isRequested: true,
+      status: 'Already in Arr',
+    };
+    const fetchExistingSeries = vi.fn().mockResolvedValue({
+      ...trackedSeriesItem,
+      canAdd: false,
+      sourceService: 'sonarr',
+    } satisfies MediaItem);
+    const createOrReuseActiveJob = vi.fn().mockReturnValue({ created: true, job: createdJob });
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      acquisitionMaxRetries: () => 4,
+      arrFetch: vi.fn(),
+    }));
+    vi.doMock('$lib/server/config-service', () => ({
+      fetchServiceDefaults: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        recordJobCreated: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        enqueue: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        createOrReuseActiveJob,
+        findActiveJob: vi.fn().mockReturnValue(null),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      findPreferredReleaser: vi.fn().mockReturnValue(null),
+    }));
+    vi.doMock('$lib/server/lookup-service', () => ({
+      fetchExistingMovie: vi.fn(),
+      fetchExistingSeries,
+      fetchSeriesEpisodeRecords: vi.fn().mockResolvedValue([
+        { airDateUtc: '2026-04-01T00:00:00.000Z', id: 201, seasonNumber: 2 },
+        { airDateUtc: '2026-04-08T00:00:00.000Z', id: 202, seasonNumber: 2 },
+        { airDateUtc: '2026-04-20T00:00:00.000Z', id: 203, seasonNumber: 2 },
+      ]),
+    }));
+
+    const module = await import('$lib/server/acquisition-grab-service');
+    await module.grabItem(
+      trackedSeriesItem,
+      {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'Any',
+      },
+      {
+        seasonNumbers: [2],
+      },
+    );
+
+    expect(createOrReuseActiveJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        arrItemId: 80,
+        completionEpisodeIds: [201, 202],
+        targetEpisodeIds: [201, 202, 203],
+        targetSeasonNumbers: [2],
+      }),
+    );
   });
 
   it('rejects a conflicting active series grab instead of silently reusing it', async () => {

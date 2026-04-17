@@ -102,6 +102,7 @@ describe('ensureAcquisitionSchema', () => {
 
     expect(columns).toContain('target_season_numbers_json');
     expect(columns).toContain('target_episode_ids_json');
+    expect(columns).toContain('completion_episode_ids_json');
     expect(indexColumns(database, 'acquisition_jobs_active_identity_idx')).toEqual([
       'arr_item_id',
       'kind',
