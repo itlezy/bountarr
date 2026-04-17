@@ -36,13 +36,14 @@ import {
   findManualReleaseSelection,
   getManualReleaseResults as getManualReleaseResultsInternal,
   persistManualSelection,
+  queuedManualReleaseResults,
 } from '$lib/server/acquisition-selection';
 
 const manualReleaseEligibleStatuses = new Set<AcquisitionStatus>([
+  'searching',
   'failed',
   'queued',
   'retrying',
-  'searching',
 ]);
 
 export function ensureAcquisitionWorkers(): void {
@@ -160,6 +161,26 @@ function canAcceptManualRelease(status: AcquisitionStatus): boolean {
   return manualReleaseEligibleStatuses.has(status);
 }
 
+function queuedManualSelectionConflictMessage(jobId: string): string {
+  return `Acquisition job ${jobId} already has a queued manual release selection.`;
+}
+
+function manualReleaseConflictMessage(job: {
+  id: string;
+  queueStatus: string | null;
+  status: AcquisitionStatus;
+}): string {
+  if (job.status === 'queued' && job.queueStatus === manualSelectionQueuedStatus) {
+    return queuedManualSelectionConflictMessage(job.id);
+  }
+
+  if (!canAcceptManualRelease(job.status)) {
+    return `Acquisition job ${job.id} can no longer accept manual release selections.`;
+  }
+
+  return `Acquisition job ${job.id} can no longer accept manual release selections.`;
+}
+
 async function findQueueEntryIdsForArrItem(
   service: 'radarr' | 'sonarr',
   arrItemId: number,
@@ -218,6 +239,10 @@ export async function getManualReleaseResults(jobId: string): Promise<ManualRele
   if (!job) {
     throw new Error(`Acquisition job ${jobId} was not found.`);
   }
+  const queuedResults = queuedManualReleaseResults(job);
+  if (queuedResults) {
+    return queuedResults;
+  }
   if (!canAcceptManualRelease(job.status)) {
     throw new Error(`Acquisition job ${jobId} can no longer accept manual release selections.`);
   }
@@ -236,12 +261,15 @@ export async function selectManualRelease(
   if (!job) {
     throw new Error(`Acquisition job ${jobId} was not found.`);
   }
-  if (!canAcceptManualRelease(job.status)) {
-    throw new Error(`Acquisition job ${jobId} can no longer accept manual release selections.`);
+  if (
+    (job.status === 'queued' && job.queueStatus === manualSelectionQueuedStatus) ||
+    !canAcceptManualRelease(job.status)
+  ) {
+    throw new Error(manualReleaseConflictMessage(job));
   }
 
   const selection = await findManualReleaseSelection(job, guid, indexerId);
-  const resumed = jobs.updateJob(job.id, {
+  const resumed = jobs.updateJobIfStatus(job.id, ['failed', 'queued', 'retrying', 'searching'], {
     autoRetrying: false,
     completedAt: null,
     reasonCode: null,
@@ -252,10 +280,13 @@ export async function selectManualRelease(
     status: 'queued',
     validationSummary: selection.selection.decision.reason,
   });
+  if (!resumed.updated || !resumed.job) {
+    throw new Error(manualReleaseConflictMessage(resumed.job ?? job));
+  }
 
-  getAcquisitionRunner().enqueue(resumed.id);
+  getAcquisitionRunner().enqueue(resumed.job.id);
   return {
-    job: resumed,
+    job: resumed.job,
     message: `Queued manual release ${selection.selectedRelease?.title ?? guid}.`,
   };
 }

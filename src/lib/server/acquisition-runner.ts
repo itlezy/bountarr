@@ -175,6 +175,10 @@ export class AcquisitionRunner {
             job = refreshedAfterSearch;
             continue;
           }
+          if (refreshedAfterSearch.status !== 'searching') {
+            job = refreshedAfterSearch;
+            continue;
+          }
 
           job = refreshedAfterSearch;
         }
@@ -188,7 +192,9 @@ export class AcquisitionRunner {
           return;
         }
 
-        const chosen = this.lifecycle.chooseRelease(job, releaseSelection);
+        const chosen = manualSelection
+          ? this.lifecycle.chooseQueuedManualRelease(job, releaseSelection)
+          : this.lifecycle.chooseAutomaticRelease(job, releaseSelection);
         if (!chosen) {
           return;
         }

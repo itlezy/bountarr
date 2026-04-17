@@ -1,6 +1,7 @@
 import type {
   AcquisitionAttempt,
   AcquisitionJob,
+  ManualReleaseResult,
   ReleaseDecision,
   ReleaseDecisionCandidate,
 } from '$lib/shared/types';
@@ -12,6 +13,7 @@ export type PersistedManualSelection = {
     selected: ReleaseDecisionCandidate;
   };
   payload: Record<string, unknown>;
+  selectedResult: ManualReleaseResult;
 };
 
 export type PersistedAcquisitionJob = AcquisitionJob & {

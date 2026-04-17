@@ -4,8 +4,11 @@ import {
   type EvaluatedRelease,
 } from '$lib/server/release-score';
 import { arrFetch } from '$lib/server/arr-client';
-import type { PersistedAcquisitionJob } from '$lib/server/acquisition-domain';
-import type { PersistedManualSelection } from '$lib/server/acquisition-domain';
+import {
+  manualSelectionQueuedStatus,
+  type PersistedAcquisitionJob,
+  type PersistedManualSelection,
+} from '$lib/server/acquisition-domain';
 import { extractReleaser } from '$lib/server/media-identity';
 import { asNumber, asRecord } from '$lib/server/raw';
 import { defaultPreferences } from '$lib/shared/preferences';
@@ -46,12 +49,31 @@ export function persistManualSelection(
     throw new Error('A selected manual release is required before persisting it.');
   }
 
+  const selectedResult = result.manualResults.find(
+    (release) =>
+      release.guid === result.selection.decision.selected?.guid &&
+      release.indexerId === result.selection.decision.selected?.indexerId,
+  ) ?? {
+    ...structuredClone(result.selection.decision.selected),
+    canSelect: false,
+    downloadAllowed: true,
+    identityReason: result.selection.decision.reason,
+    identityStatus: 'exact-match',
+    scopeReason: null,
+    scopeStatus: 'not-applicable',
+    selectionBlockedReason: null,
+    rejectedByArr: false,
+    rejectionReasons: [],
+    status: 'selected',
+  };
+
   return {
     decision: {
       ...result.selection.decision,
       selected: result.selection.decision.selected,
     },
     payload: structuredClone(result.selection.payload),
+    selectedResult: structuredClone(selectedResult),
   };
 }
 
@@ -59,7 +81,13 @@ export function restoreManualSelection(
   selection: PersistedManualSelection,
 ): ReleaseSelectionResult {
   return {
-    manualResults: [],
+    manualResults: [
+      {
+        ...structuredClone(selection.selectedResult),
+        canSelect: false,
+        status: 'selected',
+      },
+    ],
     mappedReleases: selection.decision.considered,
     releasesFound: selection.decision.considered,
     selectedGuid: selection.decision.selected.guid,
@@ -68,6 +96,26 @@ export function restoreManualSelection(
       decision: selection.decision,
       payload: structuredClone(selection.payload),
     },
+  };
+}
+
+export function queuedManualReleaseResults(
+  job: Pick<PersistedAcquisitionJob, 'id' | 'queueStatus' | 'queuedManualSelection'>,
+): ManualReleaseListResponse | null {
+  if (
+    job.queueStatus !== manualSelectionQueuedStatus ||
+    !job.queuedManualSelection
+  ) {
+    return null;
+  }
+
+  const restored = restoreManualSelection(job.queuedManualSelection);
+  return {
+    jobId: job.id,
+    releases: restored.manualResults,
+    selectedGuid: restored.selectedGuid,
+    summary: restored.selection.decision.reason,
+    updatedAt: new Date().toISOString(),
   };
 }
 
@@ -240,6 +288,11 @@ export async function findReleaseSelection(
 export async function getManualReleaseResults(
   job: PersistedAcquisitionJob,
 ): Promise<ManualReleaseListResponse> {
+  const queuedResults = queuedManualReleaseResults(job);
+  if (queuedResults) {
+    return queuedResults;
+  }
+
   const selection = await findReleaseSelection(job);
   return {
     jobId: job.id,

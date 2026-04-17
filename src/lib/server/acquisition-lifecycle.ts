@@ -137,13 +137,7 @@ export class AcquisitionLifecycle {
     releaseSelection: ReleaseSelectionResult,
   ): PersistedAcquisitionJob {
     const current = this.getCurrentJob(job.id);
-    if (
-      !current ||
-      !(
-        current.status === 'searching' ||
-        (current.status === 'queued' && current.queueStatus === manualSelectionQueuedStatus)
-      )
-    ) {
+    if (!current || current.status !== 'searching') {
       return current ?? job;
     }
 
@@ -165,7 +159,64 @@ export class AcquisitionLifecycle {
     return next;
   }
 
-  chooseRelease(
+  chooseAutomaticRelease(
+    job: PersistedAcquisitionJob,
+    releaseSelection: ReleaseSelectionResult,
+  ): { attemptStartedAt: string; job: PersistedAcquisitionJob } | null {
+    const selectedRelease = releaseSelection.selectedRelease;
+    if (!selectedRelease || !releaseSelection.selectedGuid) {
+      throw new Error('A selected release is required before choosing it');
+    }
+
+    const current = this.getCurrentJob(job.id);
+    if (
+      !current ||
+      current.status !== 'searching'
+    ) {
+      return null;
+    }
+
+    const attemptStartedAt = new Date().toISOString();
+    const releaser = extractReleaser(selectedRelease.title);
+    const result = this.jobs.updateJobIfStatus(job.id, ['searching'], {
+      autoRetrying: current.autoRetrying,
+      completedAt: null,
+      currentRelease: selectedRelease.title,
+      failureReason: null,
+      queueStatus: 'Grabbing release',
+      queuedManualSelection: null,
+      selectedReleaser: releaser,
+      status: 'grabbing',
+      validationSummary: releaseSelection.selection.decision.reason,
+    });
+    const next = result.job;
+    if (!next || !result.updated) {
+      return null;
+    }
+
+    this.jobs.upsertAttempt(job.id, {
+      attempt: current.attempt,
+      finishedAt: null,
+      reasonCode: null,
+      reason: null,
+      releaseTitle: selectedRelease.title,
+      releaser,
+      startedAt: attemptStartedAt,
+      status: 'grabbing',
+    });
+
+    this.log(next, 'selection.chosen', 'info', 'Selected release for acquisition attempt', {
+      ...selectionLogContext(releaseSelection),
+      selectedGuid: releaseSelection.selectedGuid,
+    });
+
+    return {
+      attemptStartedAt,
+      job: next,
+    };
+  }
+
+  chooseQueuedManualRelease(
     job: PersistedAcquisitionJob,
     releaseSelection: ReleaseSelectionResult,
   ): { attemptStartedAt: string; job: PersistedAcquisitionJob } | null {
@@ -178,8 +229,8 @@ export class AcquisitionLifecycle {
     if (
       !current ||
       !(
-        current.status === 'searching' ||
-        (current.status === 'queued' && current.queueStatus === manualSelectionQueuedStatus)
+        current.status === 'queued' &&
+        current.queueStatus === manualSelectionQueuedStatus
       )
     ) {
       return null;
@@ -187,7 +238,7 @@ export class AcquisitionLifecycle {
 
     const attemptStartedAt = new Date().toISOString();
     const releaser = extractReleaser(selectedRelease.title);
-    const result = this.jobs.updateJobIfStatus(job.id, ['searching', 'queued'], {
+    const result = this.jobs.updateJobIfStatus(job.id, ['queued'], {
       autoRetrying: current.autoRetrying,
       completedAt: null,
       currentRelease: selectedRelease.title,

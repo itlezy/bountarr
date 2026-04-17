@@ -4,6 +4,13 @@ import { createAreaLogger, getErrorMessage, toErrorLogContext } from '$lib/serve
 
 const logger = createAreaLogger('api.acquisition.releases');
 
+function isManualReleaseConflict(message: string): boolean {
+  return (
+    message.includes('can no longer accept manual release selections') ||
+    message.includes('already has a queued manual release selection')
+  );
+}
+
 export const GET = async ({ params }: { params: { jobId: string } }) => {
   logger.info('Acquisition manual-results request started', {
     jobId: params.jobId,
@@ -26,7 +33,7 @@ export const GET = async ({ params }: { params: { jobId: string } }) => {
     throw error(
       message.includes('was not found')
         ? 404
-        : message.includes('can no longer accept manual release selections')
+        : isManualReleaseConflict(message)
           ? 409
           : 500,
       message,

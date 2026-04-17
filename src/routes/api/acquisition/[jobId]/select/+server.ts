@@ -5,6 +5,13 @@ import { createAreaLogger, getErrorMessage, toErrorLogContext } from '$lib/serve
 
 const logger = createAreaLogger('api.acquisition.select');
 
+function isManualReleaseConflict(message: string): boolean {
+  return (
+    message.includes('can no longer accept manual release selections') ||
+    message.includes('already has a queued manual release selection')
+  );
+}
+
 export const POST = async ({
   params,
   request,
@@ -43,7 +50,7 @@ export const POST = async ({
     const status =
       message.includes('was not found') || message.includes('no longer available')
         ? 404
-        : message.includes('can no longer accept manual release selections')
+        : isManualReleaseConflict(message)
           ? 409
           : 500;
     logger.error('Acquisition manual-select request failed', {

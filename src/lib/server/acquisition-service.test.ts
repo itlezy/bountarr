@@ -751,6 +751,95 @@ describe('acquisition service', () => {
     );
   });
 
+  it('rejects selecting a second manual release once one is already queued', async () => {
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        ensureWorkers: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        cancelJob: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        getJob: vi.fn().mockReturnValue({
+          ...job,
+          queueStatus: 'Manual selection queued',
+          queuedManualSelection: {
+            decision: {
+              accepted: 1,
+              considered: 1,
+              reason: 'User selected The.Matrix.1999.1080p.WEB-DL-FLUX',
+              selected: {
+                guid: 'guid-selected',
+                indexer: 'Indexer',
+                indexerId: 11,
+                languages: ['English'],
+                protocol: 'torrent',
+                reason: 'User selected The.Matrix.1999.1080p.WEB-DL-FLUX',
+                score: 500,
+                size: 1_000,
+                title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+              },
+            },
+            payload: {
+              guid: 'guid-selected',
+              indexerId: 11,
+            },
+            selectedResult: {
+              canSelect: false,
+              downloadAllowed: true,
+              guid: 'guid-selected',
+              identityReason: 'Release title matched The Matrix',
+              identityStatus: 'exact-match',
+              indexer: 'Indexer',
+              indexerId: 11,
+              languages: ['English'],
+              protocol: 'torrent',
+              reason: 'User selected The.Matrix.1999.1080p.WEB-DL-FLUX',
+              rejectedByArr: false,
+              rejectionReasons: [],
+              scopeReason: null,
+              scopeStatus: 'not-applicable',
+              score: 500,
+              selectionBlockedReason: null,
+              size: 1_000,
+              status: 'selected',
+              title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+            },
+          },
+          status: 'queued',
+        }),
+        updateJobIfStatus: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      getAcquisitionJobsResponse: vi.fn(),
+      listQueueAcquisitionJobs: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-validator-shared', () => ({
+      fetchQueueRecords: vi.fn().mockResolvedValue([]),
+      queueRecordArrItemId: vi.fn(),
+      queueRecordId: vi.fn().mockReturnValue(null),
+    }));
+    const findManualReleaseSelection = vi.fn();
+    vi.doMock('$lib/server/acquisition-selection', () => ({
+      findManualReleaseSelection,
+      getManualReleaseResults: vi.fn(),
+      persistManualSelection: vi.fn(),
+      queuedManualReleaseResults: vi.fn().mockReturnValue(null),
+    }));
+
+    const module = await import('$lib/server/acquisition-service');
+
+    await expect(module.selectManualRelease(job.id, 'guid-2', 12)).rejects.toThrow(
+      'already has a queued manual release selection',
+    );
+    expect(findManualReleaseSelection).not.toHaveBeenCalled();
+  });
+
   it('rejects loading manual release results once a job is completed', async () => {
     const getManualReleaseResults = vi.fn();
 
@@ -788,6 +877,7 @@ describe('acquisition service', () => {
       findManualReleaseSelection: vi.fn(),
       getManualReleaseResults,
       persistManualSelection: vi.fn(),
+      queuedManualReleaseResults: vi.fn().mockReturnValue(null),
     }));
 
     const module = await import('$lib/server/acquisition-service');

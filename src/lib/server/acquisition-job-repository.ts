@@ -80,9 +80,9 @@ export type UpdateAcquisitionJobPatch = Partial<
     | 'attempts'
     | 'failedGuids'
     | 'id'
-    | 'itemId'
-    | 'kind'
-    | 'maxRetries'
+     | 'itemId'
+     | 'kind'
+     | 'maxRetries'
      | 'preferences'
      | 'sourceService'
      | 'targetEpisodeIds'
@@ -171,9 +171,14 @@ function parseManualSelectionJson(
       typeof parsed.decision.accepted !== 'number' ||
       typeof parsed.decision.selected !== 'object' ||
       parsed.decision.selected === null ||
+      typeof parsed.selectedResult !== 'object' ||
+      parsed.selectedResult === null ||
       typeof parsed.decision.selected.guid !== 'string' ||
       typeof parsed.decision.selected.indexerId !== 'number' ||
-      typeof parsed.decision.selected.title !== 'string'
+      typeof parsed.decision.selected.title !== 'string' ||
+      typeof parsed.selectedResult.guid !== 'string' ||
+      typeof parsed.selectedResult.indexerId !== 'number' ||
+      typeof parsed.selectedResult.title !== 'string'
     ) {
       return null;
     }
@@ -454,7 +459,7 @@ export class AcquisitionJobRepository {
               reason_code, failure_reason, validation_summary, auto_retrying, progress, queue_status,
               queued_manual_selection_json, target_season_numbers_json, target_episode_ids_json, preferred_language,
               subtitle_language, started_at, updated_at, completed_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
           )
           .run(
             job.id,
