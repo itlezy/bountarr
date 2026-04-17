@@ -85,6 +85,90 @@ describe('queue dashboard service', () => {
     ]);
   });
 
+  it('keeps stale sibling movie queue rows external after the current re-grab row is claimed', async () => {
+    const { composeQueueEntries } = await import('$lib/server/queue-dashboard-service');
+
+    const acquisitionJob: AcquisitionJob = {
+      id: 'job-movie-reregrab',
+      itemId: 'movie:603',
+      arrItemId: 603,
+      kind: 'movie',
+      title: 'The Matrix',
+      sourceService: 'radarr',
+      status: 'validating',
+      attempt: 2,
+      maxRetries: 4,
+      currentRelease: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      liveQueueId: 22,
+      liveDownloadId: 'radarr-download-2',
+      selectedReleaser: 'flux',
+      preferredReleaser: 'flux',
+      reasonCode: null,
+      failureReason: null,
+      validationSummary: null,
+      autoRetrying: false,
+      progress: 50,
+      queueStatus: 'Downloading',
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      targetSeasonNumbers: null,
+      targetEpisodeIds: null,
+      startedAt: '2026-04-13T12:00:00.000Z',
+      updatedAt: '2026-04-13T12:05:00.000Z',
+      completedAt: null,
+      attempts: [],
+    };
+    const staleQueueItem: QueueItem = {
+      id: 'radarr:queue:21',
+      downloadId: 'radarr-download-1',
+      arrItemId: 603,
+      canCancel: true,
+      kind: 'movie',
+      title: 'The Matrix',
+      year: 1999,
+      poster: null,
+      sourceService: 'radarr',
+      status: 'Downloading',
+      progress: 35,
+      timeLeft: '30m',
+      estimatedCompletionTime: '2026-04-13T12:30:00.000Z',
+      size: 4_000_000_000,
+      sizeLeft: 2_600_000_000,
+      queueId: 21,
+      detail: 'The.Matrix.1999.1080p.BluRay-OLD',
+      episodeIds: null,
+      seasonNumbers: null,
+    };
+    const currentQueueItem: QueueItem = {
+      ...staleQueueItem,
+      id: 'radarr:queue:22',
+      downloadId: 'radarr-download-2',
+      progress: 72,
+      timeLeft: '8m',
+      estimatedCompletionTime: '2026-04-13T12:08:00.000Z',
+      sizeLeft: 1_120_000_000,
+      queueId: 22,
+      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+    };
+
+    const entries = composeQueueEntries([acquisitionJob], [staleQueueItem, currentQueueItem]);
+
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toMatchObject({
+      kind: 'managed',
+      liveQueueItems: [currentQueueItem],
+    });
+    expect(entries[1]).toEqual({
+      kind: 'external',
+      id: staleQueueItem.id,
+      item: staleQueueItem,
+      canCancel: true,
+      canRemove: false,
+    });
+  });
+
   it('keeps unmatched Arr downloads as external entries after managed matches are consumed', async () => {
     const { composeQueueEntries } = await import('$lib/server/queue-dashboard-service');
 

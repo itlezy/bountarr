@@ -9,7 +9,7 @@ import type {
 import { canTransitionJobStatus, sortJobs } from '$lib/server/acquisition-domain';
 import type { AcquisitionReasonCode } from '$lib/shared/types';
 import { sanitizePreferredLanguage } from '$lib/shared/languages';
-import { asPositiveNumber } from '$lib/server/raw';
+import { asNumber, asPositiveNumber, asString } from '$lib/server/raw';
 import type { AcquisitionAttempt, MediaKind } from '$lib/shared/types';
 
 type JobRow = {
@@ -31,6 +31,8 @@ type JobRow = {
   auto_retrying: number | null;
   progress: number | null;
   queue_status: string | null;
+  live_queue_id: number | null;
+  live_download_id: string | null;
   quality_profile_id: number | null;
   queued_manual_selection_json: string | null;
   target_season_numbers_json: string | null;
@@ -303,6 +305,8 @@ export class AcquisitionJobRepository {
         autoRetrying: row.auto_retrying === 1,
         progress: row.progress,
         queueStatus: row.queue_status,
+        liveQueueId: asNumber(row.live_queue_id),
+        liveDownloadId: asString(row.live_download_id),
         qualityProfileId: row.quality_profile_id,
         queuedManualSelection: parseManualSelectionJson(row.queued_manual_selection_json),
         preferences: {
@@ -435,6 +439,8 @@ export class AcquisitionJobRepository {
       autoRetrying: false,
       progress: null,
       queueStatus: 'Queued',
+      liveQueueId: null,
+      liveDownloadId: null,
       qualityProfileId: asPositiveNumber(input.qualityProfileId) ?? null,
       queuedManualSelection: null,
       preferences: input.preferences,
@@ -463,9 +469,10 @@ export class AcquisitionJobRepository {
               id, item_id, arr_item_id, kind, title, source_service, status, attempt,
               max_retries, current_release, selected_releaser, preferred_releaser,
               reason_code, failure_reason, validation_summary, auto_retrying, progress, queue_status,
-              quality_profile_id, queued_manual_selection_json, target_season_numbers_json, target_episode_ids_json,
+              live_queue_id, live_download_id, quality_profile_id, queued_manual_selection_json,
+              target_season_numbers_json, target_episode_ids_json,
               preferred_language, subtitle_language, started_at, updated_at, completed_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .run(
             job.id,
@@ -486,6 +493,8 @@ export class AcquisitionJobRepository {
             job.autoRetrying ? 1 : 0,
             job.progress,
             job.queueStatus,
+            job.liveQueueId ?? null,
+            job.liveDownloadId ?? null,
             job.qualityProfileId ?? null,
             serializeManualSelection(job.queuedManualSelection),
             serializeNumberArray(job.targetSeasonNumbers),
@@ -555,7 +564,8 @@ export class AcquisitionJobRepository {
           `UPDATE acquisition_jobs SET
             status = ?, attempt = ?, current_release = ?, selected_releaser = ?,
             preferred_releaser = ?, reason_code = ?, failure_reason = ?, validation_summary = ?,
-            auto_retrying = ?, progress = ?, queue_status = ?, queued_manual_selection_json = ?,
+            auto_retrying = ?, progress = ?, queue_status = ?, live_queue_id = ?, live_download_id = ?,
+            queued_manual_selection_json = ?,
             preferred_language = ?, subtitle_language = ?,
             updated_at = ?, completed_at = ?
            WHERE id = ?`,
@@ -572,6 +582,8 @@ export class AcquisitionJobRepository {
           next.autoRetrying ? 1 : 0,
           next.progress,
           next.queueStatus,
+          next.liveQueueId ?? null,
+          next.liveDownloadId ?? null,
           serializeManualSelection(next.queuedManualSelection),
           next.preferences.preferredLanguage,
           next.preferences.subtitleLanguage,
@@ -636,7 +648,8 @@ export class AcquisitionJobRepository {
           `UPDATE acquisition_jobs SET
             status = ?, attempt = ?, current_release = ?, selected_releaser = ?,
             preferred_releaser = ?, reason_code = ?, failure_reason = ?, validation_summary = ?,
-            auto_retrying = ?, progress = ?, queue_status = ?, queued_manual_selection_json = ?,
+            auto_retrying = ?, progress = ?, queue_status = ?, live_queue_id = ?, live_download_id = ?,
+            queued_manual_selection_json = ?,
             preferred_language = ?, subtitle_language = ?,
             updated_at = ?, completed_at = ?
            WHERE id = ?`,
@@ -653,6 +666,8 @@ export class AcquisitionJobRepository {
           next.autoRetrying ? 1 : 0,
           next.progress,
           next.queueStatus,
+          next.liveQueueId ?? null,
+          next.liveDownloadId ?? null,
           serializeManualSelection(next.queuedManualSelection),
           next.preferences.preferredLanguage,
           next.preferences.subtitleLanguage,

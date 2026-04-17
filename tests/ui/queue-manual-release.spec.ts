@@ -49,6 +49,14 @@ function queueItemCard(page: Page, title: string) {
   return page.getByTestId('queue-item-card').filter({ hasText: title }).first();
 }
 
+function queueEntryListItem(page: Page, title: string) {
+  return page.getByTestId('queue-entry-list-item').filter({ hasText: title }).first();
+}
+
+async function selectQueueEntry(page: Page, title: string) {
+  await queueEntryListItem(page, title).click();
+}
+
 async function openManualReleaseModal(page: Page) {
   const card = acquisitionCard(page);
   await card.getByRole('button', { name: 'Show manual release options' }).click();
@@ -64,12 +72,13 @@ test('queue view renders acquisition jobs and active downloads', async ({ page }
 
   await openQueue(page, api);
 
-  await expect(page.getByText(acquisitionJobFixture.title, { exact: true })).toBeVisible();
-  await expect(page.getByText(queueItemFixture.title, { exact: true })).toBeVisible();
+  await expect(managedJobCard(page, acquisitionJobFixture.title)).toBeVisible();
+  await expect(queueEntryListItem(page, queueItemFixture.title)).toBeVisible();
+  await expect(page.getByTestId('queue-entry-list-item')).toHaveCount(2);
   await expect(page.getByRole('button', { name: 'Show operator tools' })).toHaveCount(0);
   await expect(page.getByText('Movie download · Downloading')).toBeVisible();
   await expect(page.getByText(/Show grab .*Looking for a release/)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Cancel download' })).toHaveCount(2);
+  await expect(page.getByRole('button', { name: 'Cancel download' })).toHaveCount(1);
 });
 
 test('queue cards and manual release modal show the managed target scope', async ({ page }) => {
@@ -208,6 +217,7 @@ test('queue item cancel refreshes queue and dashboard state', async ({ page }) =
 
   await openQueue(page, api);
 
+  await selectQueueEntry(page, queueItemFixture.title);
   const downloadCard = queueItemCard(page, queueItemFixture.title);
   await expect(downloadCard).toBeVisible();
   await downloadCard.getByRole('button', { name: 'Cancel download' }).click();
@@ -243,6 +253,7 @@ test('queue item cancel errors stay inline on the queue card', async ({ page }) 
 
   await openQueue(page, api);
 
+  await selectQueueEntry(page, queueItemFixture.title);
   const downloadCard = queueItemCard(page, queueItemFixture.title);
   await expect(downloadCard).toBeVisible();
   await downloadCard.getByRole('button', { name: 'Cancel download' }).click();
@@ -260,6 +271,7 @@ test('queue item cards do not expose title deletion for live external downloads'
 
   await openQueue(page, api);
 
+  await selectQueueEntry(page, queueItemFixture.title);
   const downloadCard = queueItemCard(page, queueItemFixture.title);
   await expect(downloadCard).toBeVisible();
   await expect(downloadCard.getByRole('button', { name: 'Cancel download' })).toBeVisible();
@@ -297,6 +309,7 @@ test('queue view shows explicit ETA for downloads and matched grab jobs', async 
 
   await openQueue(page, api);
 
+  await selectQueueEntry(page, queueItemFixture.title);
   const downloadCard = page.locator('article').filter({
     has: page.getByText(queueItemFixture.title, { exact: true }),
   });
@@ -304,8 +317,9 @@ test('queue view shows explicit ETA for downloads and matched grab jobs', async 
   await expect(downloadCard.getByText('ETA', { exact: true })).toBeVisible();
   await expect(downloadCard.getByText('10m remaining', { exact: true })).toBeVisible();
 
-  const card = acquisitionCard(page);
-  await expect(card.getByText('58%', { exact: true }).first()).toBeVisible();
+  await selectQueueEntry(page, acquisitionJobFixture.title);
+  const card = managedJobCard(page, acquisitionJobFixture.title);
+  await expect(card).toBeVisible();
   await expect(card).toContainText('Downloading');
   await expect(card.getByText('ETA', { exact: true }).first()).toBeVisible();
   await expect(card).toContainText('18m remaining');
@@ -355,6 +369,7 @@ test('queue keeps out-of-scope same-series downloads as external rows', async ({
   await expect(managedCard).toContainText('Andor.S01.1080p.WEB-DL-FLUX');
   await expect(managedCard).not.toContainText('Andor.S02E01.1080p.WEB-DL-FLUX');
 
+  await page.getByTestId('queue-entry-list-item').nth(1).click();
   const externalCard = queueItemCard(page, acquisitionJobFixture.title);
   await expect(externalCard).toBeVisible();
   await expect(externalCard).toContainText('Andor.S02E01.1080p.WEB-DL-FLUX');

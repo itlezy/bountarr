@@ -28,15 +28,18 @@ test('system tab shows local volumes with drive letters and mounted paths', asyn
     has: page.getByText('Local volumes', { exact: true }),
   });
   await expect(localVolumesCard).toBeVisible();
-  await expect(localVolumesCard.getByText('3 tracked')).toBeVisible();
+  await expect(localVolumesCard.getByText('4 tracked')).toBeVisible();
   await expect(localVolumesCard.getByText('C:', { exact: true }).first()).toBeVisible();
   await expect(localVolumesCard.getByText('F:', { exact: true }).first()).toBeVisible();
-  await expect(localVolumesCard.getByText('Mounted path')).toBeVisible();
+  await expect(localVolumesCard.getByText('Mounted path').first()).toBeVisible();
   await expect(localVolumesCard.getByText('C:\\', { exact: true })).toBeVisible();
   await expect(localVolumesCard.getByText('F:\\', { exact: true })).toBeVisible();
   await expect(localVolumesCard.getByText('C:\\M\\Archive\\', { exact: true })).toBeVisible();
+  await expect(localVolumesCard.getByText('C:\\M\\Full\\', { exact: true })).toBeVisible();
   await expect(localVolumesCard.getByText('50% used').first()).toBeVisible();
   await expect(localVolumesCard.getByText('76% used')).toBeVisible();
+  await expect(localVolumesCard.getByText('100% used')).toBeVisible();
+  await expect(localVolumesCard.getByText('0 B free / 14.55 TB total')).toBeVisible();
 });
 
 test('download checks groups attention, pending, and verified items', async ({ page }) => {

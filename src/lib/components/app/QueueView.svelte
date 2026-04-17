@@ -1,9 +1,33 @@
 <script lang="ts">
+import { acquisitionStatusLabel, queueItemSummary } from '$lib/client/app-ui';
 import type { AppState } from '$lib/client/app-state.svelte';
 import AcquisitionJobCard from '$lib/components/app/AcquisitionJobCard.svelte';
 import QueueItemCard from '$lib/components/app/QueueItemCard.svelte';
+import type { QueueEntry } from '$lib/shared/types';
 
 let { state }: { state: AppState } = $props();
+
+function compactEntryTitle(entry: QueueEntry): string {
+  return entry.kind === 'managed' ? entry.job.title : entry.item.title;
+}
+
+function compactEntryStatus(entry: QueueEntry): string {
+  if (entry.kind === 'managed') {
+    return entry.liveSummary?.status ?? acquisitionStatusLabel(entry.job.status);
+  }
+
+  return queueItemSummary(entry.item);
+}
+
+function compactEntryProgress(entry: QueueEntry): number | null {
+  return entry.kind === 'managed'
+    ? (entry.liveSummary?.progress ?? entry.job.progress)
+    : entry.item.progress;
+}
+
+function compactEntryTag(entry: QueueEntry): string {
+  return entry.kind === 'managed' ? 'Managed grab' : 'External download';
+}
 </script>
 
 <section class="panel-shell relative px-3 py-3 sm:px-4">
@@ -38,6 +62,55 @@ let { state }: { state: AppState } = $props();
     </div>
   {:else if state.queueLoading && !state.queue}
     <div class="mt-4 text-sm text-[var(--muted)]">Loading active downloads...</div>
+  {:else if state.queue && state.queue.entries.length > 1}
+    <div class="mt-4 space-y-4">
+      <div class="rounded-[16px] border border-[var(--line)] bg-[var(--surface)] p-3">
+        <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Active items</div>
+        <div class="mt-3 grid gap-2">
+          {#each state.queue.entries as entry}
+            <button
+              class={`w-full rounded-[14px] border px-3 py-3 text-left transition ${
+                state.selectedQueueEntry?.id === entry.id
+                  ? 'border-sky-400 bg-sky-50 shadow-[0_0_0_1px_rgba(56,189,248,0.25)] dark:border-sky-700 dark:bg-sky-950/30'
+                  : 'border-[var(--line)] bg-[var(--surface-strong)]'
+              }`}
+              data-testid="queue-entry-list-item"
+              type="button"
+              aria-pressed={state.selectedQueueEntry?.id === entry.id}
+              onclick={() => state.selectQueueEntry(entry.id)}
+            >
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <div class="overflow-safe-text text-sm font-800">{compactEntryTitle(entry)}</div>
+                    <span class="pill-shell border border-[var(--line)] bg-[var(--surface)] px-2 py-0.5 text-[10px] font-700 uppercase tracking-[0.08em] text-[var(--muted)]">
+                      {compactEntryTag(entry)}
+                    </span>
+                    {#if entry.kind === 'managed' && state.isGuidedQueueJob(entry.job.id)}
+                      <span class="pill-shell border border-sky-300 bg-sky-50 px-2 py-0.5 text-[10px] font-700 uppercase tracking-[0.08em] text-sky-700 dark:border-sky-700 dark:bg-sky-950/40 dark:text-sky-200">
+                        Tracking
+                      </span>
+                    {/if}
+                  </div>
+                  <div class="mt-1 overflow-safe-text text-sm text-[var(--muted)]">{compactEntryStatus(entry)}</div>
+                </div>
+                {#if compactEntryProgress(entry) !== null}
+                  <div class="shrink-0 text-sm font-700">{Math.round(compactEntryProgress(entry) ?? 0)}%</div>
+                {/if}
+              </div>
+            </button>
+          {/each}
+        </div>
+      </div>
+
+      {#if state.selectedQueueEntry}
+        {#if state.selectedQueueEntry.kind === 'managed'}
+          <AcquisitionJobCard entry={state.selectedQueueEntry} {state} />
+        {:else}
+          <QueueItemCard entry={state.selectedQueueEntry} {state} />
+        {/if}
+      {/if}
+    </div>
   {:else if state.queue && state.queue.entries.length > 0}
     <div class="mt-4 space-y-3">
       {#each state.queue.entries as entry}

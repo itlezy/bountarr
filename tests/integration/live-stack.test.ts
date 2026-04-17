@@ -48,6 +48,10 @@ function exactMovieMatch(items: MediaItem[], title: string, year: number): Media
   );
 }
 
+function movieTitleMatches(left: string, right: string): boolean {
+  return left.localeCompare(right, undefined, { sensitivity: 'accent' }) === 0;
+}
+
 function movieTitleYearMatches(
   movie: { title: string; year: number | null },
   target: { title: string; year: number },
@@ -122,10 +126,45 @@ async function waitForAcquisitionVisibility(
   }, timeoutMs);
 }
 
-async function findTrackedSearchCandidate(config: LiveIntegrationConfig): Promise<MediaItem> {
-  const trackedMovies = await listMovies(config);
+function preferredTrackedMovieTitles(config: LiveIntegrationConfig): string[] {
+  return [...new Set(['Sharing the Secret', config.duplicateMovie.title])];
+}
 
-  for (const candidate of trackedMovies) {
+function matchingTrackedMovieQueueEntries(queue: QueueResponse, arrItemId: number) {
+  return {
+    external: queue.entries.filter(
+      (entry): entry is Extract<QueueEntry, { kind: 'external' }> =>
+        entry.kind === 'external' &&
+        entry.item.sourceService === 'radarr' &&
+        entry.item.kind === 'movie' &&
+        entry.item.arrItemId === arrItemId,
+    ),
+    managed: queue.entries.filter(
+      (entry): entry is Extract<QueueEntry, { kind: 'managed' }> =>
+        entry.kind === 'managed' &&
+        entry.job.sourceService === 'radarr' &&
+        entry.job.kind === 'movie' &&
+        entry.job.arrItemId === arrItemId,
+    ),
+  };
+}
+
+async function findTrackedSearchCandidate(
+  config: LiveIntegrationConfig,
+  preferredTitles: string[] = [],
+): Promise<MediaItem> {
+  const trackedMovies = await listMovies(config);
+  const orderedCandidates = [
+    ...preferredTitles.flatMap((title) =>
+      trackedMovies.filter((candidate) => movieTitleMatches(candidate.title, title)),
+    ),
+    ...trackedMovies,
+  ].filter(
+    (candidate, index, candidates) =>
+      candidates.findIndex((otherCandidate) => otherCandidate.id === candidate.id) === index,
+  );
+
+  for (const candidate of orderedCandidates) {
     if (candidate.year === null) {
       continue;
     }
@@ -356,7 +395,7 @@ describe.sequential('live stack integration', () => {
   }, 120_000);
 
   it('returns the duplicate path for an already tracked Radarr movie', async () => {
-    const item = await findTrackedSearchCandidate(config);
+    const item = await findTrackedSearchCandidate(config, preferredTrackedMovieTitles(config));
 
     expect(item.inArr).toBe(true);
     expect(item.canAdd).toBe(false);
@@ -372,6 +411,49 @@ describe.sequential('live stack integration', () => {
     expect(request.existing).toBe(true);
     expect(request.message).toContain('already tracked');
     expect(request.item.inArr).toBe(true);
+  }, 120_000);
+
+  it('keeps a tracked movie re-grab collapsed to one managed queue entry', async () => {
+    const item = await findTrackedSearchCandidate(config, preferredTrackedMovieTitles(config));
+
+    expect(item.inArr).toBe(true);
+
+    const request = await postJson<GrabResponse>(`${config.baseUrl}/api/grab`, {
+      item,
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+    });
+
+    expect(request.existing).toBe(true);
+    expect(request.job).not.toBeNull();
+    expect(request.item.arrItemId).not.toBeNull();
+    expect(request.message).toContain('already tracked');
+
+    await waitForAcquisitionVisibility(config, request);
+    const job = await waitForSingleActiveJob(config, request);
+    const queue = await pollUntil(async () => {
+      const result = await getJson<QueueResponse>(`${config.baseUrl}/api/queue`);
+      const matchingEntries = matchingTrackedMovieQueueEntries(result, request.item.arrItemId!);
+      return matchingEntries.managed.length === 1 && matchingEntries.external.length === 0
+        ? result
+        : null;
+    }, 45_000);
+    const matchingEntries = matchingTrackedMovieQueueEntries(queue, request.item.arrItemId!);
+    const matchingLiveRows =
+      matchingEntries.managed[0]?.liveQueueItems.filter(
+        (liveQueueItem) =>
+          liveQueueItem.sourceService === 'radarr' &&
+          liveQueueItem.kind === 'movie' &&
+          liveQueueItem.arrItemId === request.item.arrItemId,
+      ) ?? [];
+
+    expect(job.id).toBe(request.job?.id);
+    expect(matchingEntries.managed).toHaveLength(1);
+    expect(matchingEntries.external).toHaveLength(0);
+    expect(matchingEntries.managed[0]?.job.id).toBe(request.job?.id);
+    expect(matchingLiveRows.length).toBeLessThanOrEqual(1);
   }, 120_000);
 
   it('reuses the tracked-item path for a stale second live grab after the first create succeeds', async () => {

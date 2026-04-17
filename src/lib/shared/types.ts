@@ -252,6 +252,8 @@ export interface AcquisitionJob {
   autoRetrying: boolean;
   progress: number | null;
   queueStatus: string | null;
+  liveQueueId?: number | null;
+  liveDownloadId?: string | null;
   qualityProfileId?: number | null;
   preferences: Pick<Preferences, 'preferredLanguage' | 'subtitleLanguage'>;
   targetSeasonNumbers: number[] | null;

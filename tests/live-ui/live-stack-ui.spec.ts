@@ -19,7 +19,6 @@ import {
   findMovieByTitleYear,
   getMovieById,
   listMovies,
-  ensureMovieTracked,
 } from '../integration/support/live-radarr';
 import { ensureSeriesMissing, findSeriesByTitleYear } from '../integration/support/live-sonarr';
 
@@ -258,6 +257,10 @@ async function acquisitionResponse(): Promise<AcquisitionResponse> {
   return getJson<AcquisitionResponse>(`${config.baseUrl}/api/acquisition`);
 }
 
+function movieTitleMatches(left: string, right: string): boolean {
+  return left.localeCompare(right, undefined, { sensitivity: 'accent' }) === 0;
+}
+
 function movieTitleYearMatches(
   movie: { title: string; year: number | null },
   target: { title: string; year: number },
@@ -294,6 +297,29 @@ async function waitForSingleTrackedMovie(
     );
     return matches.length === 1 ? matches[0] : null;
   }, timeoutMs);
+}
+
+function preferredTrackedMovieTitles(): string[] {
+  return [...new Set(['Sharing the Secret', config.duplicateMovie.title])];
+}
+
+function matchingTrackedMovieQueueEntries(queue: QueueResponse, arrItemId: number) {
+  return {
+    external: queue.entries.filter(
+      (entry): entry is Extract<QueueResponse['entries'][number], { kind: 'external' }> =>
+        entry.kind === 'external' &&
+        entry.item.sourceService === 'radarr' &&
+        entry.item.kind === 'movie' &&
+        entry.item.arrItemId === arrItemId,
+    ),
+    managed: queue.entries.filter(
+      (entry): entry is Extract<QueueResponse['entries'][number], { kind: 'managed' }> =>
+        entry.kind === 'managed' &&
+        entry.job.sourceService === 'radarr' &&
+        entry.job.kind === 'movie' &&
+        entry.job.arrItemId === arrItemId,
+    ),
+  };
 }
 
 async function waitForSingleMovieJob(
@@ -493,19 +519,18 @@ async function findLiveSeriesTarget(): Promise<{ title: string; year: number } |
 }
 
 async function findTrackedMovieTarget(): Promise<{ title: string; year: number } | null> {
-  const configuredDuplicate = await findMovieByTitleYear(config, config.duplicateMovie).catch(
-    () => null,
-  );
-  if (configuredDuplicate && configuredDuplicate.year !== null) {
-    return {
-      title: configuredDuplicate.title,
-      year: configuredDuplicate.year,
-    };
-  }
-
   const trackedMovies = await listMovies(config);
+  const orderedCandidates = [
+    ...preferredTrackedMovieTitles().flatMap((title) =>
+      trackedMovies.filter((candidate) => movieTitleMatches(candidate.title, title)),
+    ),
+    ...trackedMovies,
+  ].filter(
+    (candidate, index, candidates) =>
+      candidates.findIndex((otherCandidate) => otherCandidate.id === candidate.id) === index,
+  );
 
-  for (const candidate of trackedMovies) {
+  for (const candidate of orderedCandidates) {
     if (candidate.year === null) {
       continue;
     }
@@ -647,9 +672,7 @@ test('movie live UI distinguishes real non-existing and existing movie results',
 }) => {
   test.setTimeout(180_000);
 
-  const trackedMovie =
-    (await ensureMovieTracked(config, config.duplicateMovie).catch(() => null)) ??
-    (await findTrackedMovieTarget());
+  const trackedMovie = await findTrackedMovieTarget();
   test.skip(
     trackedMovie === null || trackedMovie.year === null,
     'No searchable tracked Radarr movie is currently available for the existing/non-existing comparison.',
@@ -675,7 +698,7 @@ test('movie live UI distinguishes real non-existing and existing movie results',
   const trackedCard = searchResultCardByYear(page, trackedMovie.title, trackedMovie.year);
   await expect(trackedCard).toBeVisible();
   await expect(trackedCard).toContainText('Already Grabbed');
-  const grabButton = trackedCard.getByRole('button', { name: 'Grab', exact: true });
+  const grabButton = trackedCard.getByRole('button', { name: 'Grab Again', exact: true });
   await expect(grabButton).toBeEnabled();
   await grabButton.click();
 
@@ -878,9 +901,7 @@ test('movie live UI can submit a manual release selection when Arr exposes one',
 test('tracked movie live UI still offers the normal grab confirmation flow', async ({ page }) => {
   test.setTimeout(120_000);
 
-  const trackedMovie =
-    (await ensureMovieTracked(config, config.duplicateMovie).catch(() => null)) ??
-    (await findTrackedMovieTarget());
+  const trackedMovie = await findTrackedMovieTarget();
   test.skip(
     trackedMovie === null || trackedMovie.year === null,
     'No searchable tracked Radarr movie is currently available for alternate-grab UI verification.',
@@ -899,7 +920,7 @@ test('tracked movie live UI still offers the normal grab confirmation flow', asy
   await expect(resultCard).toBeVisible();
   await expect(resultCard).toContainText(trackedMovie.year.toString());
 
-  const grabButton = resultCard.getByRole('button', { name: 'Grab', exact: true });
+  const grabButton = resultCard.getByRole('button', { name: 'Grab Again', exact: true });
   await expect(grabButton).toBeVisible();
   await expect(grabButton).toBeEnabled();
   await grabButton.click();
@@ -912,6 +933,61 @@ test('tracked movie live UI still offers the normal grab confirmation flow', asy
 
   await dialog.getByLabel('Close grab confirmation').click();
   await expect(dialog).toHaveCount(0);
+});
+
+test('tracked movie live UI keeps the queue deduplicated after Grab Again', async ({ page }) => {
+  test.setTimeout(180_000);
+
+  const trackedMovie = await findTrackedMovieTarget();
+  test.skip(
+    trackedMovie === null || trackedMovie.year === null,
+    'No searchable tracked Radarr movie is currently available for tracked queue deduplication verification.',
+  );
+  if (!trackedMovie || trackedMovie.year === null) {
+    return;
+  }
+
+  await searchForTitle(page, trackedMovie.title, 'Movies');
+  await selectAvailability(page, 'All');
+
+  const resultCard = searchResultCardByYear(page, trackedMovie.title, trackedMovie.year);
+  await expect(resultCard).toBeVisible();
+  const grabAgainButton = resultCard.getByRole('button', { name: 'Grab Again', exact: true });
+  await expect(grabAgainButton).toBeEnabled();
+  await grabAgainButton.click();
+
+  const dialog = page.getByRole('dialog', { name: 'Grab title' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText(
+    /Arr is already tracking this title|Plex already has this title and Arr is already tracking it/i,
+  );
+  await dialog.getByRole('button', { name: 'Grab Again', exact: true }).click();
+
+  await expect(page.getByRole('heading', { name: 'Grab Progress' })).toBeVisible();
+  const job = await waitForJob(trackedMovie.title, 'movie', 'radarr');
+  const queue = await pollUntil(async () => {
+    const result = await queueResponse();
+    const matchingEntries = matchingTrackedMovieQueueEntries(result, job.arrItemId);
+    return matchingEntries.managed.length === 1 && matchingEntries.external.length === 0
+      ? result
+      : null;
+  }, 45_000);
+  const matchingEntries = matchingTrackedMovieQueueEntries(queue, job.arrItemId);
+  const matchingLiveRows =
+    matchingEntries.managed[0]?.liveQueueItems.filter(
+      (liveQueueItem) =>
+        liveQueueItem.sourceService === 'radarr' &&
+        liveQueueItem.kind === 'movie' &&
+        liveQueueItem.arrItemId === job.arrItemId,
+    ) ?? [];
+
+  expect(matchingEntries.managed).toHaveLength(1);
+  expect(matchingEntries.external).toHaveLength(0);
+  expect(matchingLiveRows.length).toBeLessThanOrEqual(1);
+  expect(
+    await page.getByTestId('queue-entry-list-item').filter({ hasText: trackedMovie.title }).count(),
+  ).toBeLessThanOrEqual(1);
+  await expect(acquisitionJobCard(page, trackedMovie.title)).toBeVisible();
 });
 
 test('live UI shows actual download progress when Arr already has an active download', async ({
@@ -932,10 +1008,9 @@ test('live UI shows actual download progress when Arr already has an active down
   await page.getByRole('button', { name: 'Queue' }).click();
   await expect(page.getByRole('heading', { name: 'Grab Progress' })).toBeVisible();
 
-  const downloadCard =
-    (await acquisitionJobCard(page, liveDownload.title).count())
-      ? acquisitionJobCard(page, liveDownload.title)
-      : queueItemCard(page, liveDownload.title);
+  const downloadCard = (await acquisitionJobCard(page, liveDownload.title).count())
+    ? acquisitionJobCard(page, liveDownload.title)
+    : queueItemCard(page, liveDownload.title);
   await expect(downloadCard).toBeVisible();
   await expect(downloadCard.getByText(`${Math.round(liveDownload.progress ?? 0)}%`)).toBeVisible();
   if (liveDownload.timeLeft) {

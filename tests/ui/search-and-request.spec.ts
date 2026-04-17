@@ -388,7 +388,7 @@ test('tracked series alternate grabs submit the tracked quality profile and sele
   const andorCard = page.locator('article').filter({
     has: page.getByRole('heading', { name: 'Andor' }),
   });
-  await andorCard.getByRole('button', { name: 'Grab' }).click();
+  await andorCard.getByRole('button', { name: 'Grab Again' }).click();
 
   const dialog = page.getByRole('dialog', { name: 'Grab title' });
   await expect(dialog).toBeVisible();
@@ -403,7 +403,7 @@ test('tracked series alternate grabs submit the tracked quality profile and sele
   await expect(season1).toHaveAttribute('aria-pressed', 'false');
   await expect(season2).toHaveAttribute('aria-pressed', 'true');
 
-  await dialog.getByRole('button', { name: 'Grab', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Grab Again', exact: true }).click();
 
   await expect
     .poll(() => api.grabBodies.length, {
@@ -623,7 +623,7 @@ test('arr-tracked search results still use the normal grab dialog with alternate
   const matrixCard = page.locator('article').filter({
     has: page.getByRole('heading', { name: 'The Matrix' }),
   });
-  await matrixCard.getByRole('button', { name: 'Grab' }).click();
+  await matrixCard.getByRole('button', { name: 'Grab Again' }).click();
 
   const dialog = page.getByRole('dialog', { name: 'Grab title' });
   await expect(dialog).toBeVisible();
@@ -631,7 +631,7 @@ test('arr-tracked search results still use the normal grab dialog with alternate
     'Arr is already tracking this title. Confirm to download an alternate release anyway.',
   );
 
-  await dialog.getByRole('button', { name: 'Grab', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Grab Again', exact: true }).click();
 
   await expect
     .poll(() => api.grabBodies.length, {
@@ -737,7 +737,7 @@ test('duplicate tracked movie submit still moves to queue and keeps alternate-re
   const matrixCard = page.locator('article').filter({
     has: page.getByRole('heading', { name: 'The Matrix' }),
   });
-  await matrixCard.getByRole('button', { name: 'Grab' }).click();
+  await matrixCard.getByRole('button', { name: 'Grab Again' }).click();
 
   const dialog = page.getByRole('dialog', { name: 'Grab title' });
   await expect(dialog).toBeVisible();
@@ -745,7 +745,7 @@ test('duplicate tracked movie submit still moves to queue and keeps alternate-re
     'Arr is already tracking this title. Confirm to download an alternate release anyway.',
   );
 
-  await dialog.getByRole('button', { name: 'Grab', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Grab Again', exact: true }).click();
 
   await expect
     .poll(() => api.grabBodies.length, {

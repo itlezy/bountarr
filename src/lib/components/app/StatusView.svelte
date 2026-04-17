@@ -179,7 +179,7 @@ function uptimeLabel(totalSeconds: number): string {
       <div class="mt-3 grid gap-3 sm:grid-cols-2">
         <div>
           <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">DB size</div>
-          <div class="mt-1 text-base font-700">{formatBytes(state.config.runtime.databaseSizeBytes ?? 0)}</div>
+          <div class="mt-1 text-base font-700">{byteLabel(state.config.runtime.databaseSizeBytes)}</div>
         </div>
         <div>
           <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Checked</div>

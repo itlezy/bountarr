@@ -2,11 +2,16 @@ import { arrFetch } from '$lib/server/arr-client';
 import { fetchQueueRecords } from '$lib/server/acquisition-validator-shared';
 import { dashboardCache, queueCache } from '$lib/server/app-cache';
 import { isTerminalJobStatus, type ArrService } from '$lib/server/acquisition-domain';
+import { getAcquisitionJobRepository } from '$lib/server/acquisition-job-repository';
 import { ensureAcquisitionWorkers, getQueueAcquisitionJobs } from '$lib/server/acquisition-service';
 import { fetchExistingMovie, fetchExistingSeries } from '$lib/server/lookup-service';
 import { normalizeItem } from '$lib/server/media-normalize';
 import { buildManagedLiveSummary } from '$lib/server/queue-live-summary';
-import { queueItemMatchesManagedTarget } from '$lib/server/queue-matching';
+import {
+  bestQueueIdentityCandidate,
+  queueItemMatchesManagedIdentity,
+  queueItemMatchesManagedTarget,
+} from '$lib/server/queue-matching';
 import { normalizeQueueItem } from '$lib/server/queue-normalize';
 import { asNumber, asRecord, asRecordsArray, asString } from '$lib/server/raw';
 import { getConfiguredServiceFlags } from '$lib/server/runtime';
@@ -287,13 +292,71 @@ function queueEntryUpdatedAt(entry: QueueEntry): number {
   return -1;
 }
 
+function liveQueueItemsForManagedJob(
+  job: AcquisitionJob,
+  items: QueueItem[],
+): QueueItem[] {
+  if (job.kind === 'movie') {
+    const matched = bestQueueIdentityCandidate(job, items);
+    return matched ? [matched] : [];
+  }
+
+  const identityMatches = items.filter((item) => queueItemMatchesManagedIdentity(job, item));
+  const remainingItems =
+    identityMatches.length === 0
+      ? items
+      : items.filter((item) => !identityMatches.includes(item));
+  const scopeMatches = remainingItems.filter((item) => queueItemMatchesManagedTarget(job, item));
+  return [...identityMatches, ...scopeMatches];
+}
+
+function claimManagedQueueIdentities(
+  acquisitionJobs: AcquisitionJob[],
+  items: QueueItem[],
+): AcquisitionJob[] {
+  const jobs = getAcquisitionJobRepository();
+  let updated = false;
+  const nextJobs = acquisitionJobs.map((job) => {
+    if (isTerminalJobStatus(job.status)) {
+      return job;
+    }
+
+    const claimedItem = bestQueueIdentityCandidate(job, items);
+    if (!claimedItem) {
+      return job;
+    }
+
+    const nextQueueId = claimedItem.queueId ?? null;
+    const nextDownloadId = claimedItem.downloadId ?? null;
+    if (nextQueueId === null && nextDownloadId === null) {
+      return job;
+    }
+
+    if (
+      (job.liveQueueId ?? null) === nextQueueId &&
+      (job.liveDownloadId ?? null) === nextDownloadId
+    ) {
+      return job;
+    }
+
+    const persisted = jobs.updateJob(job.id, {
+      liveDownloadId: nextDownloadId,
+      liveQueueId: nextQueueId,
+    });
+    updated = true;
+    return persisted;
+  });
+
+  return updated ? nextJobs : acquisitionJobs;
+}
+
 export function composeQueueEntries(
   acquisitionJobs: AcquisitionJob[],
   items: QueueItem[],
 ): QueueEntry[] {
   let unmatchedItems = [...items];
   const managedEntries = acquisitionJobs.map((job) => {
-    const liveQueueItems = unmatchedItems.filter((item) => queueItemMatchesManagedTarget(job, item));
+    const liveQueueItems = liveQueueItemsForManagedJob(job, unmatchedItems);
     if (liveQueueItems.length > 0) {
       const matchedIds = new Set(liveQueueItems.map((item) => queueItemEntryId(item)));
       unmatchedItems = unmatchedItems.filter((item) => !matchedIds.has(queueItemEntryId(item)));
@@ -332,8 +395,8 @@ export async function getQueue(options?: { force?: boolean }): Promise<QueueResp
     return cached.value;
   }
 
-  const acquisitionJobs = getQueueAcquisitionJobs();
   const items = (await Promise.all([buildQueueItems('radarr'), buildQueueItems('sonarr')])).flat();
+  const acquisitionJobs = claimManagedQueueIdentities(getQueueAcquisitionJobs(), items);
   const entries = composeQueueEntries(acquisitionJobs, items);
 
   const value: QueueResponse = {

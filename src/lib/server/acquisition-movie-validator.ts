@@ -1,8 +1,11 @@
 import { jobStatusLabel } from '$lib/server/acquisition-domain';
 import {
+  bestQueueIdentityCandidate,
+  queueItemMatchesManagedTarget,
+} from '$lib/server/queue-matching';
+import {
   fetchHistoryRecords,
   fetchQueueRecords,
-  findQueueRecordsForArrItem,
   historySince,
   type ValidationProbe,
   validationSummary,
@@ -22,10 +25,13 @@ export async function validateMovieAttempt(
     fetchQueueRecords('radarr'),
     fetchHistoryRecords('radarr', job.arrItemId),
   ]);
-  const queueItems = findQueueRecordsForArrItem(queueRecords, 'radarr', job.arrItemId)
+  const queueItems = queueRecords
     .map((record) => normalizeQueueItem('radarr', record))
-    .filter((item): item is QueueItem => item !== null);
+    .filter(
+      (item): item is QueueItem => item !== null && queueItemMatchesManagedTarget(job, item),
+    );
   const liveSummary = buildManagedLiveSummary(queueItems);
+  const claimedQueueItem = bestQueueIdentityCandidate(job, queueItems);
   const relevantHistory = historySince(historyRecords, attemptStart, job.currentRelease);
 
   if (relevantHistory.length === 0) {
@@ -35,6 +41,8 @@ export async function validateMovieAttempt(
         preferredReleaser: null,
         progress: liveSummary.progress,
         queueStatus: liveSummary.status ?? jobStatusLabel(job.status),
+        liveDownloadId: claimedQueueItem?.downloadId ?? null,
+        liveQueueId: claimedQueueItem?.queueId ?? null,
         reasonCode: null,
         summary: null,
       };
@@ -45,6 +53,8 @@ export async function validateMovieAttempt(
       preferredReleaser: null,
       progress: job.progress,
       queueStatus: job.queueStatus,
+      liveDownloadId: null,
+      liveQueueId: null,
       reasonCode: null,
       summary: null,
     };
@@ -64,6 +74,8 @@ export async function validateMovieAttempt(
       preferredReleaser: job.selectedReleaser,
       progress: 100,
       queueStatus: 'Imported',
+      liveDownloadId: null,
+      liveQueueId: null,
       reasonCode: 'validated',
       summary,
     };
@@ -75,6 +87,8 @@ export async function validateMovieAttempt(
       preferredReleaser: null,
       progress: 100,
       queueStatus: 'Imported',
+      liveDownloadId: null,
+      liveQueueId: null,
       reasonCode: item.auditStatus === 'no-subs' ? 'missing-subs' : 'missing-audio',
       summary,
     };
@@ -85,6 +99,8 @@ export async function validateMovieAttempt(
     preferredReleaser: null,
     progress: liveSummary?.progress ?? job.progress,
     queueStatus: liveSummary?.status ?? job.queueStatus,
+    liveDownloadId: claimedQueueItem?.downloadId ?? null,
+    liveQueueId: claimedQueueItem?.queueId ?? null,
     reasonCode: null,
     summary,
   };

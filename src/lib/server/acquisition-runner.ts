@@ -34,7 +34,12 @@ type AcquisitionRunnerDependencies = {
   waitForAttemptOutcome: (
     job: PersistedAcquisitionJob,
     attemptStartedAt: string,
-    onProgress?: (progress: { progress: number | null; queueStatus: string | null }) => void,
+    onProgress?: (progress: {
+      progress: number | null;
+      queueStatus: string | null;
+      liveDownloadId: string | null;
+      liveQueueId: number | null;
+    }) => void,
   ) => Promise<WaitForAttemptOutcomeResult>;
 };
 
@@ -71,6 +76,8 @@ export class AcquisitionRunner {
       preferredReleaser: probe.outcome === 'success' ? probe.preferredReleaser : null,
       progress: probe.progress,
       queueStatus: probe.queueStatus,
+      liveDownloadId: probe.liveDownloadId,
+      liveQueueId: probe.liveQueueId,
       reasonCode:
         probe.reasonCode ??
         (probe.outcome === 'success' ? 'validated' : 'missing-audio'),
@@ -107,8 +114,16 @@ export class AcquisitionRunner {
       return true;
     }
 
-    if (probe.progress !== null || probe.queueStatus) {
-      this.lifecycle.updateValidationProgress(current.id, probe.progress, probe.queueStatus);
+    if (
+      probe.progress !== null ||
+      probe.queueStatus ||
+      probe.liveQueueId !== null ||
+      probe.liveDownloadId !== null
+    ) {
+      this.lifecycle.updateValidationProgress(current.id, probe.progress, probe.queueStatus, {
+        liveDownloadId: probe.liveDownloadId,
+        liveQueueId: probe.liveQueueId,
+      });
     }
 
     if (current.status === 'grabbing') {
@@ -262,6 +277,10 @@ export class AcquisitionRunner {
               jobId,
               progressUpdate.progress,
               progressUpdate.queueStatus,
+              {
+                liveDownloadId: progressUpdate.liveDownloadId,
+                liveQueueId: progressUpdate.liveQueueId,
+              },
             );
           },
         );

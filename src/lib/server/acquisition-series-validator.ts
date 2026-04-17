@@ -7,7 +7,10 @@ import {
 } from '$lib/server/acquisition-validator-shared';
 import { buildManagedLiveSummary } from '$lib/server/queue-live-summary';
 import { normalizeItem, normalizeLanguageEntries } from '$lib/server/media-normalize';
-import { queueItemMatchesManagedTarget } from '$lib/server/queue-matching';
+import {
+  bestQueueIdentityCandidate,
+  queueItemMatchesManagedTarget,
+} from '$lib/server/queue-matching';
 import { normalizeQueueItem } from '$lib/server/queue-normalize';
 import { asNumber, asRecord, asString } from '$lib/server/raw';
 import { fetchEpisodeFile, fetchSeriesEpisodeRecords } from '$lib/server/lookup-service';
@@ -72,6 +75,7 @@ export async function validateSeriesAttempt(
     .filter(
       (item): item is QueueItem => item !== null && queueItemMatchesManagedTarget(job, item),
     );
+  const claimedQueueItem = bestQueueIdentityCandidate(job, queueItems);
   const relevantHistory = historySince(historyRecords, attemptStart, job.currentRelease);
   const historyEpisodeFileIds = new Set(
     relevantHistory
@@ -91,6 +95,8 @@ export async function validateSeriesAttempt(
       preferredReleaser: null,
       progress: progress.progress,
       queueStatus: progress.queueStatus,
+      liveDownloadId: claimedQueueItem?.downloadId ?? null,
+      liveQueueId: claimedQueueItem?.queueId ?? null,
       reasonCode: null,
       summary: 'Waiting for Sonarr to resolve the targeted episodes for this grab.',
     };
@@ -102,6 +108,8 @@ export async function validateSeriesAttempt(
       preferredReleaser: null,
       progress: progress.progress,
       queueStatus: progress.queueStatus,
+      liveDownloadId: claimedQueueItem?.downloadId ?? null,
+      liveQueueId: claimedQueueItem?.queueId ?? null,
       reasonCode: null,
       summary:
         importedTargetEpisodes.length > 0
@@ -153,6 +161,8 @@ export async function validateSeriesAttempt(
       preferredReleaser: null,
       progress: progress.progress,
       queueStatus: progress.queueStatus,
+      liveDownloadId: claimedQueueItem?.downloadId ?? null,
+      liveQueueId: claimedQueueItem?.queueId ?? null,
       reasonCode: null,
       summary: 'Imported episodes are waiting for media info',
     };
@@ -168,6 +178,8 @@ export async function validateSeriesAttempt(
       preferredReleaser: null,
       progress: 100,
       queueStatus: 'Imported',
+      liveDownloadId: null,
+      liveQueueId: null,
       reasonCode: failed.auditStatus === 'no-subs' ? 'missing-subs' : 'missing-audio',
       summary:
         failed.auditStatus === 'no-subs'
@@ -181,6 +193,8 @@ export async function validateSeriesAttempt(
     preferredReleaser: job.selectedReleaser,
     progress: 100,
     queueStatus: 'Imported',
+    liveDownloadId: null,
+    liveQueueId: null,
     reasonCode: 'validated',
     summary: `Validated ${importedTargetEpisodes.length} targeted episode${importedTargetEpisodes.length === 1 ? '' : 's'}`,
   };

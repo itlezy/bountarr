@@ -3,6 +3,8 @@
 ## 2026-04-14
 
 - `pwsh -NoLogo -NoProfile -File 'C:\bin\zscripts\U52_diskfree.ps1'` failed because the script still uses `Get-WmiObject`, which is not available in PowerShell 7. For volume queries in this environment, use `Get-CimInstance -ClassName Win32_Volume` instead.
+- `Get-Content -Path 'src/lib/server/series-scope.test.ts'` failed because that file does not exist in this repo. When checking for a test file, confirm the exact path first with `Get-ChildItem` or `rg --files` instead of assuming the companion `*.test.ts` file exists.
+- `rg --line-number "qualityProfileId|tracked in .*Reusing the active alternate-release grab|queued manual|completionEpisodeIds|Scope mismatch|Scope blocked" src/lib/server/*.test.ts tests/ui` failed on Windows because `rg` does not accept that wildcard path argument form here. Search from a concrete root such as `src` or `tests` and let the pattern do the narrowing instead of passing `*.test.ts` path globs.
 
 ## 2026-04-01
 
@@ -28,3 +30,8 @@
 - Running two `git commit` commands in parallel in the same repository raced on `.git/index.lock` and mis-associated one commit message with the other batch. Serialize Git writes; do not wrap same-repo commit operations in `multi_tool_use.parallel`.
 - `npm run test -- tests/integration/live-stack.test.ts` did not run the live suite because this repo's default Vitest config only includes `src/**/*.test.ts`. Use the dedicated integration config/helper instead of passing an integration path to the default test script.
 - The original `helper-test-integration.ps1` invoked `vitest run tests/integration`, which still loaded the default Vitest include pattern and found no tests. The integration helper must pass a dedicated config that includes `tests/integration/**/*.test.ts`.
+- `rg -n --no-heading "..." src/lib/server/*.test.ts src/routes/api/*.test.ts src/lib/client/*.test.ts tests/ui/*.spec.ts` failed on Windows because ripgrep does not accept those wildcard path arguments as shell-expanded globs here. Point `rg` at a concrete root such as `src` or `tests` and filter by pattern instead of passing `*.test.ts` path globs.
+- `rg -n --no-heading "..." src/lib/server/acquisition-*-validator.ts src/lib/server/*validator*.test.ts` failed for the same reason: ripgrep path globs are not expanded that way in this PowerShell/Windows setup. Search from `src/lib/server` and match filenames or symbols in the pattern instead.
+- `rg -n --no-heading "seasonNumbers|..." src/lib/server/acquisition* ...` failed because wildcard path arguments like `src/lib/server/acquisition*` are not valid ripgrep path inputs in this environment. Search from a real directory root such as `src/lib/server` and let the pattern narrow the matches.
+- Get-Content -Path 'src\\routes\\api\\acquisition\\[jobId]\\releases\\+server.ts' failed because PowerShell treated [jobId] as a wildcard character class; use -LiteralPath for bracketed route paths.
+- 2026-04-17: Tried to chain commands with bash-style `&&` inside a PowerShell command when checking `MediaItem` in `src/lib/shared/types.ts`. PowerShell parsed it as an unexpected token. Use separate statements or separate tool calls instead.

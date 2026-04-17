@@ -107,6 +107,8 @@ export class AcquisitionLifecycle {
     const result = this.jobs.updateJobIfStatus(job.id, ['queued', 'retrying', 'searching'], {
       autoRetrying: current.autoRetrying,
       failureReason: null,
+      liveDownloadId: null,
+      liveQueueId: null,
       progress: null,
       queuedManualSelection: null,
       queueStatus: 'Searching releases',
@@ -144,6 +146,8 @@ export class AcquisitionLifecycle {
     const next = this.jobs.updateJob(current.id, {
       autoRetrying: false,
       completedAt: new Date().toISOString(),
+      liveDownloadId: null,
+      liveQueueId: null,
       reasonCode: selectionFailureReasonCode(releaseSelection),
       failureReason: releaseSelection.selection.decision.reason,
       queuedManualSelection: null,
@@ -183,6 +187,8 @@ export class AcquisitionLifecycle {
       completedAt: null,
       currentRelease: selectedRelease.title,
       failureReason: null,
+      liveDownloadId: null,
+      liveQueueId: null,
       queueStatus: 'Grabbing release',
       queuedManualSelection: null,
       selectedReleaser: releaser,
@@ -243,6 +249,8 @@ export class AcquisitionLifecycle {
       completedAt: null,
       currentRelease: selectedRelease.title,
       failureReason: null,
+      liveDownloadId: null,
+      liveQueueId: null,
       queueStatus: 'Grabbing release',
       queuedManualSelection: null,
       selectedReleaser: releaser,
@@ -329,6 +337,10 @@ export class AcquisitionLifecycle {
     jobId: string,
     progress: number | null,
     queueStatus: string | null,
+    liveQueue?: {
+      liveDownloadId?: string | null;
+      liveQueueId?: number | null;
+    },
   ): PersistedAcquisitionJob | null {
     const current = this.getMutableJob(jobId);
     if (!current) {
@@ -340,6 +352,8 @@ export class AcquisitionLifecycle {
     }
 
     return this.jobs.updateJob(jobId, {
+      liveDownloadId: liveQueue?.liveDownloadId,
+      liveQueueId: liveQueue?.liveQueueId,
       progress,
       queueStatus,
       status: 'validating',
@@ -366,6 +380,8 @@ export class AcquisitionLifecycle {
     const next = this.jobs.updateJob(current.id, {
       autoRetrying: false,
       completedAt: new Date().toISOString(),
+      liveDownloadId: null,
+      liveQueueId: null,
       reasonCode: waitResult.reasonCode,
       failureReason: null,
       preferredReleaser: waitResult.preferredReleaser ?? current.selectedReleaser,
@@ -418,6 +434,8 @@ export class AcquisitionLifecycle {
       attempt: nextAttempt,
       autoRetrying: !terminal,
       completedAt: terminal ? new Date().toISOString() : null,
+      liveDownloadId: null,
+      liveQueueId: null,
       reasonCode: waitResult.reasonCode,
       failureReason: waitResult.summary,
       progress: waitResult.progress,
@@ -469,6 +487,8 @@ export class AcquisitionLifecycle {
       completedAt: new Date().toISOString(),
       reasonCode: 'crashed',
       failureReason: message,
+      liveDownloadId: null,
+      liveQueueId: null,
       queuedManualSelection: null,
       status: 'failed',
       validationSummary: message,
@@ -501,6 +521,8 @@ export class AcquisitionLifecycle {
     const next = this.jobs.updateJob(current.id, {
       autoRetrying: false,
       completedAt: new Date().toISOString(),
+      liveDownloadId: null,
+      liveQueueId: null,
       reasonCode: 'manual-selection-lost',
       failureReason: reason,
       progress: null,
@@ -533,6 +555,8 @@ export class AcquisitionLifecycle {
       completedAt: new Date().toISOString(),
       reasonCode: 'cancelled',
       failureReason: reason,
+      liveDownloadId: null,
+      liveQueueId: null,
       progress: null,
       queueStatus: 'Cancelled',
       queuedManualSelection: null,

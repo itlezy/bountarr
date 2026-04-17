@@ -42,6 +42,8 @@ export async function waitForAttemptOutcome(
       onProgress?.({
         progress: validation.progress,
         queueStatus: validation.queueStatus,
+        liveDownloadId: validation.liveDownloadId,
+        liveQueueId: validation.liveQueueId,
       });
     }
 

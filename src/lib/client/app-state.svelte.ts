@@ -386,6 +386,7 @@ export class AppState {
   operatorReveals = $state<Record<string, boolean>>({});
   guidedQueueJobId = $state<string | null>(null);
   guidedQueueTitle = $state<string | null>(null);
+  selectedQueueEntryId = $state<string | null>(null);
 
   constructor(
     dataSource: PageData | (() => PageData),
@@ -490,6 +491,21 @@ export class AppState {
 
   get usesFullscreenDialogs(): boolean {
     return this.isMobileViewport;
+  }
+
+  get selectedQueueEntry(): QueueEntry | null {
+    if (!this.queue || this.queue.entries.length === 0) {
+      return null;
+    }
+
+    if (this.selectedQueueEntryId) {
+      const selectedEntry = this.queue.entries.find((entry) => entry.id === this.selectedQueueEntryId);
+      if (selectedEntry) {
+        return selectedEntry;
+      }
+    }
+
+    return this.queue.entries[0] ?? null;
   }
 
   get confirmSeasonOptions(): number[] {
@@ -687,6 +703,35 @@ export class AppState {
     return `Tracking ${this.guidedQueueTitle} below so you can see what happens next.`;
   }
 
+  private syncSelectedQueueEntry(): void {
+    if (!this.queue || this.queue.entries.length === 0) {
+      this.selectedQueueEntryId = null;
+      return;
+    }
+
+    if (
+      this.selectedQueueEntryId &&
+      this.queue.entries.some((entry) => entry.id === this.selectedQueueEntryId)
+    ) {
+      return;
+    }
+
+    const guidedEntry = this.guidedQueueJobId
+      ? this.queue.entries.find(
+          (entry) => entry.kind === 'managed' && entry.job.id === this.guidedQueueJobId,
+        )
+      : null;
+    this.selectedQueueEntryId = guidedEntry?.id ?? this.queue.entries[0]?.id ?? null;
+  }
+
+  selectQueueEntry(entryId: string): void {
+    if (!this.queue?.entries.some((entry) => entry.id === entryId)) {
+      return;
+    }
+
+    this.selectedQueueEntryId = entryId;
+  }
+
   async openAddConfirm(item: MediaItem): Promise<void> {
     if (Date.now() < this.suppressAddConfirmOpenUntil) {
       return;
@@ -858,6 +903,7 @@ export class AppState {
 
     try {
       this.queue = await this.dependencies.api.fetchQueue();
+      this.syncSelectedQueueEntry();
     } catch (error) {
       this.queueError = error instanceof Error ? error.message : 'Unable to load the queue.';
     } finally {
@@ -1057,6 +1103,7 @@ export class AppState {
       this.guidedQueueTitle = result.item.title;
       if (result.job) {
         this.queue = optimisticQueueResponse(this.queue, result.job);
+        this.syncSelectedQueueEntry();
       }
       void (async () => {
         await Promise.all([this.loadDashboard(true), this.loadQueue()]);

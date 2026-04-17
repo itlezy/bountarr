@@ -55,7 +55,7 @@ export function actionLabel(item: MediaItem, grabbingId: string | null): string 
   }
 
   if (canStartGrabFlow(item)) {
-    return 'Grab';
+    return item.inArr ? 'Grab Again' : 'Grab';
   }
 
   if (item.inArr) {
@@ -321,7 +321,7 @@ export function manualReleaseStatusTone(status: ManualReleaseResult['status']): 
 }
 
 export function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) {
+  if (!Number.isFinite(bytes) || bytes < 0) {
     return 'Unknown';
   }
 
@@ -386,7 +386,7 @@ export function auditDetailSummary(item: MediaItem): string {
   }
 }
 
-export function downloadedSummary(item: QueueItem): string {
+export function downloadedSummary(item: Pick<QueueItem, 'size' | 'sizeLeft'>): string {
   if (item.size === null || item.sizeLeft === null) {
     return 'Unknown';
   }

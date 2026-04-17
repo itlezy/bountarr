@@ -1110,6 +1110,94 @@ describe('app state', () => {
     expect(state.managedQueueEntry(acquisitionJob.id)?.liveQueueItems).toEqual([matchingQueueItem]);
   });
 
+  it('defaults the selected queue entry to the guided managed job when one is present', async () => {
+    const guidedJob: AcquisitionJob = {
+      ...acquisitionJob,
+      id: 'job-guided',
+      title: 'Guided Job',
+    };
+    const externalEntry = buildExternalEntry({
+      id: 'radarr:queue:9',
+      arrItemId: 603,
+      canCancel: true,
+      kind: 'movie',
+      title: 'The Matrix',
+      year: 1999,
+      poster: null,
+      sourceService: 'radarr',
+      status: 'Downloading',
+      progress: 40,
+      timeLeft: '15m',
+      estimatedCompletionTime: '2026-04-02T10:20:00.000Z',
+      size: 4_000_000_000,
+      sizeLeft: 2_400_000_000,
+      queueId: 9,
+      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      episodeIds: null,
+      seasonNumbers: null,
+    });
+    const state = new AppState(
+      pageData,
+      createDependencies({
+        api: {
+          fetchQueue: vi.fn().mockResolvedValue(buildQueue([buildManagedEntry(guidedJob), externalEntry])),
+        },
+      }),
+    );
+    state.guidedQueueJobId = guidedJob.id;
+
+    await state.loadQueue();
+
+    expect(state.selectedQueueEntry?.id).toBe(guidedJob.id);
+  });
+
+  it('keeps the selected queue entry when refreshed queue data still contains it', async () => {
+    const managedEntry = buildManagedEntry(acquisitionJob);
+    const externalEntry = buildExternalEntry({
+      id: 'radarr:queue:10',
+      arrItemId: 603,
+      canCancel: true,
+      kind: 'movie',
+      title: 'The Matrix',
+      year: 1999,
+      poster: null,
+      sourceService: 'radarr',
+      status: 'Downloading',
+      progress: 64,
+      timeLeft: '9m',
+      estimatedCompletionTime: '2026-04-02T10:14:00.000Z',
+      size: 4_000_000_000,
+      sizeLeft: 1_200_000_000,
+      queueId: 10,
+      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      episodeIds: null,
+      seasonNumbers: null,
+    });
+    const refreshedExternalEntry = buildExternalEntry({
+      ...externalEntry.item,
+      progress: 72,
+      sizeLeft: 800_000_000,
+    });
+    const fetchQueue = vi
+      .fn()
+      .mockResolvedValueOnce(buildQueue([managedEntry, externalEntry]))
+      .mockResolvedValueOnce(buildQueue([managedEntry, refreshedExternalEntry]));
+    const state = new AppState(
+      pageData,
+      createDependencies({
+        api: {
+          fetchQueue,
+        },
+      }),
+    );
+
+    await state.loadQueue();
+    state.selectQueueEntry(externalEntry.id);
+    await state.loadQueue();
+
+    expect(state.selectedQueueEntry?.id).toBe(externalEntry.id);
+  });
+
   it('stores queue cancel failures separately from manual release errors', async () => {
     const dependencies = createDependencies({
       api: {

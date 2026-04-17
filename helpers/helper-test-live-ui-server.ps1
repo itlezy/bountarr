@@ -52,6 +52,7 @@ foreach ($candidatePath in $resetPaths) {
         Remove-Item -LiteralPath $candidatePath -Force
     }
 }
+New-Item -ItemType File -Force -Path $stdoutLogPath, $stderrLogPath | Out-Null
 
 Push-Location -LiteralPath $repoRoot
 try {
@@ -91,8 +92,8 @@ try {
     [void]$startInfo.ArgumentList.Add($buildEntryPoint)
     $startInfo.WorkingDirectory = $repoRoot
     $startInfo.UseShellExecute = $false
-    $startInfo.RedirectStandardOutput = $true
-    $startInfo.RedirectStandardError = $true
+    $startInfo.RedirectStandardOutput = $false
+    $startInfo.RedirectStandardError = $false
     $startInfo.Environment['ACQUISITION_DB_PATH'] = $databaseBasePath
     $startInfo.Environment['ORIGIN'] = $origin
     $startInfo.Environment['PORT'] = [string]$Port
@@ -100,51 +101,12 @@ try {
     $process = [System.Diagnostics.Process]::new()
     $process.StartInfo = $startInfo
 
-    $stdoutWriter = [System.IO.StreamWriter]::new(
-        $stdoutLogPath,
-        $false,
-        [System.Text.UTF8Encoding]::new($false)
-    )
-    $stderrWriter = [System.IO.StreamWriter]::new(
-        $stderrLogPath,
-        $false,
-        [System.Text.UTF8Encoding]::new($false)
-    )
-
-    $stdoutHandler = [System.Diagnostics.DataReceivedEventHandler]{
-        param($sender, $eventArgs)
-
-        if ($null -eq $eventArgs.Data) {
-            return
-        }
-
-        $stdoutWriter.WriteLine($eventArgs.Data)
-        $stdoutWriter.Flush()
-        [Console]::Out.WriteLine($eventArgs.Data)
-    }
-    $stderrHandler = [System.Diagnostics.DataReceivedEventHandler]{
-        param($sender, $eventArgs)
-
-        if ($null -eq $eventArgs.Data) {
-            return
-        }
-
-        $stderrWriter.WriteLine($eventArgs.Data)
-        $stderrWriter.Flush()
-        [Console]::Error.WriteLine($eventArgs.Data)
-    }
-
-    $process.add_OutputDataReceived($stdoutHandler)
-    $process.add_ErrorDataReceived($stderrHandler)
-
     if (-not $process.Start()) {
         throw 'Failed to start the live UI Node process.'
     }
 
     $runInfo.pid = $process.Id
     $runInfo | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $runInfoPath -Encoding utf8
-    $process.BeginOutputReadLine()
-    $process.BeginErrorReadLine()
     $process.WaitForExit()
 
     $runInfo.exitedAt = [DateTimeOffset]::UtcNow.ToString('o')
@@ -158,13 +120,5 @@ try {
     exit 0
 }
 finally {
-    if ($null -ne $stdoutWriter) {
-        $stdoutWriter.Dispose()
-    }
-
-    if ($null -ne $stderrWriter) {
-        $stderrWriter.Dispose()
-    }
-
     Pop-Location
 }

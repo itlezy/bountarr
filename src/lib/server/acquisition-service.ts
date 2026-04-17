@@ -28,7 +28,10 @@ import {
   queueRecordArrItemId,
   queueRecordId,
 } from '$lib/server/acquisition-validator-shared';
-import { queueItemMatchesManagedTarget } from '$lib/server/queue-matching';
+import {
+  queueItemMatchesManagedIdentity,
+  queueItemMatchesManagedTarget,
+} from '$lib/server/queue-matching';
 import { normalizeQueueItem } from '$lib/server/queue-normalize';
 import { asArray, asRecord } from '$lib/server/raw';
 import { grabItem as grabItemInternal } from '$lib/server/acquisition-grab-service';
@@ -210,6 +213,8 @@ async function findQueueEntryIdsForManagedTarget(target: {
   arrItemId: number;
   currentRelease: string | null;
   kind: 'movie' | 'series';
+  liveDownloadId?: string | null;
+  liveQueueId?: number | null;
   sourceService: 'radarr' | 'sonarr';
   targetEpisodeIds: number[] | null;
   targetSeasonNumbers: number[] | null;
@@ -222,6 +227,35 @@ async function findQueueEntryIdsForManagedTarget(target: {
         .filter(
           (item): item is NonNullable<typeof item> =>
             item !== null && queueItemMatchesManagedTarget(target, item),
+        )
+        .map((item) => item.queueId)
+        .filter((queueId): queueId is number => queueId !== null),
+    ),
+  ];
+}
+
+async function findQueueEntryIdsForManagedIdentity(target: {
+  arrItemId: number;
+  currentRelease: string | null;
+  kind: 'movie' | 'series';
+  liveDownloadId?: string | null;
+  liveQueueId?: number | null;
+  sourceService: 'radarr' | 'sonarr';
+  targetEpisodeIds: number[] | null;
+  targetSeasonNumbers: number[] | null;
+}): Promise<number[]> {
+  if ((target.liveQueueId ?? null) === null && !target.liveDownloadId) {
+    return [];
+  }
+
+  const queueRecords = await fetchQueueRecords(target.sourceService);
+  return [
+    ...new Set(
+      queueRecords
+        .map((record) => normalizeQueueItem(target.sourceService, record))
+        .filter(
+          (item): item is NonNullable<typeof item> =>
+            item !== null && queueItemMatchesManagedIdentity(target, item),
         )
         .map((item) => item.queueId)
         .filter((queueId): queueId is number => queueId !== null),
@@ -281,6 +315,8 @@ export async function selectManualRelease(
     completedAt: null,
     reasonCode: null,
     failureReason: null,
+    liveDownloadId: null,
+    liveQueueId: null,
     progress: null,
     queuedManualSelection: persistManualSelection(selection),
     queueStatus: manualSelectionQueuedStatus,
@@ -307,9 +343,12 @@ export async function cancelAcquisitionJob(jobId: string): Promise<AcquisitionJo
     throw new Error(`Acquisition job ${jobId} was not found.`);
   }
 
+  const queueIdsByIdentity = await findQueueEntryIdsForManagedIdentity(job);
   const deletedQueueEntries = await deleteQueueEntries(
     job.sourceService,
-    await findQueueEntryIdsForManagedTarget(job),
+    queueIdsByIdentity.length > 0
+      ? queueIdsByIdentity
+      : await findQueueEntryIdsForManagedTarget(job),
   );
   await unmonitorTrackedItem(job.sourceService, job.arrItemId);
   const cancelled = getAcquisitionLifecycle().cancelJob(job);

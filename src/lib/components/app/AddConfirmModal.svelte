@@ -8,6 +8,9 @@ let { state }: { state: AppState } = $props();
 const confirmItem = $derived(state.confirmAddItem);
 const confirmSeasonOptions = $derived(state.confirmSeasonOptions);
 const isSubmitting = $derived(confirmItem ? state.grabbing === confirmItem.id : false);
+const submitLabel = $derived(
+  confirmItem?.inArr ? 'Grab Again' : 'Grab',
+);
 
 function seasonLabel(seasonNumber: number): string {
   return seasonNumber === 0 ? 'Specials' : `Season ${seasonNumber}`;
@@ -149,7 +152,7 @@ function seasonLabel(seasonNumber: number): string {
             {#if isSubmitting}
               <span class="spinner h-4 w-4 shrink-0" aria-hidden="true"></span>
             {/if}
-            <span>{isSubmitting ? 'Grabbing...' : 'Grab'}</span>
+            <span>{isSubmitting ? 'Grabbing...' : submitLabel}</span>
           </span>
         </button>
       </div>

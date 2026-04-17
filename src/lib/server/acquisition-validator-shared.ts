@@ -16,6 +16,8 @@ export type ValidationProbe = {
   preferredReleaser: string | null;
   progress: number | null;
   queueStatus: string | null;
+  liveDownloadId: string | null;
+  liveQueueId: number | null;
   reasonCode: AcquisitionReasonCode | null;
   summary: string | null;
 };
@@ -193,6 +195,8 @@ export type WaitForAttemptOutcomeResult = {
   preferredReleaser: string | null;
   progress: number | null;
   queueStatus: string | null;
+  liveDownloadId?: string | null;
+  liveQueueId?: number | null;
   reasonCode: AcquisitionReasonCode;
   summary: string;
 };
@@ -200,6 +204,8 @@ export type WaitForAttemptOutcomeResult = {
 export type AttemptProgressHandler = (progress: {
   progress: number | null;
   queueStatus: string | null;
+  liveDownloadId: string | null;
+  liveQueueId: number | null;
 }) => void;
 
 export type AttemptValidator = (
