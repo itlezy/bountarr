@@ -285,7 +285,7 @@ function buildExternalEntry(item: QueueItem): ExternalQueueEntry {
     id: item.id,
     item,
     canCancel: item.canCancel && item.queueId !== null,
-    canRemove: item.arrItemId !== null || item.queueId !== null,
+    canRemove: item.arrItemId === null && item.queueId !== null,
   };
 }
 
@@ -1356,7 +1356,7 @@ describe('app state', () => {
     );
 
     expect(dependencies.api.deleteArrItem).toHaveBeenCalledWith({
-      arrItemId: null,
+      deleteMode: 'queue-entry',
       id: 'radarr:queue:1',
       kind: 'movie',
       queueId: 1,

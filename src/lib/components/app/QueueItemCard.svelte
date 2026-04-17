@@ -90,7 +90,7 @@ const etaLabel = $derived(queueEtaLabel(item));
               onclick={() => void state.deleteQueueEntry(entry)}
               disabled={state.deletingItemId === entry.id || state.cancelingQueueEntryId === entry.id}
             >
-              {state.deletingItemId === entry.id ? 'Removing...' : 'Remove from Library'}
+              {state.deletingItemId === entry.id ? 'Clearing...' : 'Clear stale queue entry'}
             </button>
           {/if}
 

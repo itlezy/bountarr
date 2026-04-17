@@ -321,34 +321,27 @@ export async function cancelQueueEntry(entry: QueueCancelRequest): Promise<Queue
 
 export async function deleteArrItem(item: ArrDeleteTarget): Promise<MediaItemActionResponse> {
   invalidateQueueCache();
-  const jobs =
-    item.arrItemId !== null
-      ? getAcquisitionJobRepository().listActiveJobsByArrItem(
-          item.arrItemId,
-          item.kind,
-          item.sourceService,
-        )
-      : [];
-  const serviceLabel = item.sourceService === 'radarr' ? 'Radarr' : 'Sonarr';
-  const queueIds =
-    item.queueId !== null && item.queueId !== undefined
-      ? [item.queueId]
-      : item.arrItemId !== null
-        ? await findQueueEntryIdsForArrItem(item.sourceService, item.arrItemId)
-        : [];
-  await deleteQueueEntries(item.sourceService, queueIds);
-
-  if (item.arrItemId !== null) {
-    for (const job of jobs) {
-      getAcquisitionLifecycle().cancelJob(job, 'Deleted from Arr by user');
-    }
-  }
-
-  if (item.arrItemId === null) {
+  if (item.deleteMode === 'queue-entry') {
+    const serviceLabel = item.sourceService === 'radarr' ? 'Radarr' : 'Sonarr';
+    await deleteQueueEntries(item.sourceService, [item.queueId]);
     return {
       itemId: item.id,
       message: `${item.title} stale queue entry was removed from ${serviceLabel}.`,
     };
+  }
+
+  const jobs =
+    getAcquisitionJobRepository().listActiveJobsByArrItem(
+      item.arrItemId,
+      item.kind,
+      item.sourceService,
+    );
+  const serviceLabel = item.sourceService === 'radarr' ? 'Radarr' : 'Sonarr';
+  const queueIds = await findQueueEntryIdsForArrItem(item.sourceService, item.arrItemId);
+  await deleteQueueEntries(item.sourceService, queueIds);
+
+  for (const job of jobs) {
+    getAcquisitionLifecycle().cancelJob(job, 'Deleted from Arr by user');
   }
 
   try {

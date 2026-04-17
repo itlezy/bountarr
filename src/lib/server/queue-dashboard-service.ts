@@ -242,7 +242,7 @@ function buildExternalQueueEntry(item: QueueItem): ExternalQueueEntry {
     id: item.id,
     item,
     canCancel: item.canCancel && item.queueId !== null,
-    canRemove: item.arrItemId !== null || item.queueId !== null,
+    canRemove: item.arrItemId === null && item.queueId !== null,
   };
 }
 

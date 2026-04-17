@@ -128,6 +128,20 @@ test('queue item cancel errors stay inline on the queue card', async ({ page }) 
   await expect(downloadCard).toContainText('Unable to cancel the selected download.');
 });
 
+test('queue item cards do not expose title deletion for live external downloads', async ({ page }) => {
+  const api = await mockAppApi(page, {
+    queue: buildQueueResponse(),
+  });
+
+  await openQueue(page, api);
+
+  const downloadCard = queueItemCard(page, queueItemFixture.title);
+  await expect(downloadCard).toBeVisible();
+  await expect(downloadCard.getByRole('button', { name: 'Cancel download' })).toBeVisible();
+  await expect(downloadCard.getByRole('button', { name: /clear stale queue entry/i })).toHaveCount(0);
+  await expect(downloadCard.getByRole('button', { name: /remove from library/i })).toHaveCount(0);
+});
+
 test('queue view shows explicit ETA for downloads and matched grab jobs', async ({ page }) => {
   const matchingAcquisitionQueueItem = {
     id: 'sonarr:queue:2',

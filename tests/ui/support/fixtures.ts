@@ -258,7 +258,7 @@ function buildQueueEntries(acquisitionJobs: AcquisitionJob[], items: QueueItem[]
     id: item.id,
     item,
     canCancel: item.canCancel && item.queueId !== null,
-    canRemove: item.arrItemId !== null || item.queueId !== null,
+    canRemove: item.arrItemId === null && item.queueId !== null,
   }));
 
   return [...managedEntries, ...externalEntries];

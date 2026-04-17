@@ -175,7 +175,7 @@ describe('queue dashboard service', () => {
       id: externalQueueItem.id,
       item: externalQueueItem,
       canCancel: true,
-      canRemove: true,
+      canRemove: false,
     });
   });
 
@@ -336,7 +336,7 @@ describe('queue dashboard service', () => {
       id: unrelatedQueueItem.id,
       item: unrelatedQueueItem,
       canCancel: true,
-      canRemove: true,
+      canRemove: false,
     });
   });
 

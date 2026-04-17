@@ -177,6 +177,25 @@ export async function cancelQueueEntry(entry: QueueEntry): Promise<QueueActionRe
 }
 
 export async function deleteArrItem(item: ArrDeleteTarget): Promise<MediaItemActionResponse> {
+  const payload =
+    item.deleteMode === 'library'
+      ? {
+          deleteMode: item.deleteMode,
+          arrItemId: item.arrItemId,
+          id: item.id,
+          kind: item.kind,
+          sourceService: item.sourceService,
+          title: item.title,
+        }
+      : {
+          deleteMode: item.deleteMode,
+          id: item.id,
+          kind: item.kind,
+          queueId: item.queueId,
+          sourceService: item.sourceService,
+          title: item.title,
+        };
+
   return requestJson<MediaItemActionResponse>(
     '/api/media/delete',
     {
@@ -184,14 +203,7 @@ export async function deleteArrItem(item: ArrDeleteTarget): Promise<MediaItemAct
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        arrItemId: item.arrItemId,
-        id: item.id,
-        kind: item.kind,
-        queueId: item.queueId,
-        sourceService: item.sourceService,
-        title: item.title,
-      }),
+      body: JSON.stringify(payload),
     },
     'Unable to delete the selected Arr item.',
   );

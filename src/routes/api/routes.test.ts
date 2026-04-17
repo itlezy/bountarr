@@ -375,6 +375,7 @@ describe('API routes', () => {
     await expect(
       route.POST(
         createPostEvent('http://local.test/api/media/delete', {
+          deleteMode: 'library',
           id: 'movie:603',
           kind: 'movie',
           sourceService: 'radarr',
@@ -401,6 +402,7 @@ describe('API routes', () => {
 
     const response = await route.POST(
       createPostEvent('http://local.test/api/media/delete', {
+        deleteMode: 'library',
         arrItemId: 603,
         id: 'movie:603',
         kind: 'movie',
@@ -411,10 +413,10 @@ describe('API routes', () => {
     const payload = await readJson<{ itemId: string; message: string }>(response);
 
     expect(deleteArrItem).toHaveBeenCalledWith({
+      deleteMode: 'library',
       arrItemId: 603,
       id: 'movie:603',
       kind: 'movie',
-      queueId: null,
       sourceService: 'radarr',
       title: 'The Matrix',
     });
@@ -436,7 +438,7 @@ describe('API routes', () => {
 
     const response = await route.POST(
       createPostEvent('http://local.test/api/media/delete', {
-        arrItemId: null,
+        deleteMode: 'queue-entry',
         id: 'radarr:queue:1',
         kind: 'movie',
         queueId: 1,
@@ -447,7 +449,7 @@ describe('API routes', () => {
     const payload = await readJson<{ itemId: string; message: string }>(response);
 
     expect(deleteArrItem).toHaveBeenCalledWith({
-      arrItemId: null,
+      deleteMode: 'queue-entry',
       id: 'radarr:queue:1',
       kind: 'movie',
       queueId: 1,

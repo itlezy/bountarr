@@ -384,6 +384,7 @@ describe('client api', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await deleteArrItem({
+      deleteMode: 'library',
       arrItemId: 603,
       id: movieItem.id,
       kind: 'movie',
@@ -395,10 +396,49 @@ describe('client api', () => {
     expect(url).toBe('/api/media/delete');
     expect(init.method).toBe('POST');
     expect(JSON.parse(String(init.body))).toEqual({
+      deleteMode: 'library',
       arrItemId: 603,
       id: 'movie:1',
       kind: 'movie',
-      queueId: undefined,
+      sourceService: 'radarr',
+      title: 'The Matrix',
+    });
+  });
+
+  it('posts queue-entry deletes without Arr title identity', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          itemId: 'radarr:queue:7',
+          message: 'Cleared',
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await deleteArrItem({
+      deleteMode: 'queue-entry',
+      id: 'radarr:queue:7',
+      kind: 'movie',
+      queueId: 7,
+      sourceService: 'radarr',
+      title: 'The Matrix',
+    });
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/media/delete');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({
+      deleteMode: 'queue-entry',
+      id: 'radarr:queue:7',
+      kind: 'movie',
+      queueId: 7,
       sourceService: 'radarr',
       title: 'The Matrix',
     });

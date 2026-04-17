@@ -151,14 +151,23 @@ export interface MediaItem {
   requestPayload: Record<string, unknown> | null;
 }
 
-export interface ArrDeleteTarget {
-  id: string;
-  arrItemId: number | null;
-  kind: MediaKind;
-  sourceService: 'radarr' | 'sonarr';
-  title: string;
-  queueId?: number | null;
-}
+export type ArrDeleteTarget =
+  | {
+      deleteMode: 'library';
+      id: string;
+      arrItemId: number;
+      kind: MediaKind;
+      sourceService: 'radarr' | 'sonarr';
+      title: string;
+    }
+  | {
+      deleteMode: 'queue-entry';
+      id: string;
+      kind: MediaKind;
+      queueId: number;
+      sourceService: 'radarr' | 'sonarr';
+      title: string;
+    };
 
 export interface ReleaseDecisionCandidate {
   title: string;

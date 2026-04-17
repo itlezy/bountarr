@@ -556,6 +556,7 @@ describe('acquisition service', () => {
 
     const module = await import('$lib/server/acquisition-service');
     const result = await module.deleteArrItem({
+      deleteMode: 'library',
       arrItemId: 603,
       id: 'movie:603',
       kind: 'movie',
@@ -565,6 +566,71 @@ describe('acquisition service', () => {
 
     expect(deleteJobsByArrItem).toHaveBeenCalledWith(603, 'movie', 'radarr');
     expect(result.message).toContain('already missing from Radarr');
+  });
+
+  it('clears stale queue rows without deleting the tracked Arr title', async () => {
+    const arrFetch = vi.fn().mockResolvedValue({});
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        ensureWorkers: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        cancelJob: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        deleteJobsByArrItem: vi.fn(),
+        listActiveJobsByArrItem: vi.fn().mockReturnValue([]),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      getAcquisitionJobsResponse: vi.fn(),
+      listQueueAcquisitionJobs: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-validator-shared', () => ({
+      fetchQueueRecords: vi.fn().mockResolvedValue([]),
+      queueRecordArrItemId: vi.fn(),
+      queueRecordId: vi.fn().mockReturnValue(null),
+    }));
+    vi.doMock('$lib/server/acquisition-selection', () => ({
+      findManualReleaseSelection: vi.fn(),
+      getManualReleaseResults: vi.fn(),
+    }));
+
+    const module = await import('$lib/server/acquisition-service');
+    const result = await module.deleteArrItem({
+      deleteMode: 'queue-entry',
+      id: 'radarr:queue:7',
+      kind: 'movie',
+      queueId: 7,
+      sourceService: 'radarr',
+      title: 'The Matrix',
+    });
+
+    expect(result).toEqual({
+      itemId: 'radarr:queue:7',
+      message: 'The Matrix stale queue entry was removed from Radarr.',
+    });
+    expect(arrFetch).toHaveBeenCalledTimes(1);
+    expect(arrFetch).toHaveBeenCalledWith(
+      'radarr',
+      '/api/v3/queue/7',
+      {
+        method: 'DELETE',
+      },
+      {
+        blocklist: false,
+        removeFromClient: true,
+        skipRedownload: false,
+      },
+    );
   });
 
   it('rejects manual selections once a job is already grabbing or validating', async () => {

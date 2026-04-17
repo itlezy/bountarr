@@ -923,9 +923,11 @@ export class AppState {
 
   async deleteArrItem(item: ArrDeleteTarget): Promise<void> {
     const serviceName = item.sourceService === 'radarr' ? 'Radarr' : 'Sonarr';
-    if (
-      !this.dependencies.confirm(`Delete ${item.title} from ${serviceName} and remove its files?`)
-    ) {
+    const confirmationMessage =
+      item.deleteMode === 'library'
+        ? `Delete ${item.title} from ${serviceName} and remove its files?`
+        : `Clear the stale queue entry for ${item.title} from ${serviceName}?`;
+    if (!this.dependencies.confirm(confirmationMessage)) {
       return;
     }
 
@@ -957,6 +959,7 @@ export class AppState {
     }
 
     await this.deleteArrItem({
+      deleteMode: 'library',
       arrItemId: item.arrItemId,
       id: item.id,
       kind: item.kind,
@@ -968,6 +971,7 @@ export class AppState {
   async deleteQueueEntry(entry: QueueEntry): Promise<void> {
     if (entry.kind === 'managed') {
       await this.deleteArrItem({
+        deleteMode: 'library',
         arrItemId: entry.job.arrItemId,
         id: entry.id,
         kind: entry.job.kind,
@@ -981,14 +985,16 @@ export class AppState {
       return;
     }
 
-    await this.deleteArrItem({
-      arrItemId: entry.item.arrItemId,
-      id: entry.id,
-      kind: entry.item.kind,
-      queueId: entry.item.queueId,
-      sourceService: entry.item.sourceService,
-      title: entry.item.title,
-    });
+    if (entry.item.arrItemId === null && entry.item.queueId !== null) {
+      await this.deleteArrItem({
+        deleteMode: 'queue-entry',
+        id: entry.id,
+        kind: entry.item.kind,
+        queueId: entry.item.queueId,
+        sourceService: entry.item.sourceService,
+        title: entry.item.title,
+      });
+    }
   }
 
   submitGrab(item: MediaItem, qualityProfileId?: number | null): Promise<void>;
