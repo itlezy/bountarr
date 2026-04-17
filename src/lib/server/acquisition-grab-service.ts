@@ -287,6 +287,23 @@ async function updateTrackedQualityProfile(
   return true;
 }
 
+function withTrackedQualityProfile(
+  item: MediaItem,
+  qualityProfileId: number | null,
+): MediaItem {
+  if (qualityProfileId === null || !item.requestPayload) {
+    return item;
+  }
+
+  return {
+    ...item,
+    requestPayload: {
+      ...item.requestPayload,
+      qualityProfileId,
+    },
+  };
+}
+
 function buildSeriesPayload(
   item: MediaItem,
   defaults: Record<string, unknown>,
@@ -390,10 +407,9 @@ async function trackedResponse(
   );
 
   const currentQualityProfileId = requestedQualityProfileId(existingItem);
-  let qualityProfileUpdated = false;
   let responseItem = existingItem;
   try {
-    qualityProfileUpdated =
+    const qualityProfileUpdated =
       (requestedJob.qualityProfileId ?? null) !== currentQualityProfileId &&
       await updateTrackedQualityProfile(
         spec.service,
@@ -401,7 +417,7 @@ async function trackedResponse(
         requestedJob.qualityProfileId ?? null,
       );
     responseItem = qualityProfileUpdated
-      ? await spec.fetchExisting(existingArrItemId, preferences, item)
+      ? withTrackedQualityProfile(existingItem, requestedJob.qualityProfileId ?? null)
       : existingItem;
   } catch (error) {
     if (claimedJob.created) {
