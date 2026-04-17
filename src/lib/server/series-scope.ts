@@ -260,6 +260,32 @@ export function seriesScopeOverlapsTarget(
   return match.status === 'exact' || match.status === 'partial';
 }
 
+export function seriesScopeBelongsToTarget(
+  target: SeriesScope | null,
+  candidate: SeriesScope,
+): boolean {
+  if (!target || (!target.episodeIds && !target.seasonNumbers)) {
+    return false;
+  }
+
+  if (!candidate.episodeIds && !candidate.seasonNumbers) {
+    return false;
+  }
+
+  if (target.seasonNumbers) {
+    return Boolean(
+      candidate.seasonNumbers &&
+      isSubset(candidate.seasonNumbers, target.seasonNumbers),
+    );
+  }
+
+  return Boolean(
+    target.episodeIds &&
+    candidate.episodeIds &&
+    isSubset(candidate.episodeIds, target.episodeIds),
+  );
+}
+
 export function describeSeriesScope(scope: SeriesScope | null): string | null {
   if (!scope) {
     return null;

@@ -1,5 +1,5 @@
 import { normalizeToken } from '$lib/server/media-identity';
-import { extractSeriesScope, scopeFromTarget, seriesScopeOverlapsTarget } from '$lib/server/series-scope';
+import { extractSeriesScope, scopeFromTarget, seriesScopeBelongsToTarget } from '$lib/server/series-scope';
 import type { QueueItem } from '$lib/shared/types';
 
 type ManagedQueueTarget = {
@@ -24,7 +24,7 @@ function releaseMatchesTarget(currentRelease: string | null, item: QueueItem): b
   return [item.detail ?? item.title]
     .map((value) => normalizedReleaseText(value))
     .filter((value) => value.length > 0)
-    .some((candidate) => expected.includes(candidate) || candidate.includes(expected));
+    .some((candidate) => candidate === expected);
 }
 
 function isSameArrIdentity(target: ManagedQueueTarget, item: QueueItem): boolean {
@@ -51,7 +51,7 @@ export function queueItemMatchesManagedTarget(
   const targetScope = scopeFromTarget(target);
   const itemScope = extractSeriesScope(item);
   if (itemScope.episodeIds || itemScope.seasonNumbers) {
-    return seriesScopeOverlapsTarget(targetScope, itemScope);
+    return seriesScopeBelongsToTarget(targetScope, itemScope);
   }
 
   return releaseMatchesTarget(target.currentRelease, item);

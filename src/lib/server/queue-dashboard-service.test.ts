@@ -417,6 +417,78 @@ describe('queue dashboard service', () => {
     });
   });
 
+  it('keeps broader season-pack queue rows external when they exceed the managed target scope', async () => {
+    const { composeQueueEntries } = await import('$lib/server/queue-dashboard-service');
+
+    const acquisitionJob: AcquisitionJob = {
+      id: 'job-4b',
+      itemId: 'series:83867',
+      arrItemId: 83867,
+      kind: 'series',
+      title: 'Andor',
+      sourceService: 'sonarr',
+      status: 'grabbing',
+      attempt: 1,
+      maxRetries: 3,
+      currentRelease: 'Andor.S01.1080p.WEB-DL-FLUX',
+      selectedReleaser: 'flux',
+      preferredReleaser: 'flux',
+      reasonCode: null,
+      failureReason: null,
+      validationSummary: null,
+      autoRetrying: false,
+      progress: 15,
+      queueStatus: 'Queued',
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      targetSeasonNumbers: [1],
+      targetEpisodeIds: [101, 102],
+      startedAt: '2026-04-13T12:00:00.000Z',
+      updatedAt: '2026-04-13T12:05:00.000Z',
+      completedAt: null,
+      attempts: [],
+    };
+    const broaderSeasonPackQueueItem: QueueItem = {
+      id: 'sonarr:queue:13',
+      arrItemId: 83867,
+      canCancel: true,
+      kind: 'series',
+      title: 'Andor',
+      year: 2022,
+      poster: null,
+      sourceService: 'sonarr',
+      status: 'Downloading',
+      progress: 33,
+      timeLeft: '36m',
+      estimatedCompletionTime: '2026-04-13T12:36:00.000Z',
+      size: 12_000_000_000,
+      sizeLeft: 8_040_000_000,
+      queueId: 13,
+      detail: 'Andor.S01-S02.1080p.WEB-DL-FLUX',
+      episodeIds: null,
+      seasonNumbers: [1, 2],
+    };
+
+    const entries = composeQueueEntries([acquisitionJob], [broaderSeasonPackQueueItem]);
+
+    expect(entries).toEqual([
+      expect.objectContaining({
+        kind: 'managed',
+        liveQueueItems: [],
+        liveSummary: null,
+      }),
+      {
+        kind: 'external',
+        id: broaderSeasonPackQueueItem.id,
+        item: broaderSeasonPackQueueItem,
+        canCancel: true,
+        canRemove: false,
+      },
+    ]);
+  });
+
   it('keeps distinct queue rows when Arr reuses one download id across multiple queue ids', async () => {
     const { composeQueueEntries } = await import('$lib/server/queue-dashboard-service');
 
