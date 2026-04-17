@@ -192,4 +192,95 @@ describe('acquisition selection', () => {
       'Release scope targets different seasons.',
     );
   });
+
+  it('marks partially overlapping series releases as not selectable in manual results', async () => {
+    vi.spyOn(arrClient, 'arrFetch').mockResolvedValue([
+      {
+        guid: 'guid-partial-target',
+        indexerId: 13,
+        indexer: 'Indexer',
+        title: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+        seriesTitles: 'Andor',
+        mappedSeriesId: 83867,
+        episodeIds: [101],
+        seasonNumbers: [1],
+        languages: [{ name: 'English' }],
+        qualityWeight: 85,
+        releaseWeight: 85,
+        customFormatScore: 0,
+        size: 4_200_000_000,
+        protocol: 'torrent',
+        downloadAllowed: true,
+      },
+    ]);
+
+    const results = await getManualReleaseResults(seriesJob);
+    const partialTarget = results.releases.find((release) => release.guid === 'guid-partial-target');
+
+    expect(partialTarget).toMatchObject({
+      canSelect: false,
+      scopeStatus: 'partial',
+      selectionBlockedReason: 'Release scope overlaps the targeted episodes but does not match exactly.',
+      status: 'locally-rejected',
+    });
+  });
+
+  it('rejects manual selection for partially overlapping series releases', async () => {
+    vi.spyOn(arrClient, 'arrFetch').mockResolvedValue([
+      {
+        guid: 'guid-partial-target',
+        indexerId: 13,
+        indexer: 'Indexer',
+        title: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+        seriesTitles: 'Andor',
+        mappedSeriesId: 83867,
+        episodeIds: [101],
+        seasonNumbers: [1],
+        languages: [{ name: 'English' }],
+        qualityWeight: 85,
+        releaseWeight: 85,
+        customFormatScore: 0,
+        size: 4_200_000_000,
+        protocol: 'torrent',
+        downloadAllowed: true,
+      },
+    ]);
+
+    await expect(findManualReleaseSelection(seriesJob, 'guid-partial-target', 13)).rejects.toThrow(
+      'Release scope overlaps the targeted episodes but does not match exactly.',
+    );
+  });
+
+  it('rejects manual selection for series releases with unknown scope', async () => {
+    vi.spyOn(arrClient, 'arrFetch').mockResolvedValue([
+      {
+        guid: 'guid-unknown-scope',
+        indexerId: 14,
+        indexer: 'Indexer',
+        title: 'Andor.1080p.WEB-DL-FLUX',
+        seriesTitles: 'Andor',
+        mappedSeriesId: 83867,
+        languages: [{ name: 'English' }],
+        qualityWeight: 90,
+        releaseWeight: 90,
+        customFormatScore: 0,
+        size: 8_200_000_000,
+        protocol: 'torrent',
+        downloadAllowed: true,
+      },
+    ]);
+
+    const results = await getManualReleaseResults(seriesJob);
+    const unknownScope = results.releases.find((release) => release.guid === 'guid-unknown-scope');
+
+    expect(unknownScope).toMatchObject({
+      canSelect: false,
+      scopeStatus: 'unknown',
+      selectionBlockedReason: 'The release does not expose season or episode scope.',
+      status: 'locally-rejected',
+    });
+    await expect(findManualReleaseSelection(seriesJob, 'guid-unknown-scope', 14)).rejects.toThrow(
+      'The release does not expose season or episode scope.',
+    );
+  });
 });

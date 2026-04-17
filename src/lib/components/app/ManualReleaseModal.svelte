@@ -32,7 +32,7 @@ function manualReleaseActionLabel(
       return 'Not downloadable';
     }
 
-    if (release.scopeStatus === 'mismatch') {
+    if (release.selectionBlockedReason && release.scopeStatus !== 'not-applicable') {
       return 'Out of scope';
     }
 
@@ -125,14 +125,9 @@ function manualReleaseActionLabel(
                       Title mismatch: {release.identityReason}
                     </div>
                   {/if}
-                  {#if release.scopeStatus === 'mismatch' && release.scopeReason}
+                  {#if release.selectionBlockedReason && !release.rejectedByArr && release.scopeStatus !== 'not-applicable'}
                     <div class="mt-2 overflow-safe-text rounded-[14px] border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-200">
-                      Scope mismatch: {release.scopeReason}
-                    </div>
-                  {/if}
-                  {#if release.selectionBlockedReason && !release.rejectedByArr && release.scopeStatus !== 'mismatch'}
-                    <div class="mt-2 overflow-safe-text text-sm text-[var(--muted)]">
-                      {release.selectionBlockedReason}
+                      Scope blocked: {release.selectionBlockedReason}
                     </div>
                   {/if}
                   {#if release.rejectionReasons.length > 0}

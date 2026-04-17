@@ -117,8 +117,10 @@ function manualSelectionBlockedReason(release: EvaluatedRelease): string | null 
     return null;
   }
 
-  if (release.scopeStatus === 'mismatch') {
-    return release.scopeReason ?? 'This release is outside the targeted scope for the active grab.';
+  if (release.scopeStatus !== 'not-applicable' && release.scopeStatus !== 'exact') {
+    return (
+      release.scopeReason ?? 'This release cannot satisfy the targeted scope for the active grab.'
+    );
   }
 
   return null;
