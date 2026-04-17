@@ -327,18 +327,28 @@ export async function getManualReleaseResults(
   job: PersistedAcquisitionJob,
 ): Promise<ManualReleaseListResponse> {
   if (job.queueStatus === manualSelectionQueuedStatus && job.queuedManualSelection) {
-    const inventory = await fetchReleaseInventory(job);
-    const selectedGuid = job.queuedManualSelection.decision.selected.guid;
-    return {
-      jobId: job.id,
-      releases: mergeQueuedManualResult(
-        manualReleaseResultsFromInventory(inventory, job.failedGuids, selectedGuid),
-        job.queuedManualSelection,
-      ),
-      selectedGuid,
-      summary: job.queuedManualSelection.decision.reason,
-      updatedAt: new Date().toISOString(),
-    };
+    try {
+      const inventory = await fetchReleaseInventory(job);
+      const selectedGuid = job.queuedManualSelection.decision.selected.guid;
+      return {
+        jobId: job.id,
+        releases: mergeQueuedManualResult(
+          manualReleaseResultsFromInventory(inventory, job.failedGuids, selectedGuid),
+          job.queuedManualSelection,
+        ),
+        selectedGuid,
+        summary: job.queuedManualSelection.decision.reason,
+        updatedAt: new Date().toISOString(),
+      };
+    } catch {
+      return queuedManualReleaseResults(job) ?? {
+        jobId: job.id,
+        releases: [],
+        selectedGuid: null,
+        summary: 'Saved manual selection is waiting to be submitted.',
+        updatedAt: new Date().toISOString(),
+      };
+    }
   }
 
   const selection = await findReleaseSelection(job);

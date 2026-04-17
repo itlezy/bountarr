@@ -177,6 +177,93 @@ describe('acquisition selection', () => {
     });
   });
 
+  it('falls back to the persisted queued manual selection when the live Arr refresh fails', async () => {
+    const arrFetch = vi
+      .spyOn(arrClient, 'arrFetch')
+      .mockRejectedValue(new Error('Sonarr manual search is temporarily unavailable'));
+    const queuedJob: PersistedAcquisitionJob = {
+      ...job,
+      queueStatus: manualSelectionQueuedStatus,
+      queuedManualSelection: persistManualSelection({
+        manualResults: [
+          {
+            canSelect: false,
+            downloadAllowed: true,
+            guid: 'guid-selected',
+            identityReason: 'Release title matched American History X',
+            identityStatus: 'exact-match',
+            indexer: 'Indexer',
+            indexerId: 11,
+            languages: ['English'],
+            protocol: 'torrent',
+            reason: 'User selected American.History.X.1998.1080p.WEB-DL-NTb',
+            rejectedByArr: false,
+            rejectionReasons: [],
+            scopeReason: null,
+            scopeStatus: 'not-applicable',
+            score: 500,
+            selectionBlockedReason: null,
+            size: 1_000,
+            status: 'selected',
+            title: 'American.History.X.1998.1080p.WEB-DL-NTb',
+          },
+        ],
+        mappedReleases: 7,
+        releasesFound: 9,
+        selectedGuid: 'guid-selected',
+        selectedRelease: {
+          guid: 'guid-selected',
+          indexer: 'Indexer',
+          indexerId: 11,
+          languages: ['English'],
+          protocol: 'torrent',
+          reason: 'User selected American.History.X.1998.1080p.WEB-DL-NTb',
+          score: 500,
+          size: 1_000,
+          title: 'American.History.X.1998.1080p.WEB-DL-NTb',
+        },
+        selection: {
+          decision: {
+            accepted: 3,
+            considered: 7,
+            reason: 'User selected American.History.X.1998.1080p.WEB-DL-NTb',
+            selected: {
+              guid: 'guid-selected',
+              indexer: 'Indexer',
+              indexerId: 11,
+              languages: ['English'],
+              protocol: 'torrent',
+              reason: 'User selected American.History.X.1998.1080p.WEB-DL-NTb',
+              score: 500,
+              size: 1_000,
+              title: 'American.History.X.1998.1080p.WEB-DL-NTb',
+            },
+          },
+          payload: {
+            guid: 'guid-selected',
+            indexerId: 11,
+          },
+        },
+      }),
+      status: 'queued',
+      validationSummary: 'User selected American.History.X.1998.1080p.WEB-DL-NTb',
+    };
+
+    const results = await getManualReleaseResults(queuedJob);
+
+    expect(arrFetch).toHaveBeenCalledTimes(1);
+    expect(results.selectedGuid).toBe('guid-selected');
+    expect(results.summary).toBe('User selected American.History.X.1998.1080p.WEB-DL-NTb');
+    expect(results.releases).toEqual([
+      expect.objectContaining({
+        canSelect: false,
+        guid: 'guid-selected',
+        status: 'selected',
+        title: 'American.History.X.1998.1080p.WEB-DL-NTb',
+      }),
+    ]);
+  });
+
   it('marks Arr-rejected releases as not selectable in manual results', async () => {
     vi.spyOn(arrClient, 'arrFetch').mockResolvedValue([
         {
