@@ -568,7 +568,7 @@ export class AppState {
       ...this.manualSelectionError,
       [jobId]: null,
     };
-    await this.loadManualReleaseResults(jobId);
+    await this.loadManualReleaseResults(jobId, true);
   }
 
   closeManualReleaseList(): void {

@@ -1045,8 +1045,15 @@ describe('app state', () => {
     expect(state.hasOpenOverlay).toBe(false);
   });
 
-  it('reuses cached manual release results when reopening the same overlay', async () => {
-    const fetchManualReleaseResults = vi.fn().mockResolvedValue(manualReleaseResponse);
+  it('refreshes manual release results when reopening the same overlay', async () => {
+    const refreshedManualReleaseResponse = {
+      ...manualReleaseResponse,
+      summary: 'Updated manual-search releases are available.',
+    };
+    const fetchManualReleaseResults = vi
+      .fn()
+      .mockResolvedValueOnce(manualReleaseResponse)
+      .mockResolvedValueOnce(refreshedManualReleaseResponse);
     const state = new AppState(
       pageData,
       createDependencies({
@@ -1063,8 +1070,9 @@ describe('app state', () => {
     state.closeManualReleaseList();
     await state.openManualReleaseList(acquisitionJob.id);
 
-    expect(fetchManualReleaseResults).toHaveBeenCalledTimes(1);
+    expect(fetchManualReleaseResults).toHaveBeenCalledTimes(2);
     expect(state.activeManualReleaseJobId).toBe(acquisitionJob.id);
+    expect(state.manualReleaseList(acquisitionJob.id)).toEqual(refreshedManualReleaseResponse);
   });
 
   it('keeps managed queue entries matched to live Arr download items', () => {
