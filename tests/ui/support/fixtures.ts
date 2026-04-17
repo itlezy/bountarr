@@ -145,7 +145,7 @@ export const acquisitionJobFixture: AcquisitionJob = {
     subtitleLanguage: 'English',
   },
   targetSeasonNumbers: [1],
-  targetEpisodeIds: [101, 102],
+  targetEpisodeIds: null,
   startedAt: '2026-04-13T11:58:00.000Z',
   updatedAt: '2026-04-13T12:00:00.000Z',
   completedAt: null,
@@ -236,12 +236,12 @@ function buildQueueEntries(acquisitionJobs: AcquisitionJob[], items: QueueItem[]
         item.arrItemId === job.arrItemId &&
         item.sourceService === job.sourceService &&
         (job.kind !== 'series' ||
-          ((item.episodeIds?.some((episodeId) => job.targetEpisodeIds?.includes(episodeId)) ??
+          ((job.targetSeasonNumbers?.some((seasonNumber) =>
+            item.seasonNumbers?.includes(seasonNumber),
+          ) ??
             false) ||
-            (!job.targetEpisodeIds &&
-              (item.seasonNumbers?.some((seasonNumber) =>
-                job.targetSeasonNumbers?.includes(seasonNumber),
-              ) ??
+            (!job.targetSeasonNumbers &&
+              (item.episodeIds?.some((episodeId) => job.targetEpisodeIds?.includes(episodeId)) ??
                 false)) ||
             (item.detail !== null &&
               job.currentRelease !== null &&

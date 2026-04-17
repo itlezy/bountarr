@@ -263,7 +263,7 @@ describe('queue dashboard service', () => {
     });
   });
 
-  it('keeps unrelated queue rows on the same series external when episode scope does not overlap', async () => {
+  it('merges same-season queue rows into one managed series entry', async () => {
     const { composeQueueEntries } = await import('$lib/server/queue-dashboard-service');
 
     const acquisitionJob: AcquisitionJob = {
@@ -326,17 +326,10 @@ describe('queue dashboard service', () => {
 
     const entries = composeQueueEntries([acquisitionJob], [matchingQueueItem, unrelatedQueueItem]);
 
-    expect(entries).toHaveLength(2);
+    expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
       kind: 'managed',
-      liveQueueItems: [matchingQueueItem],
-    });
-    expect(entries[1]).toEqual({
-      kind: 'external',
-      id: 'sonarr:queue:3',
-      item: unrelatedQueueItem,
-      canCancel: true,
-      canRemove: false,
+      liveQueueItems: [matchingQueueItem, unrelatedQueueItem],
     });
   });
 

@@ -184,11 +184,10 @@ describe('acquisition grab service', () => {
     expect(createOrReuseActiveJob).toHaveBeenCalledWith(
       expect.objectContaining({
         arrItemId: 80,
-        completionEpisodeIds: [101, 102],
         itemId: seriesItem.id,
         kind: 'series',
         sourceService: 'sonarr',
-        targetEpisodeIds: [101, 102],
+        targetEpisodeIds: null,
         targetSeasonNumbers: [1, 2],
       }),
     );
@@ -526,8 +525,7 @@ describe('acquisition grab service', () => {
     expect(createOrReuseActiveJob).toHaveBeenCalledWith(
       expect.objectContaining({
         arrItemId: 80,
-        completionEpisodeIds: [102],
-        targetEpisodeIds: [102],
+        targetEpisodeIds: null,
         targetSeasonNumbers: [2],
       }),
     );
@@ -609,8 +607,7 @@ describe('acquisition grab service', () => {
     expect(result.message).toContain('Reusing the active alternate-release grab');
   });
 
-  it('persists completion scope without future-dated selected-season episodes', async () => {
-    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-04-13T12:00:00.000Z'));
+  it('stores selected seasons as the canonical completion scope for tracked series grabs', async () => {
     const trackedSeriesItem: MediaItem = {
       ...seriesItem,
       arrItemId: 80,
@@ -656,11 +653,6 @@ describe('acquisition grab service', () => {
     vi.doMock('$lib/server/lookup-service', () => ({
       fetchExistingMovie: vi.fn(),
       fetchExistingSeries,
-      fetchSeriesEpisodeRecords: vi.fn().mockResolvedValue([
-        { airDateUtc: '2026-04-01T00:00:00.000Z', id: 201, seasonNumber: 2 },
-        { airDateUtc: '2026-04-08T00:00:00.000Z', id: 202, seasonNumber: 2 },
-        { airDateUtc: '2026-04-20T00:00:00.000Z', id: 203, seasonNumber: 2 },
-      ]),
     }));
 
     const module = await import('$lib/server/acquisition-grab-service');
@@ -678,8 +670,7 @@ describe('acquisition grab service', () => {
     expect(createOrReuseActiveJob).toHaveBeenCalledWith(
       expect.objectContaining({
         arrItemId: 80,
-        completionEpisodeIds: [201, 202],
-        targetEpisodeIds: [201, 202, 203],
+        targetEpisodeIds: null,
         targetSeasonNumbers: [2],
       }),
     );

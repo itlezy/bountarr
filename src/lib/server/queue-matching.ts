@@ -1,5 +1,5 @@
 import { normalizeToken } from '$lib/server/media-identity';
-import { scopeFromTarget, seriesScopeOverlapsTarget } from '$lib/server/series-scope';
+import { extractSeriesScope, scopeFromTarget, seriesScopeOverlapsTarget } from '$lib/server/series-scope';
 import type { QueueItem } from '$lib/shared/types';
 
 type ManagedQueueTarget = {
@@ -13,15 +13,6 @@ type ManagedQueueTarget = {
 
 function normalizedReleaseText(value: string | null): string {
   return value ? normalizeToken(value) : '';
-}
-
-function hasNumberOverlap(left: number[] | null | undefined, right: number[] | null | undefined): boolean {
-  if (!left || !right || left.length === 0 || right.length === 0) {
-    return false;
-  }
-
-  const rightSet = new Set(right);
-  return left.some((value) => rightSet.has(value));
 }
 
 function releaseMatchesTarget(currentRelease: string | null, item: QueueItem): boolean {
@@ -58,34 +49,9 @@ export function queueItemMatchesManagedTarget(
   }
 
   const targetScope = scopeFromTarget(target);
-  const itemHasEpisodeIds = Array.isArray(item.episodeIds) && item.episodeIds.length > 0;
-  const itemHasSeasonNumbers = Array.isArray(item.seasonNumbers) && item.seasonNumbers.length > 0;
-  if (itemHasEpisodeIds) {
-    if (hasNumberOverlap(target.targetEpisodeIds, item.episodeIds)) {
-      return true;
-    }
-
-    if (target.targetEpisodeIds) {
-      return false;
-    }
-
-    if (hasNumberOverlap(target.targetSeasonNumbers, item.seasonNumbers)) {
-      return true;
-    }
-
-    return seriesScopeOverlapsTarget(targetScope, item);
-  }
-
-  if (itemHasSeasonNumbers) {
-    if (hasNumberOverlap(target.targetSeasonNumbers, item.seasonNumbers)) {
-      return true;
-    }
-
-    if (target.targetSeasonNumbers) {
-      return false;
-    }
-
-    return seriesScopeOverlapsTarget(targetScope, item);
+  const itemScope = extractSeriesScope(item);
+  if (itemScope.episodeIds || itemScope.seasonNumbers) {
+    return seriesScopeOverlapsTarget(targetScope, itemScope);
   }
 
   return releaseMatchesTarget(target.currentRelease, item);

@@ -25,7 +25,6 @@ function targetEpisodesForJob(
   job: PersistedAcquisitionJob,
   episodeRecords: Record<string, unknown>[],
 ): SeriesEpisodeRecord[] {
-  const completionEpisodeIds = job.completionEpisodeIds ? new Set(job.completionEpisodeIds) : null;
   const targetEpisodeIds = job.targetEpisodeIds ? new Set(job.targetEpisodeIds) : null;
   const targetSeasonNumbers = job.targetSeasonNumbers ? new Set(job.targetSeasonNumbers) : null;
 
@@ -39,11 +38,11 @@ function targetEpisodesForJob(
       (episode): episode is SeriesEpisodeRecord =>
         episode.episodeId !== null &&
         (
-          completionEpisodeIds
-            ? completionEpisodeIds.has(episode.episodeId)
+          targetSeasonNumbers
+            ? targetSeasonNumbers.has(episode.seasonNumber ?? Number.NaN)
             : targetEpisodeIds
               ? targetEpisodeIds.has(episode.episodeId)
-              : (targetSeasonNumbers?.has(episode.seasonNumber ?? Number.NaN) ?? true)
+              : true
         ),
     );
 }

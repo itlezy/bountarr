@@ -20,14 +20,13 @@ const seriesJob: PersistedAcquisitionJob = {
   autoRetrying: false,
   progress: 10,
   queueStatus: 'Downloading',
-  completionEpisodeIds: [101, 102],
   preferences: {
     preferredLanguage: 'English',
     subtitleLanguage: 'English',
   },
   queuedManualSelection: null,
   targetSeasonNumbers: [1],
-  targetEpisodeIds: [101, 102],
+  targetEpisodeIds: null,
   startedAt: '2026-04-13T12:00:00.000Z',
   updatedAt: '2026-04-13T12:00:00.000Z',
   completedAt: null,
@@ -272,15 +271,8 @@ describe('validateSeriesAttempt', () => {
     });
   });
 
-  it('uses the persisted completion scope instead of re-deriving target episodes from attempt time', async () => {
-    const fetchEpisodeFile = vi
-      .fn()
-      .mockResolvedValue({
-        mediaInfo: {
-          audioLanguages: ['English'],
-          subtitles: ['English'],
-        },
-      });
+  it('treats the selected seasons as the completion contract during validation', async () => {
+    const fetchEpisodeFile = vi.fn();
 
     vi.doMock('$lib/server/acquisition-validator-shared', () => ({
       fetchHistoryRecords: vi.fn().mockResolvedValue([
@@ -315,22 +307,18 @@ describe('validateSeriesAttempt', () => {
 
     const module = await import('$lib/server/acquisition-series-validator');
     const result = await module.validateSeriesAttempt(
-      {
-        ...seriesJob,
-        completionEpisodeIds: [101, 102, 103],
-      },
+      seriesJob,
       '2026-04-13T12:00:00.000Z',
     );
 
     expect(result).toEqual({
-      outcome: 'success',
-      preferredReleaser: 'flux',
-      progress: 100,
-      queueStatus: 'Imported',
-      reasonCode: 'validated',
-      summary: 'Validated 3 targeted episodes',
+      outcome: 'pending',
+      preferredReleaser: null,
+      progress: 10,
+      queueStatus: 'Downloading',
+      reasonCode: null,
+      summary: 'Imported 3 of 4 targeted episodes',
     });
-    expect(fetchEpisodeFile).toHaveBeenCalledTimes(3);
-    expect(fetchEpisodeFile).not.toHaveBeenCalledWith(5004);
+    expect(fetchEpisodeFile).not.toHaveBeenCalled();
   });
 });

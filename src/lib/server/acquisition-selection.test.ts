@@ -27,7 +27,6 @@ const job: PersistedAcquisitionJob = {
   autoRetrying: false,
   progress: null,
   queueStatus: 'Searching releases',
-  completionEpisodeIds: null,
   preferences: {
     preferredLanguage: 'English',
     subtitleLanguage: 'English',
@@ -310,7 +309,7 @@ describe('acquisition selection', () => {
     expect(partialTarget).toMatchObject({
       canSelect: false,
       scopeStatus: 'partial',
-      selectionBlockedReason: 'Release scope only covers part of the targeted seasons.',
+      selectionBlockedReason: 'Release appears to cover individual episodes within the targeted seasons.',
       status: 'locally-rejected',
     });
   });
@@ -337,7 +336,7 @@ describe('acquisition selection', () => {
     ]);
 
     await expect(findManualReleaseSelection(seriesJob, 'guid-partial-target', 13)).rejects.toThrow(
-      'Release scope only covers part of the targeted seasons.',
+      'Release appears to cover individual episodes within the targeted seasons.',
     );
   });
 

@@ -97,10 +97,19 @@ export function scopeFromTarget(value: {
   targetEpisodeIds?: number[] | null;
   targetSeasonNumbers?: number[] | null;
 }): SeriesScope {
+  const seasonNumbers = normalizeNumberArray(value.targetSeasonNumbers);
+  if (seasonNumbers) {
+    return {
+      episodeIds: null,
+      episodeScopedHint: false,
+      seasonNumbers,
+    };
+  }
+
   return {
     episodeIds: normalizeNumberArray(value.targetEpisodeIds),
     episodeScopedHint: false,
-    seasonNumbers: normalizeNumberArray(value.targetSeasonNumbers),
+    seasonNumbers: null,
   };
 }
 
@@ -136,7 +145,6 @@ export function extractSeriesScope(rawValue: unknown): SeriesScope {
   return {
     episodeIds,
     episodeScopedHint:
-      episodeIds !== null ||
       episodeRecords.length > 0 ||
       titleLooksEpisodeScoped(typeof raw.title === 'string' ? raw.title : null) ||
       titleLooksEpisodeScoped(typeof raw.sourceTitle === 'string' ? raw.sourceTitle : null) ||
