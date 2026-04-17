@@ -26,6 +26,7 @@ const job: PersistedAcquisitionJob = {
     preferredLanguage: 'English',
     subtitleLanguage: 'English',
   },
+  queuedManualSelection: null,
   targetSeasonNumbers: null,
   targetEpisodeIds: null,
   startedAt: '2026-04-13T12:00:00.000Z',

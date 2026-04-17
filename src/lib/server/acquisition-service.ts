@@ -34,6 +34,7 @@ import { grabItem as grabItemInternal } from '$lib/server/acquisition-grab-servi
 import {
   findManualReleaseSelection,
   getManualReleaseResults as getManualReleaseResultsInternal,
+  persistManualSelection,
 } from '$lib/server/acquisition-selection';
 
 export function ensureAcquisitionWorkers(): void {
@@ -231,12 +232,13 @@ export async function selectManualRelease(
     reasonCode: null,
     failureReason: null,
     progress: null,
+    queuedManualSelection: persistManualSelection(selection),
     queueStatus: manualSelectionQueuedStatus,
     status: 'queued',
     validationSummary: selection.selection.decision.reason,
   });
 
-  getAcquisitionRunner().enqueueSelectedRelease(resumed.id, selection);
+  getAcquisitionRunner().enqueue(resumed.id);
   return {
     job: resumed,
     message: `Queued manual release ${selection.selectedRelease?.title ?? guid}.`,

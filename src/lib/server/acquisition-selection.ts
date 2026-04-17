@@ -5,6 +5,7 @@ import {
 } from '$lib/server/release-score';
 import { arrFetch } from '$lib/server/arr-client';
 import type { PersistedAcquisitionJob } from '$lib/server/acquisition-domain';
+import type { PersistedManualSelection } from '$lib/server/acquisition-domain';
 import { extractReleaser } from '$lib/server/media-identity';
 import { asNumber, asRecord } from '$lib/server/raw';
 import { defaultPreferences } from '$lib/shared/preferences';
@@ -37,6 +38,38 @@ export type ReleaseSelectionResult = {
   selectedRelease: ReleaseDecisionCandidate | null;
   selection: ReturnType<typeof selectBestEvaluatedRelease>;
 };
+
+export function persistManualSelection(
+  result: ReleaseSelectionResult,
+): PersistedManualSelection {
+  if (!result.selection.payload || !result.selection.decision.selected) {
+    throw new Error('A selected manual release is required before persisting it.');
+  }
+
+  return {
+    decision: {
+      ...result.selection.decision,
+      selected: result.selection.decision.selected,
+    },
+    payload: structuredClone(result.selection.payload),
+  };
+}
+
+export function restoreManualSelection(
+  selection: PersistedManualSelection,
+): ReleaseSelectionResult {
+  return {
+    manualResults: [],
+    mappedReleases: selection.decision.considered,
+    releasesFound: selection.decision.considered,
+    selectedGuid: selection.decision.selected.guid,
+    selectedRelease: selection.decision.selected,
+    selection: {
+      decision: selection.decision,
+      payload: structuredClone(selection.payload),
+    },
+  };
+}
 
 type ReleaseInventory = {
   evaluated: EvaluatedRelease[];

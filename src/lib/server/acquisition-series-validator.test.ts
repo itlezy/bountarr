@@ -24,6 +24,7 @@ const seriesJob: PersistedAcquisitionJob = {
     preferredLanguage: 'English',
     subtitleLanguage: 'English',
   },
+  queuedManualSelection: null,
   targetSeasonNumbers: [1],
   targetEpisodeIds: [101, 102],
   startedAt: '2026-04-13T12:00:00.000Z',

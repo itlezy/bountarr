@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { AcquisitionEventRepository } from '$lib/server/acquisition-event-repository';
 import { AcquisitionJobRepository } from '$lib/server/acquisition-job-repository';
+import { persistManualSelection } from '$lib/server/acquisition-selection';
 
 const databases: DatabaseSync[] = [];
 
@@ -54,6 +55,45 @@ describe('AcquisitionJobRepository', () => {
     jobs.updateJob(job.id, {
       autoRetrying: true,
       progress: 55,
+      queuedManualSelection: persistManualSelection({
+        manualResults: [],
+        mappedReleases: 1,
+        releasesFound: 1,
+        selectedGuid: 'guid-manual',
+        selectedRelease: {
+          guid: 'guid-manual',
+          indexer: 'Indexer',
+          indexerId: 11,
+          languages: ['English'],
+          protocol: 'torrent',
+          reason: 'User selected The.Matrix.1999.1080p.WEB-DL-FLUX',
+          score: 500,
+          size: 1_000,
+          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+        },
+        selection: {
+          decision: {
+            accepted: 1,
+            considered: 1,
+            reason: 'User selected The.Matrix.1999.1080p.WEB-DL-FLUX',
+            selected: {
+              guid: 'guid-manual',
+              indexer: 'Indexer',
+              indexerId: 11,
+              languages: ['English'],
+              protocol: 'torrent',
+              reason: 'User selected The.Matrix.1999.1080p.WEB-DL-FLUX',
+              score: 500,
+              size: 1_000,
+              title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+            },
+          },
+          payload: {
+            guid: 'guid-manual',
+            indexerId: 11,
+          },
+        },
+      }),
       queueStatus: 'Waiting for download',
       reasonCode: 'missing-subs',
       status: 'validating',
@@ -71,6 +111,7 @@ describe('AcquisitionJobRepository', () => {
     expect(loaded?.attempts[0]?.releaseTitle).toContain('Flux');
     expect(loaded?.attempts[0]?.submittedGuid).toBeNull();
     expect(loaded?.failedGuids).toEqual(['guid-1']);
+    expect(loaded?.queuedManualSelection?.decision.selected.guid).toBe('guid-manual');
   });
 
   it('claims release submission only once per attempt', () => {

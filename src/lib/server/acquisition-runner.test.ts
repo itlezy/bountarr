@@ -5,7 +5,10 @@ import { manualSelectionQueuedStatus } from '$lib/server/acquisition-domain';
 import { AcquisitionJobRepository } from '$lib/server/acquisition-job-repository';
 import { AcquisitionLifecycle } from '$lib/server/acquisition-lifecycle';
 import { AcquisitionRunner } from '$lib/server/acquisition-runner';
-import type { ReleaseSelectionResult } from '$lib/server/acquisition-selection';
+import {
+  persistManualSelection,
+  type ReleaseSelectionResult,
+} from '$lib/server/acquisition-selection';
 
 const databases: DatabaseSync[] = [];
 
@@ -457,7 +460,7 @@ describe('AcquisitionRunner', () => {
     runner.dispose();
   });
 
-  it('fails queued manual selections that were lost before restart recovery', async () => {
+  it('recovers queued manual selections from durable job state after restart', async () => {
     const harness = createHarness();
     const job = harness.jobs.createJob({
       arrItemId: 888,
@@ -474,9 +477,60 @@ describe('AcquisitionRunner', () => {
     });
 
     harness.jobs.updateJob(job.id, {
+      queuedManualSelection: persistManualSelection(
+        createSelectionResult('guid-manual', 'Lost.Manual.Pick.S01.1080p.WEB-DL-FLUX'),
+      ),
       queueStatus: manualSelectionQueuedStatus,
       status: 'queued',
       validationSummary: 'User selected Lost.Manual.Pick.S01.1080p.WEB-DL-FLUX',
+    });
+
+    const runner = new AcquisitionRunner(harness.jobs, harness.lifecycle, {
+      findReleaseSelection: vi.fn(),
+      probeAttempt: vi.fn(),
+      submitSelectedRelease: vi.fn().mockResolvedValue(undefined),
+      waitForAttemptOutcome: vi.fn().mockResolvedValue({
+        outcome: 'success',
+        preferredReleaser: 'flux',
+        progress: 100,
+        queueStatus: 'Imported',
+        reasonCode: 'validated',
+        summary: 'Imported and validated',
+      }),
+    });
+
+    runner.ensureWorkers();
+
+    await vi.waitFor(() => {
+      expect(harness.jobs.getJob(job.id)?.status).toBe('completed');
+    });
+
+    const completed = harness.jobs.getJob(job.id);
+    expect(completed?.currentRelease).toBe('Lost.Manual.Pick.S01.1080p.WEB-DL-FLUX');
+    expect(completed?.queuedManualSelection).toBeNull();
+    runner.dispose();
+  });
+
+  it('still fails queued manual selections that have no persisted release payload', async () => {
+    const harness = createHarness();
+    const job = harness.jobs.createJob({
+      arrItemId: 893,
+      itemId: 'series:893',
+      kind: 'series',
+      maxRetries: 2,
+      preferredReleaser: 'flux',
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      sourceService: 'sonarr',
+      title: 'Missing Manual Payload',
+    });
+
+    harness.jobs.updateJob(job.id, {
+      queueStatus: manualSelectionQueuedStatus,
+      status: 'queued',
+      validationSummary: 'User selected Missing.Manual.Payload.S01.1080p.WEB-DL-FLUX',
     });
 
     const runner = new AcquisitionRunner(harness.jobs, harness.lifecycle, {
@@ -658,10 +712,11 @@ describe('AcquisitionRunner', () => {
     runner = new AcquisitionRunner(harness.jobs, harness.lifecycle, {
       findReleaseSelection: vi.fn().mockImplementation(async () => {
         const queuedForManual = harness.jobs.updateJob(job.id, {
+          queuedManualSelection: persistManualSelection(manualSelection),
           queueStatus: manualSelectionQueuedStatus,
           status: 'queued',
         });
-        runner.enqueueSelectedRelease(queuedForManual.id, manualSelection);
+        runner.enqueue(queuedForManual.id);
         return automaticSelection;
       }),
       probeAttempt: vi.fn(),

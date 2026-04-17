@@ -1,9 +1,22 @@
-import type { AcquisitionAttempt, AcquisitionJob } from '$lib/shared/types';
+import type {
+  AcquisitionAttempt,
+  AcquisitionJob,
+  ReleaseDecision,
+  ReleaseDecisionCandidate,
+} from '$lib/shared/types';
 
 export type ArrService = 'radarr' | 'sonarr';
 
+export type PersistedManualSelection = {
+  decision: ReleaseDecision & {
+    selected: ReleaseDecisionCandidate;
+  };
+  payload: Record<string, unknown>;
+};
+
 export type PersistedAcquisitionJob = AcquisitionJob & {
   failedGuids: string[];
+  queuedManualSelection: PersistedManualSelection | null;
 };
 
 export type GrabItemOptions = {
@@ -38,7 +51,11 @@ export function isAcquisitionGrabError(error: unknown): error is AcquisitionGrab
 }
 
 export function cloneJob(job: PersistedAcquisitionJob): AcquisitionJob {
-  const { failedGuids: _failedGuids, ...publicJob } = job;
+  const {
+    failedGuids: _failedGuids,
+    queuedManualSelection: _queuedManualSelection,
+    ...publicJob
+  } = job;
   return structuredClone(publicJob);
 }
 

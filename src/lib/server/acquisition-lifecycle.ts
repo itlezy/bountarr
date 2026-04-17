@@ -108,6 +108,7 @@ export class AcquisitionLifecycle {
       autoRetrying: current.autoRetrying,
       failureReason: null,
       progress: null,
+      queuedManualSelection: null,
       queueStatus: 'Searching releases',
       status: 'searching',
     });
@@ -151,6 +152,7 @@ export class AcquisitionLifecycle {
       completedAt: new Date().toISOString(),
       reasonCode: selectionFailureReasonCode(releaseSelection),
       failureReason: releaseSelection.selection.decision.reason,
+      queuedManualSelection: null,
       status: 'failed',
       validationSummary: releaseSelection.selection.decision.reason,
     });
@@ -191,6 +193,7 @@ export class AcquisitionLifecycle {
       currentRelease: selectedRelease.title,
       failureReason: null,
       queueStatus: 'Grabbing release',
+      queuedManualSelection: null,
       selectedReleaser: releaser,
       status: 'grabbing',
       validationSummary: releaseSelection.selection.decision.reason,
@@ -317,6 +320,7 @@ export class AcquisitionLifecycle {
       preferredReleaser: waitResult.preferredReleaser ?? current.selectedReleaser,
       progress: waitResult.progress ?? 100,
       queueStatus: waitResult.queueStatus ?? 'Imported',
+      queuedManualSelection: null,
       status: 'completed',
       validationSummary: waitResult.summary,
     });
@@ -367,6 +371,7 @@ export class AcquisitionLifecycle {
       failureReason: waitResult.summary,
       progress: waitResult.progress,
       queueStatus: waitResult.queueStatus,
+      queuedManualSelection: null,
       status: terminal ? 'failed' : 'retrying',
       validationSummary: waitResult.summary,
     });
@@ -413,6 +418,7 @@ export class AcquisitionLifecycle {
       completedAt: new Date().toISOString(),
       reasonCode: 'crashed',
       failureReason: message,
+      queuedManualSelection: null,
       status: 'failed',
       validationSummary: message,
     });
@@ -448,6 +454,7 @@ export class AcquisitionLifecycle {
       failureReason: reason,
       progress: null,
       queueStatus: 'Manual selection lost',
+      queuedManualSelection: null,
       status: 'failed',
       validationSummary: reason,
     });
@@ -477,6 +484,7 @@ export class AcquisitionLifecycle {
       failureReason: reason,
       progress: null,
       queueStatus: 'Cancelled',
+      queuedManualSelection: null,
       status: 'cancelled',
       validationSummary: reason,
     });

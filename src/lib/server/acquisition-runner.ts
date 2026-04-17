@@ -5,6 +5,7 @@ import {
 } from '$lib/server/acquisition-domain';
 import {
   findReleaseSelection,
+  restoreManualSelection,
   submitSelectedRelease,
   type ReleaseSelectionResult,
 } from '$lib/server/acquisition-selection';
@@ -48,7 +49,6 @@ export class AcquisitionRunner {
   readonly dependencies: AcquisitionRunnerDependencies;
   readonly jobs: AcquisitionJobRepository;
   readonly lifecycle: AcquisitionLifecycle;
-  readonly manualSelectionOverrides = new Map<string, ReleaseSelectionResult>();
   readonly reconciling = new Set<string>();
   readonly running = new Set<string>();
   private readonly reconciliationSweepMs = 30_000;
@@ -135,10 +135,12 @@ export class AcquisitionRunner {
     }
 
     while (job && !isTerminalJobStatus(job.status)) {
-      const manualSelection = this.manualSelectionOverrides.get(job.id) ?? null;
-      if (manualSelection) {
-        this.manualSelectionOverrides.delete(job.id);
-      }
+      const manualSelection =
+        job.status === 'queued' &&
+        job.queueStatus === manualSelectionQueuedStatus &&
+        job.queuedManualSelection
+          ? restoreManualSelection(job.queuedManualSelection)
+          : null;
 
       try {
         if (
@@ -167,7 +169,6 @@ export class AcquisitionRunner {
           }
 
           if (
-            this.manualSelectionOverrides.has(job.id) ||
             (refreshedAfterSearch.status === 'queued' &&
               refreshedAfterSearch.queueStatus === manualSelectionQueuedStatus)
           ) {
@@ -309,11 +310,6 @@ export class AcquisitionRunner {
     for (const job of this.jobs.listRunnableJobs()) {
       this.scheduleReconciliation(job.id);
     }
-  }
-
-  enqueueSelectedRelease(jobId: string, releaseSelection: ReleaseSelectionResult): void {
-    this.manualSelectionOverrides.set(jobId, releaseSelection);
-    this.enqueue(jobId);
   }
 
   ensureWorkers(): void {

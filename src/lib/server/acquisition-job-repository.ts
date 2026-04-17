@@ -1,7 +1,11 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { ensureAcquisitionSchema, getAcquisitionDatabase } from '$lib/server/acquisition-db';
 import { queueCache } from '$lib/server/app-cache';
-import type { ArrService, PersistedAcquisitionJob } from '$lib/server/acquisition-domain';
+import type {
+  ArrService,
+  PersistedAcquisitionJob,
+  PersistedManualSelection,
+} from '$lib/server/acquisition-domain';
 import { canTransitionJobStatus, sortJobs } from '$lib/server/acquisition-domain';
 import type { AcquisitionReasonCode } from '$lib/shared/types';
 import { sanitizePreferredLanguage } from '$lib/shared/languages';
@@ -26,6 +30,7 @@ type JobRow = {
   auto_retrying: number | null;
   progress: number | null;
   queue_status: string | null;
+  queued_manual_selection_json: string | null;
   target_season_numbers_json: string | null;
   target_episode_ids_json: string | null;
   preferred_language: string;
@@ -145,6 +150,44 @@ function serializeNumberArray(value: number[] | null): string | null {
   return value ? JSON.stringify(value) : null;
 }
 
+function parseManualSelectionJson(
+  value: string | null | undefined,
+): PersistedManualSelection | null {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(value) as PersistedManualSelection;
+    if (
+      !parsed ||
+      typeof parsed !== 'object' ||
+      typeof parsed.payload !== 'object' ||
+      parsed.payload === null ||
+      typeof parsed.decision !== 'object' ||
+      parsed.decision === null ||
+      typeof parsed.decision.reason !== 'string' ||
+      typeof parsed.decision.considered !== 'number' ||
+      typeof parsed.decision.accepted !== 'number' ||
+      typeof parsed.decision.selected !== 'object' ||
+      parsed.decision.selected === null ||
+      typeof parsed.decision.selected.guid !== 'string' ||
+      typeof parsed.decision.selected.indexerId !== 'number' ||
+      typeof parsed.decision.selected.title !== 'string'
+    ) {
+      return null;
+    }
+
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function serializeManualSelection(value: PersistedManualSelection | null): string | null {
+  return value ? JSON.stringify(value) : null;
+}
+
 function isUniqueConstraintError(error: unknown): boolean {
   return error instanceof Error && /UNIQUE constraint failed/iu.test(error.message);
 }
@@ -251,6 +294,7 @@ export class AcquisitionJobRepository {
         autoRetrying: row.auto_retrying === 1,
         progress: row.progress,
         queueStatus: row.queue_status,
+        queuedManualSelection: parseManualSelectionJson(row.queued_manual_selection_json),
         preferences: {
           preferredLanguage: sanitizePreferredLanguage(row.preferred_language),
           subtitleLanguage: sanitizePreferredLanguage(row.subtitle_language, 'Any'),
@@ -381,6 +425,7 @@ export class AcquisitionJobRepository {
       autoRetrying: false,
       progress: null,
       queueStatus: 'Queued',
+      queuedManualSelection: null,
       preferences: input.preferences,
       targetSeasonNumbers: normalizeNumberArray(input.targetSeasonNumbers),
       targetEpisodeIds: normalizeNumberArray(input.targetEpisodeIds),
@@ -407,9 +452,9 @@ export class AcquisitionJobRepository {
               id, item_id, arr_item_id, kind, title, source_service, status, attempt,
               max_retries, current_release, selected_releaser, preferred_releaser,
               reason_code, failure_reason, validation_summary, auto_retrying, progress, queue_status,
-              target_season_numbers_json, target_episode_ids_json, preferred_language,
+              queued_manual_selection_json, target_season_numbers_json, target_episode_ids_json, preferred_language,
               subtitle_language, started_at, updated_at, completed_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .run(
             job.id,
@@ -430,6 +475,7 @@ export class AcquisitionJobRepository {
             job.autoRetrying ? 1 : 0,
             job.progress,
             job.queueStatus,
+            serializeManualSelection(job.queuedManualSelection),
             serializeNumberArray(job.targetSeasonNumbers),
             serializeNumberArray(job.targetEpisodeIds),
             job.preferences.preferredLanguage,
@@ -497,7 +543,8 @@ export class AcquisitionJobRepository {
           `UPDATE acquisition_jobs SET
             status = ?, attempt = ?, current_release = ?, selected_releaser = ?,
             preferred_releaser = ?, reason_code = ?, failure_reason = ?, validation_summary = ?,
-            auto_retrying = ?, progress = ?, queue_status = ?, preferred_language = ?, subtitle_language = ?,
+            auto_retrying = ?, progress = ?, queue_status = ?, queued_manual_selection_json = ?,
+            preferred_language = ?, subtitle_language = ?,
             updated_at = ?, completed_at = ?
            WHERE id = ?`,
         )
@@ -513,6 +560,7 @@ export class AcquisitionJobRepository {
           next.autoRetrying ? 1 : 0,
           next.progress,
           next.queueStatus,
+          serializeManualSelection(next.queuedManualSelection),
           next.preferences.preferredLanguage,
           next.preferences.subtitleLanguage,
           next.updatedAt,
@@ -576,7 +624,8 @@ export class AcquisitionJobRepository {
           `UPDATE acquisition_jobs SET
             status = ?, attempt = ?, current_release = ?, selected_releaser = ?,
             preferred_releaser = ?, reason_code = ?, failure_reason = ?, validation_summary = ?,
-            auto_retrying = ?, progress = ?, queue_status = ?, preferred_language = ?, subtitle_language = ?,
+            auto_retrying = ?, progress = ?, queue_status = ?, queued_manual_selection_json = ?,
+            preferred_language = ?, subtitle_language = ?,
             updated_at = ?, completed_at = ?
            WHERE id = ?`,
         )
@@ -592,6 +641,7 @@ export class AcquisitionJobRepository {
           next.autoRetrying ? 1 : 0,
           next.progress,
           next.queueStatus,
+          serializeManualSelection(next.queuedManualSelection),
           next.preferences.preferredLanguage,
           next.preferences.subtitleLanguage,
           next.updatedAt,
