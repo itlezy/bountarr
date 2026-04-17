@@ -40,6 +40,10 @@ function acquisitionCard(page: Page) {
   });
 }
 
+function managedJobCard(page: Page, title: string) {
+  return page.getByTestId('acquisition-job-card').filter({ hasText: title }).first();
+}
+
 function queueItemCard(page: Page, title: string) {
   return page.getByTestId('queue-item-card').filter({ hasText: title }).first();
 }
@@ -82,6 +86,27 @@ test('queue cards and manual release modal show the managed target scope', async
   const dialog = await openManualReleaseModal(page);
   await expect(dialog.getByText('Scope', { exact: true })).toBeVisible();
   await expect(dialog.getByText('Season 1', { exact: true })).toBeVisible();
+});
+
+test('completed managed jobs do not expose manual release actions', async ({ page }) => {
+  const api = await mockAppApi(page, {
+    queue: buildQueueResponse([
+      {
+        ...acquisitionJobFixture,
+        completedAt: '2026-04-13T12:04:00.000Z',
+        currentRelease: 'Andor.S01.1080p.WEB-DL-FLUX',
+        reasonCode: 'validated',
+        status: 'completed',
+        validationSummary: 'Ready to watch.',
+      },
+    ], []),
+  });
+
+  await openQueue(page, api);
+
+  const card = managedJobCard(page, acquisitionJobFixture.title);
+  await expect(card).toBeVisible();
+  await expect(card.getByRole('button', { name: /manual release options/i })).toHaveCount(0);
 });
 
 test('queue item cancel refreshes queue and dashboard state', async ({ page }) => {
@@ -354,7 +379,7 @@ test('manual release selection refreshes queue and release state', async ({ page
     page.getByText('Manual release selected. Sending Andor to the downloader.'),
   ).toBeVisible();
   await expect(
-    acquisitionCard(page)
+    managedJobCard(page, acquisitionJobFixture.title)
       .getByText('Manual release selected and sent to the downloader.', { exact: true })
       .first(),
   ).toBeVisible();

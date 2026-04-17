@@ -4,18 +4,18 @@
     acquisitionAttemptSummary,
     acquisitionJourneySummary,
     acquisitionNextStep,
-  acquisitionReasonSummary,
-  acquisitionStatusLabel,
-  downloadedSummary,
-  queueEtaLabel,
-} from '$lib/client/app-ui';
-import type { AppState } from '$lib/client/app-state.svelte';
-import type { ManagedQueueEntry } from '$lib/shared/types';
+    acquisitionReasonSummary,
+    acquisitionStatusLabel,
+    downloadedSummary,
+    queueEtaLabel,
+  } from '$lib/client/app-ui';
+  import type { AppState } from '$lib/client/app-state.svelte';
+  import type { ManagedQueueEntry } from '$lib/shared/types';
 
-let { entry, state }: { entry: ManagedQueueEntry; state: AppState } = $props();
+  let { entry, state }: { entry: ManagedQueueEntry; state: AppState } = $props();
 
-const job = $derived(entry.job);
-const liveQueueItems = $derived(entry.liveQueueItems);
+  const job = $derived(entry.job);
+  const liveQueueItems = $derived(entry.liveQueueItems);
   const liveSummary = $derived(entry.liveSummary);
   const displayProgress = $derived(liveSummary?.progress ?? job.progress);
   const displayQueueStatus = $derived(
@@ -26,6 +26,12 @@ const liveQueueItems = $derived(entry.liveQueueItems);
     liveSummary && !liveSummary.byteMetricsPartial ? downloadedSummary(liveSummary) : null,
   );
   const targetScope = $derived(describeAcquisitionTarget(job));
+  const canOpenManualRelease = $derived(
+    job.status === 'failed' ||
+      job.status === 'queued' ||
+      job.status === 'retrying' ||
+      job.status === 'searching',
+  );
 </script>
 
 <article
@@ -198,14 +204,16 @@ const liveQueueItems = $derived(entry.liveQueueItems);
       </div>
     {/if}
 
-    <div class="flex flex-col gap-2 sm:flex-row">
-      <button
-        class="control-shell min-h-10 flex-1 px-4 text-sm font-700"
-        type="button"
-        onclick={() => void state.toggleManualReleaseList(job.id)}
-      >
-        {state.manualReleaseListOpen(job.id) ? 'Hide manual release options' : 'Show manual release options'}
-      </button>
-    </div>
+    {#if canOpenManualRelease}
+      <div class="flex flex-col gap-2 sm:flex-row">
+        <button
+          class="control-shell min-h-10 flex-1 px-4 text-sm font-700"
+          type="button"
+          onclick={() => void state.toggleManualReleaseList(job.id)}
+        >
+          {state.manualReleaseListOpen(job.id) ? 'Hide manual release options' : 'Show manual release options'}
+        </button>
+      </div>
+    {/if}
   </div>
 </article>

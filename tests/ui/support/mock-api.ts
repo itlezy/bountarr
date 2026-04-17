@@ -250,13 +250,17 @@ export async function mockAppApi(
       const body = (request.postDataJSON() as Record<string, unknown> | null) ?? {};
       controller.queueCancelBodies.push(body);
       const isManagedCancel = body.kind === 'managed';
+      const title =
+        typeof body.title === 'string' && body.title.trim().length > 0
+          ? body.title
+          : 'Selected';
       const payload =
         options.queueCancelResponse?.(body, request, url) ??
         mockJson({
           itemId: String(body.id ?? body.jobId ?? ''),
           message: isManagedCancel
-            ? `${String(body.title ?? 'Download')} download was cancelled and unmonitored.`
-            : `${String(body.title ?? 'Download')} download was cancelled.`,
+            ? `${title} download was cancelled and unmonitored.`
+            : `${title} download was cancelled.`,
         });
       await fulfillResolvedRoute(route, payload);
       return;
