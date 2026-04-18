@@ -514,6 +514,7 @@ describe('queue dashboard service', () => {
         id: acquisitionJob.id,
         liveQueueItems: [queueItem],
         canCancel: false,
+        canRemove: false,
       }),
     ]);
   });

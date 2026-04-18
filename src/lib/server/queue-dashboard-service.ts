@@ -363,7 +363,7 @@ function buildManagedQueueEntry(
     liveQueueItems,
     liveSummary,
     canCancel: !isTerminalJobStatus(job.status) && !hasUncancelableLiveRow,
-    canRemove: true,
+    canRemove: !hasUncancelableLiveRow,
   };
 }
 
