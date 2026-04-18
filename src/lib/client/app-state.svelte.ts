@@ -1165,6 +1165,7 @@ export class AppState {
       this.guidedQueueJobId = result.job?.id ?? null;
       this.guidedQueueTitle = result.item.title;
       if (result.job) {
+        this.queueSelectionNeedsManualChoice = false;
         this.queue = optimisticQueueResponse(this.queue, result.job);
         this.syncSelectedQueueEntry();
       }

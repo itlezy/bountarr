@@ -1310,6 +1310,47 @@ describe('app state', () => {
     expect(state.queueSelectionNeedsManualChoice).toBe(true);
   });
 
+  it('auto-selects a new guided queue job even after a previous selection was cleared', async () => {
+    const queueRefresh = createDeferred<QueueResponse>();
+    const dashboardRefresh = createDeferred<DashboardResponse>();
+    const grabResponse: GrabResponse = {
+      existing: false,
+      item: {
+        ...movieItem,
+        inArr: true,
+        canAdd: false,
+        status: 'Already in Arr',
+      },
+      message: '"The Matrix" was added to Radarr. Acquisition started.',
+      releaseDecision: null,
+      job: {
+        ...acquisitionJob,
+        id: 'job-2',
+      },
+    };
+    const dependencies = createDependencies({
+      api: {
+        fetchQueue: vi.fn().mockImplementation(() => queueRefresh.promise),
+        refreshDashboard: vi.fn().mockImplementation(() => dashboardRefresh.promise),
+        submitGrab: vi.fn().mockResolvedValue(grabResponse),
+      },
+      timers: {
+        setTimeout: vi.fn().mockReturnValue(99) as unknown as typeof globalThis.setTimeout,
+        clearTimeout: vi.fn() as unknown as typeof globalThis.clearTimeout,
+      },
+    });
+    const state = new AppState(pageData, dependencies);
+    state.queueSelectionNeedsManualChoice = true;
+    state.searchResults = [movieItem];
+    state.openAddConfirm(movieItem);
+
+    await state.submitGrab(movieItem, state.confirmQualityProfileId);
+
+    expect(state.guidedQueueJobId).toBe('job-2');
+    expect(state.queueSelectionNeedsManualChoice).toBe(false);
+    expect(state.selectedQueueEntry?.id).toBe('job-2');
+  });
+
   it('stores queue cancel failures separately from manual release errors', async () => {
     const dependencies = createDependencies({
       api: {
