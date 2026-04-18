@@ -118,7 +118,7 @@ export function queueItemMatchesManagedTarget(
     }
 
     if (target.currentRelease === null) {
-      return true;
+      return false;
     }
 
     return seriesReleaseMatchesTarget(target.currentRelease, item);

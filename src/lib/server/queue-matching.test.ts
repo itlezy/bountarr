@@ -197,6 +197,40 @@ describe('queue matching', () => {
     expect(queueItemMatchesManagedTarget(target, staleSiblingRow)).toBe(false);
   });
 
+  it('does not match same-scope series rows before identity is known when no current release has been chosen', () => {
+    const target = {
+      arrItemId: 83867,
+      currentRelease: null,
+      kind: 'series' as const,
+      sourceService: 'sonarr' as const,
+      targetEpisodeIds: [101, 102],
+      targetSeasonNumbers: [1],
+    };
+    const item: QueueItem = {
+      id: 'sonarr:queue:18',
+      downloadId: 'sonarr-download-1',
+      arrItemId: 83867,
+      canCancel: true,
+      kind: 'series',
+      title: 'Andor',
+      year: 2022,
+      poster: null,
+      sourceService: 'sonarr',
+      status: 'Downloading',
+      progress: 61,
+      timeLeft: '8m',
+      estimatedCompletionTime: '2026-04-13T12:08:00.000Z',
+      size: 3_400_000_000,
+      sizeLeft: 1_326_000_000,
+      queueId: 18,
+      detail: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+      episodeIds: [101],
+      seasonNumbers: [1],
+    };
+
+    expect(queueItemMatchesManagedTarget(target, item)).toBe(false);
+  });
+
   it('still matches same-download sibling Sonarr queue rows after one live row has been claimed', () => {
     const target = {
       arrItemId: 83867,

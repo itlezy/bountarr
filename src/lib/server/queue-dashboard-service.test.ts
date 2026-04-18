@@ -454,7 +454,7 @@ describe('queue dashboard service', () => {
     ]);
   });
 
-  it('keeps unmatched Arr downloads as external entries after managed matches are consumed', async () => {
+  it('keeps same-scope Sonarr rows external until a managed release has been chosen', async () => {
     const { composeQueueEntries } = await import('$lib/server/queue-dashboard-service');
 
     const acquisitionJob: AcquisitionJob = {
@@ -530,19 +530,22 @@ describe('queue dashboard service', () => {
 
     const entries = composeQueueEntries([acquisitionJob], [externalQueueItem, matchingQueueItem]);
 
-    expect(entries).toHaveLength(2);
+    expect(entries).toHaveLength(3);
     expect(entries[0]).toMatchObject({
       kind: 'managed',
-      liveQueueItems: [matchingQueueItem],
-      liveSummary: {
-        rowCount: 1,
-        progress: 58,
-      },
+      liveQueueItems: [],
+      liveSummary: null,
     });
     expect(entries[1]).toEqual({
       kind: 'external',
       id: 'radarr:queue:1',
       item: externalQueueItem,
+      canCancel: true,
+      canRemove: false,
+    });
+    expect(entries[2]).toMatchObject({
+      kind: 'external',
+      item: matchingQueueItem,
       canCancel: true,
       canRemove: false,
     });
