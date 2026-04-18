@@ -367,6 +367,29 @@ function buildExternalQueueEntry(item: QueueItem): ExternalQueueEntry {
   };
 }
 
+function enrichQueueItemsWithManagedTitles(
+  acquisitionJobs: AcquisitionJob[],
+  items: QueueItem[],
+): QueueItem[] {
+  return items.map((item) => {
+    if (item.arrItemId === null) {
+      return item;
+    }
+
+    const matchingJob =
+      acquisitionJobs.find((job) => job.kind === item.kind && job.arrItemId === item.arrItemId) ?? null;
+    if (!matchingJob || item.title === matchingJob.title) {
+      return item;
+    }
+
+    return {
+      ...item,
+      title: matchingJob.title,
+      detail: item.detail ?? item.title,
+    };
+  });
+}
+
 function queueEntryTitle(entry: QueueEntry): string {
   return entry.kind === 'managed' ? entry.job.title : entry.item.title;
 }
@@ -453,7 +476,7 @@ export function composeQueueEntries(
   acquisitionJobs: AcquisitionJob[],
   items: QueueItem[],
 ): QueueEntry[] {
-  let unmatchedItems = [...items];
+  let unmatchedItems = enrichQueueItemsWithManagedTitles(acquisitionJobs, items);
   const managedEntries = acquisitionJobs.map((job) => {
     const liveQueueItems = liveQueueItemsForManagedJob(job, unmatchedItems);
     if (liveQueueItems.length > 0) {

@@ -212,7 +212,7 @@ describe('queue dashboard service', () => {
       arrItemId: 727,
       canCancel: true,
       kind: 'movie',
-      title: 'Dangerous Animals',
+      title: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
       year: 2025,
       poster: null,
       sourceService: 'radarr',
@@ -243,7 +243,11 @@ describe('queue dashboard service', () => {
       {
         kind: 'external',
         id: staleQueueItem.id,
-        item: staleQueueItem,
+        item: {
+          ...staleQueueItem,
+          title: 'Dangerous Animals',
+          detail: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+        },
         canCancel: true,
         canRemove: false,
       },
