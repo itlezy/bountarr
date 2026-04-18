@@ -421,6 +421,94 @@ describe('acquisition service', () => {
     expect(arrFetch).not.toHaveBeenCalled();
   });
 
+  it('resolves external queue cancels by exact entry id before falling back to a shared download id', async () => {
+    const arrFetch = vi.fn();
+    const queueEntry: QueueCancelRequest = {
+      kind: 'external',
+      arrItemId: 83867,
+      downloadId: 'download-shared',
+      id: 'sonarr:download:download-shared:sonarr-83867-andor-s01e02-1080p-web-dl-flux-episodes-102',
+      queueId: null,
+      sourceService: 'sonarr',
+      title: 'Andor',
+    };
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/app-cache', () => ({
+      queueCache: new Map(),
+    }));
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        ensureWorkers: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        cancelJob: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        listActiveJobsByArrItem: vi.fn().mockReturnValue([]),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      getAcquisitionJobsResponse: vi.fn(),
+      listQueueAcquisitionJobs: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-validator-shared', () => ({
+      fetchQueueRecords: vi.fn().mockResolvedValue([
+        {
+          downloadId: 'download-shared',
+          seriesId: 83867,
+          title: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+          status: 'downloading',
+          trackedDownloadStatus: 'ok',
+          trackedDownloadState: 'downloading',
+          series: {
+            id: 83867,
+            title: 'Andor',
+            year: 2022,
+          },
+          episodeIds: [101],
+        },
+        {
+          downloadId: 'download-shared',
+          seriesId: 83867,
+          title: 'Andor.S01E02.1080p.WEB-DL-FLUX',
+          status: 'completed',
+          trackedDownloadStatus: 'warning',
+          trackedDownloadState: 'importPending',
+          statusMessages: [
+            {
+              title: 'Import pending',
+              messages: ['Import failed, destination path already exists.'],
+            },
+          ],
+          series: {
+            id: 83867,
+            title: 'Andor',
+            year: 2022,
+          },
+          episodeIds: [102],
+        },
+      ]),
+    }));
+    vi.doMock('$lib/server/acquisition-selection', () => ({
+      findManualReleaseSelection: vi.fn(),
+      getManualReleaseResults: vi.fn(),
+    }));
+
+    const module = await import('$lib/server/acquisition-service');
+
+    await expect(module.cancelQueueEntry(queueEntry)).rejects.toThrow(
+      'This queue entry is no longer actively downloading. Clear the stale queue entry instead.',
+    );
+    expect(arrFetch).not.toHaveBeenCalled();
+  });
+
   it('refuses to cancel external queue rows that are now stale import-blocked leftovers', async () => {
     const arrFetch = vi.fn();
     const queueEntry: QueueCancelRequest = {
@@ -1910,6 +1998,91 @@ describe('acquisition service', () => {
         skipRedownload: false,
       },
     );
+  });
+
+  it('resolves stale queue-entry deletes by exact entry id before falling back to a shared download id', async () => {
+    const arrFetch = vi.fn();
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        ensureWorkers: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        cancelJob: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        deleteJobsByArrItem: vi.fn(),
+        listActiveJobsByArrItem: vi.fn().mockReturnValue([]),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      getAcquisitionJobsResponse: vi.fn(),
+      listQueueAcquisitionJobs: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-validator-shared', () => ({
+      fetchQueueRecords: vi.fn().mockResolvedValue([
+        {
+          downloadId: 'download-shared',
+          movieId: 603,
+          title: 'The.Matrix.1999.1080p.BluRay-OLD',
+          status: 'downloading',
+          trackedDownloadStatus: 'ok',
+          trackedDownloadState: 'downloading',
+          movie: {
+            id: 603,
+            title: 'The Matrix',
+            year: 1999,
+          },
+        },
+        {
+          downloadId: 'download-shared',
+          movieId: 603,
+          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          status: 'completed',
+          trackedDownloadStatus: 'warning',
+          trackedDownloadState: 'importPending',
+          statusMessages: [
+            {
+              title: 'Import pending',
+              messages: ['Import failed, destination path already exists.'],
+            },
+          ],
+          movie: {
+            id: 603,
+            title: 'The Matrix',
+            year: 1999,
+          },
+        },
+      ]),
+    }));
+    vi.doMock('$lib/server/acquisition-selection', () => ({
+      findManualReleaseSelection: vi.fn(),
+      getManualReleaseResults: vi.fn(),
+    }));
+
+    const module = await import('$lib/server/acquisition-service');
+
+    await expect(
+      module.deleteArrItem({
+        deleteMode: 'queue-entry',
+        downloadId: 'download-shared',
+        id: 'radarr:download:download-shared:radarr-603-the-matrix-1999-1080p-web-dl-flux-noscope',
+        kind: 'movie',
+        queueId: null,
+        sourceService: 'radarr',
+        title: 'The Matrix',
+      }),
+    ).rejects.toThrow(
+      'This live Arr queue row cannot be cleared because Arr did not expose a queue id. Refresh the queue and stop it directly in Arr if it is still running.',
+    );
+    expect(arrFetch).not.toHaveBeenCalled();
   });
 
   it('rejects manual selections once a job is already grabbing or validating', async () => {

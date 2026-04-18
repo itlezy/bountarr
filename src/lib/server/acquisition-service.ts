@@ -264,6 +264,7 @@ async function deleteQueueEntries(
 
 type ExternalQueueLookupTarget = {
   downloadId?: string | null;
+  id?: string | null;
   queueId: number | null;
 };
 
@@ -279,6 +280,13 @@ async function currentExternalQueueItem(
     const byQueueId = queueItems.find((queueItem) => queueItem.queueId === target.queueId) ?? null;
     if (byQueueId) {
       return byQueueId;
+    }
+  }
+
+  if (target.id) {
+    const byId = queueItems.find((queueItem) => queueItem.id === target.id) ?? null;
+    if (byId) {
+      return byId;
     }
   }
 
@@ -430,6 +438,7 @@ async function cancelExternalQueueItem(
 
   const currentQueueItem = await requireCurrentExternalQueueItem(item.sourceService, {
     downloadId: item.downloadId ?? null,
+    id: item.id,
     queueId: item.queueId,
   });
   assertCancelableExternalQueueItem(currentQueueItem);
@@ -476,6 +485,7 @@ export async function deleteArrItem(item: ArrDeleteTarget): Promise<MediaItemAct
 
     const currentQueueItem = await requireCurrentExternalQueueItem(item.sourceService, {
       downloadId: item.downloadId ?? null,
+      id: item.id,
       queueId: item.queueId,
     });
     assertRemovableExternalQueueItem(currentQueueItem);
