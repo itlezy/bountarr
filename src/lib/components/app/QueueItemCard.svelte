@@ -63,6 +63,9 @@ const etaLabel = $derived(queueEtaLabel(item));
           <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Queue detail</div>
           <div class="overflow-safe-text">
             {item.status}
+            {#if item.statusDetail}
+              · {item.statusDetail}
+            {/if}
             {#if item.detail}
               · {item.detail}
             {/if}

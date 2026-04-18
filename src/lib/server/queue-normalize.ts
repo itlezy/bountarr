@@ -15,6 +15,31 @@ function formatQueueStatus(record: Record<string, unknown>): string {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function queueStatusDetail(record: Record<string, unknown>): string | null {
+  const redundantTitle = asString(record.title) ?? asString(record.sourceTitle);
+  const messages = (Array.isArray(record.statusMessages) ? record.statusMessages : [])
+    .map(asRecord)
+    .flatMap((entry) => {
+      const title = asString(entry.title);
+      const entryMessages = (Array.isArray(entry.messages) ? entry.messages : [])
+        .map(asString)
+        .filter((value): value is string => value !== null);
+
+      if (entryMessages.length === 0) {
+        return title ? [title] : [];
+      }
+
+      if (!title || title === redundantTitle) {
+        return entryMessages;
+      }
+
+      return entryMessages.map((message) => `${title}: ${message}`);
+    });
+
+  const uniqueMessages = [...new Set(messages)];
+  return uniqueMessages.length > 0 ? uniqueMessages.join(' · ') : null;
+}
+
 function queueItemId(
   service: ArrService,
   queueId: number | null,
@@ -70,6 +95,7 @@ export function normalizeQueueItem(service: ArrService, rawValue: unknown): Queu
     poster: extractPoster(parent),
     sourceService: service,
     status: formatQueueStatus(record),
+    statusDetail: queueStatusDetail(record),
     progress,
     timeLeft: asString(record.timeleft) ?? asString(record.timeLeft),
     estimatedCompletionTime: asString(record.estimatedCompletionTime),

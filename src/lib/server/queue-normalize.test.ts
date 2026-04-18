@@ -80,4 +80,49 @@ describe('normalizeQueueItem', () => {
     });
     expect(item?.progress).toBeCloseTo(54.52, 1);
   });
+
+  it('preserves Arr warning detail from queue status messages', () => {
+    const item = normalizeQueueItem('radarr', {
+      id: 1996958567,
+      movieId: 727,
+      title: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+      status: 'completed',
+      trackedDownloadStatus: 'warning',
+      trackedDownloadState: 'importPending',
+      statusMessages: [
+        {
+          title: 'Import pending',
+          messages: ['Not an upgrade for existing movie file. Existing quality: Bluray-2160p.'],
+        },
+      ],
+    });
+
+    expect(item).toMatchObject({
+      status: 'Completed',
+      statusDetail:
+        'Import pending: Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
+      detail: null,
+    });
+  });
+
+  it('omits redundant release-name prefixes from Arr warning detail', () => {
+    const item = normalizeQueueItem('radarr', {
+      id: 1996958567,
+      movieId: 727,
+      title: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+      status: 'completed',
+      trackedDownloadStatus: 'warning',
+      trackedDownloadState: 'importPending',
+      statusMessages: [
+        {
+          title: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+          messages: ['Not an upgrade for existing movie file. Existing quality: Bluray-2160p.'],
+        },
+      ],
+    });
+
+    expect(item?.statusDetail).toBe(
+      'Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
+    );
+  });
 });

@@ -261,6 +261,15 @@ export function queueItemSummary(item: QueueItem): string {
 }
 
 export function queueItemNextStep(item: QueueItem): string {
+  const blockedOrCompleted =
+    (item.progress !== null && item.progress >= 100) ||
+    item.status.toLowerCase().includes('warning') ||
+    item.status.toLowerCase().includes('blocked');
+
+  if (item.statusDetail && blockedOrCompleted) {
+    return item.statusDetail;
+  }
+
   if (item.progress !== null && item.progress >= 100) {
     return 'Waiting for import to finish.';
   }

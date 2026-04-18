@@ -320,6 +320,7 @@ export interface QueueItem {
   poster: string | null;
   sourceService: 'radarr' | 'sonarr';
   status: string;
+  statusDetail?: string | null;
   progress: number | null;
   timeLeft: string | null;
   estimatedCompletionTime: string | null;

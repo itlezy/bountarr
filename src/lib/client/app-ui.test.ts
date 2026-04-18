@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { actionLabel, formatBytes } from './app-ui';
+import { actionLabel, formatBytes, queueItemNextStep } from './app-ui';
 
 describe('formatBytes', () => {
   it('formats zero-byte values explicitly', () => {
@@ -86,5 +86,34 @@ describe('actionLabel', () => {
         null,
       ),
     ).toBe('Grab');
+  });
+});
+
+describe('queueItemNextStep', () => {
+  it('surfaces Arr warning detail for blocked completed queue rows', () => {
+    expect(
+      queueItemNextStep({
+        id: 'radarr:queue:1996958567',
+        arrItemId: 727,
+        canCancel: true,
+        kind: 'movie',
+        title: 'Dangerous Animals',
+        year: 2025,
+        poster: null,
+        sourceService: 'radarr',
+        status: 'Completed',
+        statusDetail:
+          'Import pending: Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
+        progress: 100,
+        timeLeft: '00:00:00',
+        estimatedCompletionTime: '2026-04-18T11:05:28Z',
+        size: 7_845_710_150,
+        sizeLeft: 0,
+        queueId: 1996958567,
+        detail: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+        episodeIds: null,
+        seasonNumbers: null,
+      }),
+    ).toBe('Import pending: Not an upgrade for existing movie file. Existing quality: Bluray-2160p.');
   });
 });
