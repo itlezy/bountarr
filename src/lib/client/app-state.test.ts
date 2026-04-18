@@ -717,6 +717,48 @@ describe('app state', () => {
     await Promise.all([queueRefresh.promise, dashboardRefresh.promise]);
   });
 
+  it('suppresses impossible managed actions in optimistic queue entries for download-only live rows', async () => {
+    const queueRefresh = createDeferred<QueueResponse>();
+    const dashboardRefresh = createDeferred<DashboardResponse>();
+    const downloadOnlyJob: AcquisitionJob = {
+      ...acquisitionJob,
+      status: 'grabbing',
+      liveQueueId: null,
+      liveDownloadId: 'download-shared',
+    };
+    const dependencies = createDependencies({
+      api: {
+        submitGrab: vi.fn().mockResolvedValue({
+          existing: false,
+          item: movieItem,
+          message: '"The Matrix" was grabbed.',
+          releaseDecision: null,
+          job: downloadOnlyJob,
+        } satisfies GrabResponse),
+        fetchQueue: vi.fn().mockImplementation(() => queueRefresh.promise),
+        refreshDashboard: vi.fn().mockImplementation(() => dashboardRefresh.promise),
+      },
+      timers: {
+        setTimeout: vi.fn().mockReturnValue(99) as unknown as typeof globalThis.setTimeout,
+        clearTimeout: vi.fn() as unknown as typeof globalThis.clearTimeout,
+      },
+    });
+    const state = new AppState(pageData, dependencies);
+
+    await state.submitGrab(movieItem);
+
+    expect(state.queue?.entries[0]).toMatchObject({
+      kind: 'managed',
+      id: downloadOnlyJob.id,
+      canCancel: false,
+      canRemove: false,
+    });
+
+    queueRefresh.resolve(queueResponse);
+    dashboardRefresh.resolve(dashboardResponse);
+    await Promise.all([queueRefresh.promise, dashboardRefresh.promise]);
+  });
+
   it('ignores duplicate in-flight grab submissions for the same item', async () => {
     const submitGrabResult = createDeferred<GrabResponse>();
     const submitGrab = vi.fn().mockImplementation(() => submitGrabResult.promise);
