@@ -1,3 +1,4 @@
+import { normalizeToken } from '$lib/server/media-identity';
 import { extractPoster } from '$lib/server/media-normalize';
 import { asNumber, asRecord, asString } from '$lib/server/raw';
 import { extractSeriesScope } from '$lib/server/series-scope';
@@ -50,10 +51,47 @@ function queueStatusDetail(record: Record<string, unknown>): string | null {
   return uniqueMessages.length > 0 ? uniqueMessages.join(' · ') : null;
 }
 
+function normalizeIdentityPart(value: string | null): string {
+  const normalized = value ? normalizeToken(value).replace(/\s+/g, '-') : '';
+  return normalized.length > 0 ? normalized : 'unknown';
+}
+
+export function queueFallbackIdentity(
+  service: ArrService,
+  record: Record<string, unknown>,
+): string {
+  const parent = service === 'radarr' ? asRecord(record.movie) : asRecord(record.series);
+  const episode = asRecord(record.episode);
+  const arrItemId =
+    service === 'radarr'
+      ? (asNumber(record.movieId) ?? asNumber(parent.id))
+      : (asNumber(record.seriesId) ?? asNumber(parent.id));
+  const scope = service === 'sonarr' ? extractSeriesScope(record) : null;
+  const titlePart = normalizeIdentityPart(
+    asString(record.title) ??
+      asString(record.sourceTitle) ??
+      asString(parent.title) ??
+      asString(episode.title),
+  );
+  const scopePart =
+    service === 'sonarr'
+      ? (
+          scope?.episodeIds?.length
+            ? `episodes-${scope.episodeIds.join('.')}`
+            : scope?.seasonNumbers?.length
+              ? `seasons-${scope.seasonNumbers.join('.')}`
+              : 'noscope'
+        )
+      : 'noscope';
+
+  return `${service}-${arrItemId ?? 'na'}-${titlePart}-${scopePart}`;
+}
+
 function queueItemId(
   service: ArrService,
   queueId: number | null,
   downloadId: string | null,
+  record: Record<string, unknown>,
 ): string {
   if (queueId !== null) {
     return `${service}:queue:${queueId}`;
@@ -63,7 +101,7 @@ function queueItemId(
     return `${service}:download:${downloadId}`;
   }
 
-  return `${service}:queue:${crypto.randomUUID()}`;
+  return `${service}:queue:${queueFallbackIdentity(service, record)}`;
 }
 
 function normalizeTrackedDownloadValue(value: unknown): string | null {
@@ -129,7 +167,7 @@ export function normalizeQueueItem(service: ArrService, rawValue: unknown): Queu
   const downloadId = asString(record.downloadId);
 
   return {
-    id: queueItemId(service, queueId, downloadId),
+    id: queueItemId(service, queueId, downloadId, record),
     downloadId,
     arrItemId:
       service === 'radarr'

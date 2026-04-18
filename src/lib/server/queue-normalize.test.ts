@@ -58,6 +58,24 @@ describe('normalizeQueueItem', () => {
     });
   });
 
+  it('builds a deterministic fallback id when the Arr queue row has no queue id or download id', () => {
+    const rawRecord = {
+      movieId: 793,
+      title: 'American.Rickshaw.1989.1080p.BluRay.x265',
+      status: 'downloading',
+      trackedDownloadStatus: 'ok',
+      trackedDownloadState: 'downloading',
+    };
+
+    const firstItem = normalizeQueueItem('radarr', rawRecord);
+    const secondItem = normalizeQueueItem('radarr', rawRecord);
+
+    expect(firstItem?.id).toBe(
+      'radarr:queue:radarr-793-american-rickshaw-1989-1080p-bluray-x265-noscope',
+    );
+    expect(secondItem?.id).toBe(firstItem?.id);
+  });
+
   it('keeps Radarr queue items when the nested movie payload is missing', () => {
     const item = normalizeQueueItem('radarr', {
       id: 359204595,

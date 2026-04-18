@@ -9,7 +9,7 @@ import { fetchExistingMovie, fetchExistingSeries } from '$lib/server/lookup-serv
 import { mergeItems, normalizeItem } from '$lib/server/media-normalize';
 import { getRecentPlexItems, searchPlex } from '$lib/server/plex-service';
 import { buildManagedLiveSummary } from '$lib/server/queue-live-summary';
-import { queueItemIsStaleExternal } from '$lib/server/queue-normalize';
+import { queueFallbackIdentity, queueItemIsStaleExternal } from '$lib/server/queue-normalize';
 import {
   bestQueueIdentityCandidate,
   queueItemMatchesManagedIdentity,
@@ -31,13 +31,16 @@ import type {
   QueueResponse,
 } from '$lib/shared/types';
 
-function queueRecordIdentitySuffix(record: Record<string, unknown>): string {
+function queueRecordIdentitySuffix(
+  service: ArrService,
+  record: Record<string, unknown>,
+): string {
   const queueId = asNumber(record.id);
   if (queueId !== null) {
     return `${queueId}`;
   }
 
-  return asString(record.downloadId) ?? crypto.randomUUID();
+  return asString(record.downloadId) ?? queueFallbackIdentity(service, record);
 }
 
 function queueItemEntryId(item: QueueItem): string {
@@ -102,7 +105,7 @@ async function buildMovieHistoryItems(preferences: Preferences): Promise<MediaIt
     items.push(
       normalizeItem('movie', movie, preferences, {
         arrItemId: movieId ?? null,
-        id: `movie:queue:${queueRecordIdentitySuffix(record)}`,
+        id: `movie:queue:${queueRecordIdentitySuffix('radarr', record)}`,
         title: queueItem.title,
         year: queueItem.year,
         poster: queueItem.poster,
@@ -184,7 +187,7 @@ async function buildSeriesHistoryItems(preferences: Preferences): Promise<MediaI
     items.push(
       normalizeItem('series', series, preferences, {
         arrItemId: seriesId ?? null,
-        id: `series:queue:${queueRecordIdentitySuffix(record)}`,
+        id: `series:queue:${queueRecordIdentitySuffix('sonarr', record)}`,
         title: queueItem.title,
         year: queueItem.year,
         poster: queueItem.poster,
