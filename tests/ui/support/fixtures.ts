@@ -1,4 +1,4 @@
-import { queueItemIsStaleExternal } from '$lib/server/queue-normalize';
+import { externalQueueEntryCapabilities } from '$lib/server/queue-entry-capabilities';
 import { managedQueueEntryCapabilities } from '$lib/shared/queue-entry-capabilities';
 import type {
   AcquisitionJob,
@@ -261,13 +261,10 @@ function buildQueueEntries(acquisitionJobs: AcquisitionJob[], items: QueueItem[]
   });
 
   const externalEntries: QueueEntry[] = unmatchedItems.map((item) => ({
+    ...externalQueueEntryCapabilities(item),
     kind: 'external',
     id: queueEntryId(item),
     item,
-    canCancel:
-      (item.queueId !== null || Boolean(item.downloadId)) && !queueItemIsStaleExternal(item),
-    canRemove:
-      (item.queueId !== null || Boolean(item.downloadId)) && queueItemIsStaleExternal(item),
   }));
 
   return [...managedEntries, ...externalEntries];

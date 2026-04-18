@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { AppState } from '$lib/client/app-state.svelte';
 import type { AppStateDependencies } from '$lib/client/app-state.svelte';
 import type { PageData } from '$lib/client/app-state.svelte';
-import { queueItemIsStaleExternal } from '$lib/server/queue-normalize';
+import { externalQueueEntryCapabilities } from '$lib/server/queue-entry-capabilities';
 import { managedQueueEntryCapabilities } from '$lib/shared/queue-entry-capabilities';
 import type {
   AcquisitionJob,
@@ -285,14 +285,13 @@ function buildManagedEntry(
 }
 
 function buildExternalEntry(item: QueueItem): ExternalQueueEntry {
-  const stale = queueItemIsStaleExternal(item);
-  const actionable = item.queueId !== null || Boolean(item.downloadId);
+  const capabilities = externalQueueEntryCapabilities(item);
   return {
     kind: 'external',
     id: item.id,
     item,
-    canCancel: actionable && !stale,
-    canRemove: actionable && stale,
+    canCancel: capabilities.canCancel,
+    canRemove: capabilities.canRemove,
   };
 }
 

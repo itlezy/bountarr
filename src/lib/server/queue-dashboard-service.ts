@@ -9,7 +9,8 @@ import { fetchExistingMovie, fetchExistingSeries } from '$lib/server/lookup-serv
 import { mergeItems, normalizeItem } from '$lib/server/media-normalize';
 import { getRecentPlexItems, searchPlex } from '$lib/server/plex-service';
 import { buildManagedLiveSummary } from '$lib/server/queue-live-summary';
-import { queueFallbackIdentity, queueItemIsStaleExternal } from '$lib/server/queue-normalize';
+import { externalQueueEntryCapabilities } from '$lib/server/queue-entry-capabilities';
+import { queueFallbackIdentity } from '$lib/server/queue-normalize';
 import {
   bestQueueIdentityCandidate,
   queueItemMatchesManagedIdentity,
@@ -360,19 +361,14 @@ function buildManagedQueueEntry(
   };
 }
 
-function isStaleExternalQueueItem(item: QueueItem): boolean {
-  return queueItemIsStaleExternal(item);
-}
-
 function buildExternalQueueEntry(item: QueueItem): ExternalQueueEntry {
-  const stale = isStaleExternalQueueItem(item);
-  const actionable = item.queueId !== null || Boolean(item.downloadId);
+  const capabilities = externalQueueEntryCapabilities(item);
   return {
     kind: 'external',
     id: queueItemEntryId(item),
     item,
-    canCancel: actionable && !stale,
-    canRemove: actionable && stale,
+    canCancel: capabilities.canCancel,
+    canRemove: capabilities.canRemove,
   };
 }
 
