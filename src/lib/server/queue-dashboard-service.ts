@@ -4,8 +4,10 @@ import { dashboardCache, queueCache } from '$lib/server/app-cache';
 import { isTerminalJobStatus, type ArrService } from '$lib/server/acquisition-domain';
 import { getAcquisitionJobRepository } from '$lib/server/acquisition-job-repository';
 import { ensureAcquisitionWorkers, getQueueAcquisitionJobs } from '$lib/server/acquisition-service';
+import { itemMatchKeys } from '$lib/server/media-identity';
 import { fetchExistingMovie, fetchExistingSeries } from '$lib/server/lookup-service';
-import { normalizeItem } from '$lib/server/media-normalize';
+import { mergeItems, normalizeItem } from '$lib/server/media-normalize';
+import { getRecentPlexItems } from '$lib/server/plex-service';
 import { buildManagedLiveSummary } from '$lib/server/queue-live-summary';
 import {
   bestQueueIdentityCandidate,
@@ -90,18 +92,27 @@ async function buildMovieHistoryItems(preferences: Preferences): Promise<MediaIt
 
   for (const entry of queue) {
     const record = asRecord(entry);
+    const queueItem = normalizeQueueItem('radarr', record);
+    if (!queueItem) {
+      continue;
+    }
     const movie = asRecord(record.movie);
-    const movieId = asNumber(record.movieId) ?? asNumber(movie.id);
+    const movieId = queueItem.arrItemId;
     items.push(
       normalizeItem('movie', movie, preferences, {
         arrItemId: movieId ?? null,
         id: `movie:queue:${queueRecordIdentitySuffix(record)}`,
-        status: 'Queued',
+        title: queueItem.title,
+        year: queueItem.year,
+        poster: queueItem.poster,
+        status: queueItem.status,
         isExisting: true,
         isRequested: true,
         auditStatus: 'pending',
+        detail: queueItem.detail,
         inArr: true,
         canAdd: false,
+        requestPayload: Object.keys(movie).length > 0 ? movie : record,
       }),
     );
   }
@@ -162,20 +173,28 @@ async function buildSeriesHistoryItems(preferences: Preferences): Promise<MediaI
 
   for (const entry of queue) {
     const record = asRecord(entry);
+    const queueItem = normalizeQueueItem('sonarr', record);
+    if (!queueItem) {
+      continue;
+    }
     const series = asRecord(record.series);
     const episode = asRecord(record.episode);
-    const seriesId = asNumber(record.seriesId) ?? asNumber(series.id);
+    const seriesId = queueItem.arrItemId;
     items.push(
       normalizeItem('series', series, preferences, {
         arrItemId: seriesId ?? null,
         id: `series:queue:${queueRecordIdentitySuffix(record)}`,
-        status: 'Queued',
+        title: queueItem.title,
+        year: queueItem.year,
+        poster: queueItem.poster,
+        status: queueItem.status,
         isExisting: true,
         isRequested: true,
         auditStatus: 'pending',
-        detail: asString(episode.title),
+        detail: queueItem.detail ?? asString(episode.title),
         inArr: true,
         canAdd: false,
+        requestPayload: Object.keys(series).length > 0 ? series : record,
       }),
     );
   }
@@ -221,14 +240,66 @@ async function buildSeriesHistoryItems(preferences: Preferences): Promise<MediaI
 function dedupeItems(items: MediaItem[]): MediaItem[] {
   const map = new Map<string, MediaItem>();
 
+  const itemKey = (item: MediaItem): string =>
+    item.arrItemId !== null && item.arrItemId !== undefined
+      ? `arr:${item.kind}:${item.arrItemId}`
+      : `${item.kind}:${item.title}:${item.detail ?? ''}`;
+
+  const itemRank = (item: MediaItem): number => {
+    const payloadSize = Object.keys(asRecord(item.requestPayload)).length;
+    let score = 0;
+
+    if (!item.id.includes(':queue:')) {
+      score += 4;
+    }
+    if (item.title !== 'Untitled') {
+      score += 2;
+    }
+    if (payloadSize > 0) {
+      score += 2;
+    }
+    if (item.poster) {
+      score += 1;
+    }
+    if (item.auditStatus !== 'pending') {
+      score += 1;
+    }
+
+    return score;
+  };
+
   for (const item of items) {
-    const key = `${item.kind}:${item.title}:${item.detail ?? ''}`;
-    if (!map.has(key)) {
+    const key = itemKey(item);
+    const existing = map.get(key);
+    if (!existing || itemRank(item) > itemRank(existing)) {
       map.set(key, item);
     }
   }
 
   return [...map.values()];
+}
+
+async function mergeDashboardPlexItems(items: MediaItem[]): Promise<MediaItem[]> {
+  if (!getConfiguredServiceFlags().plexConfigured || items.length === 0) {
+    return items;
+  }
+
+  const recentPlexItems = await getRecentPlexItems(Math.max(12, items.length));
+  if (recentPlexItems.length === 0) {
+    return items;
+  }
+
+  return items.map((item) => {
+    const matchKeys = new Set(itemMatchKeys(item));
+    const plexMatch =
+      recentPlexItems.find(
+        (plexItem) =>
+          plexItem.kind === item.kind &&
+          itemMatchKeys(plexItem).some((key) => matchKeys.has(key)),
+      ) ?? null;
+
+    return plexMatch ? mergeItems(item, plexMatch) : item;
+  });
 }
 
 async function buildQueueItems(service: ArrService): Promise<QueueItem[]> {
@@ -255,9 +326,7 @@ function buildManagedQueueEntry(
     job,
     liveQueueItems,
     liveSummary,
-    canCancel:
-      !isTerminalJobStatus(job.status) ||
-      liveQueueItems.some((item) => item.canCancel && item.queueId !== null),
+    canCancel: !isTerminalJobStatus(job.status),
     canRemove: true,
   };
 }
@@ -296,6 +365,10 @@ function liveQueueItemsForManagedJob(
   job: AcquisitionJob,
   items: QueueItem[],
 ): QueueItem[] {
+  if (isTerminalJobStatus(job.status)) {
+    return [];
+  }
+
   if (job.kind === 'movie') {
     const matched = bestQueueIdentityCandidate(job, items);
     return matched ? [matched] : [];
@@ -422,7 +495,7 @@ export async function getDashboard(
     return cached.value;
   }
 
-  const items = dedupeItems(
+  const recentArrItems = dedupeItems(
     (
       await Promise.all([
         buildMovieHistoryItems(normalizedPreferences),
@@ -449,6 +522,7 @@ export async function getDashboard(
       })
       .slice(0, 14),
   );
+  const items = await mergeDashboardPlexItems(recentArrItems);
 
   const value: DashboardResponse = {
     updatedAt: new Date().toISOString(),

@@ -169,6 +169,87 @@ describe('queue dashboard service', () => {
     });
   });
 
+  it('leaves stale Arr rows external once the managed job is terminal', async () => {
+    const { composeQueueEntries } = await import('$lib/server/queue-dashboard-service');
+
+    const failedJob: AcquisitionJob = {
+      id: 'job-terminal-1',
+      itemId: 'movie:727',
+      arrItemId: 727,
+      kind: 'movie',
+      title: 'Dangerous Animals',
+      sourceService: 'radarr',
+      status: 'failed',
+      attempt: 2,
+      maxRetries: 4,
+      currentRelease: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+      liveQueueId: null,
+      liveDownloadId: null,
+      selectedReleaser: 'kbox',
+      preferredReleaser: null,
+      reasonCode: 'import-blocked',
+      failureReason:
+        'Arr refused to import the release: Not an upgrade for existing movie file.',
+      validationSummary:
+        'Arr refused to import the release: Not an upgrade for existing movie file.',
+      autoRetrying: false,
+      progress: 100,
+      queueStatus: 'Import blocked',
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      targetSeasonNumbers: null,
+      targetEpisodeIds: null,
+      startedAt: '2026-04-18T10:40:57.698Z',
+      updatedAt: '2026-04-18T11:05:28.375Z',
+      completedAt: '2026-04-18T11:05:28.375Z',
+      attempts: [],
+    };
+    const staleQueueItem: QueueItem = {
+      id: 'radarr:queue:1996958567',
+      downloadId: 'SABnzbd_nzo_4lejah9m',
+      arrItemId: 727,
+      canCancel: true,
+      kind: 'movie',
+      title: 'Dangerous Animals',
+      year: 2025,
+      poster: null,
+      sourceService: 'radarr',
+      status: 'Completed',
+      progress: 100,
+      timeLeft: '00:00:00',
+      estimatedCompletionTime: '2026-04-18T11:05:28Z',
+      size: 7_845_710_150,
+      sizeLeft: 0,
+      queueId: 1996958567,
+      detail: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+      episodeIds: null,
+      seasonNumbers: null,
+    };
+
+    const entries = composeQueueEntries([failedJob], [staleQueueItem]);
+
+    expect(entries).toEqual([
+      {
+        kind: 'managed',
+        id: failedJob.id,
+        job: failedJob,
+        liveQueueItems: [],
+        liveSummary: null,
+        canCancel: false,
+        canRemove: true,
+      },
+      {
+        kind: 'external',
+        id: staleQueueItem.id,
+        item: staleQueueItem,
+        canCancel: true,
+        canRemove: false,
+      },
+    ]);
+  });
+
   it('keeps unmatched Arr downloads as external entries after managed matches are consumed', async () => {
     const { composeQueueEntries } = await import('$lib/server/queue-dashboard-service');
 
@@ -724,6 +805,230 @@ describe('queue dashboard service', () => {
       canDeleteFromArr: true,
       inArr: true,
       title: 'The Matrix',
+    });
+  });
+
+  it('merges matching recent Plex items onto dashboard cards', async () => {
+    const arrFetch = vi.fn().mockImplementation(async (_service: string, path: string) => {
+      if (path === '/api/v3/history') {
+        return {
+          records: [
+            {
+              movieId: 933,
+              sourceTitle: 'Sharing.the.Secret.2000.1080p.AMZN.WEB-DL.DDP2.0.H.264-TEPES',
+              movie: {
+                id: 933,
+                title: 'Sharing the Secret',
+                year: 2000,
+              },
+            },
+          ],
+        };
+      }
+
+      if (path === '/api/v3/queue') {
+        return { records: [] };
+      }
+
+      return { records: [] };
+    });
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/runtime', () => ({
+      getConfiguredServiceFlags: () => ({
+        configured: true,
+        plexConfigured: true,
+        radarrConfigured: true,
+        sonarrConfigured: false,
+      }),
+    }));
+    vi.doMock('$lib/server/lookup-service', () => ({
+      fetchExistingMovie: vi.fn().mockResolvedValue({
+        id: 'movie:933',
+        arrItemId: 933,
+        kind: 'movie',
+        title: 'Sharing the Secret',
+        year: 2000,
+        rating: 6.2,
+        poster: null,
+        overview: '',
+        status: 'Downloaded',
+        isExisting: true,
+        isRequested: true,
+        auditStatus: 'verified',
+        audioLanguages: ['eng'],
+        subtitleLanguages: ['eng'],
+        sourceService: 'radarr',
+        origin: 'arr',
+        inArr: true,
+        inPlex: false,
+        plexLibraries: [],
+        canAdd: false,
+        canDeleteFromArr: true,
+        detail: null,
+        requestPayload: {
+          title: 'Sharing the Secret',
+          year: 2000,
+          imdbId: 'tt0240894',
+          tmdbId: 299024,
+        },
+      }),
+      fetchExistingSeries: vi.fn(),
+    }));
+    vi.doMock('$lib/server/plex-service', () => ({
+      getRecentPlexItems: vi.fn().mockResolvedValue([
+        {
+          id: 'plex:movie:123861',
+          arrItemId: null,
+          kind: 'movie',
+          title: 'Sharing the Secret',
+          year: 2000,
+          rating: 6.3,
+          poster: null,
+          overview: '',
+          status: 'Already in Plex',
+          isExisting: false,
+          isRequested: false,
+          auditStatus: 'pending',
+          audioLanguages: [],
+          subtitleLanguages: [],
+          sourceService: 'plex',
+          origin: 'plex',
+          inArr: false,
+          inPlex: true,
+          plexLibraries: ['Movies'],
+          canAdd: false,
+          canDeleteFromArr: false,
+          detail: null,
+          requestPayload: {
+            title: 'Sharing the Secret',
+            year: 2000,
+          },
+        },
+      ]),
+    }));
+    vi.doMock('$lib/server/acquisition-service', () => ({
+      ensureAcquisitionWorkers: vi.fn(),
+      getQueueAcquisitionJobs: () => [],
+    }));
+
+    const module = await import('$lib/server/queue-dashboard-service');
+    const dashboard = await module.getDashboard({
+      cardsView: 'rounded',
+      preferredLanguage: 'English',
+      subtitleLanguage: 'English',
+      theme: 'system',
+    });
+
+    expect(dashboard.items[0]).toMatchObject({
+      title: 'Sharing the Secret',
+      inArr: true,
+      inPlex: true,
+      origin: 'merged',
+      plexLibraries: ['Movies'],
+    });
+  });
+
+  it('does not emit an Untitled dashboard queue card when a sparse Arr queue row matches a tracked movie', async () => {
+    const arrFetch = vi.fn().mockImplementation(async (_service: string, path: string) => {
+      if (path === '/api/v3/history') {
+        return {
+          records: [
+            {
+              movieId: 727,
+              sourceTitle: 'Dangerous.Animals.2025.UHD.BluRay.2160p.DD.5.1.DV.HDR10Plus.x265-BHDStudio',
+              movie: {
+                id: 727,
+                title: 'Dangerous Animals',
+                year: 2025,
+              },
+            },
+          ],
+        };
+      }
+
+      if (path === '/api/v3/queue') {
+        return {
+          records: [
+            {
+              id: 1996958567,
+              movieId: 727,
+              title: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+              status: 'completed',
+              trackedDownloadStatus: 'warning',
+              trackedDownloadState: 'importPending',
+            },
+          ],
+        };
+      }
+
+      return { records: [] };
+    });
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/runtime', () => ({
+      getConfiguredServiceFlags: () => ({
+        configured: true,
+        plexConfigured: false,
+        radarrConfigured: true,
+        sonarrConfigured: false,
+      }),
+    }));
+    vi.doMock('$lib/server/lookup-service', () => ({
+      fetchExistingMovie: vi.fn().mockResolvedValue({
+        id: 'movie:727',
+        arrItemId: 727,
+        kind: 'movie',
+        title: 'Dangerous Animals',
+        year: 2025,
+        rating: 6.4,
+        poster: null,
+        overview: '',
+        status: 'Downloaded',
+        isExisting: true,
+        isRequested: true,
+        auditStatus: 'verified',
+        audioLanguages: ['eng'],
+        subtitleLanguages: [],
+        sourceService: 'radarr',
+        origin: 'arr',
+        inArr: true,
+        inPlex: false,
+        plexLibraries: [],
+        canAdd: false,
+        canDeleteFromArr: true,
+        detail: null,
+        requestPayload: {
+          title: 'Dangerous Animals',
+          year: 2025,
+          imdbId: 'tt32299316',
+          tmdbId: 1285965,
+        },
+      }),
+      fetchExistingSeries: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-service', () => ({
+      ensureAcquisitionWorkers: vi.fn(),
+      getQueueAcquisitionJobs: () => [],
+    }));
+
+    const module = await import('$lib/server/queue-dashboard-service');
+    const dashboard = await module.getDashboard({
+      cardsView: 'rounded',
+      preferredLanguage: 'English',
+      subtitleLanguage: 'English',
+      theme: 'system',
+    });
+
+    expect(dashboard.items).toHaveLength(1);
+    expect(dashboard.items[0]).toMatchObject({
+      arrItemId: 727,
+      id: 'movie:727',
+      title: 'Dangerous Animals',
     });
   });
 });
