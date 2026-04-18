@@ -16,7 +16,7 @@ import type {
 import { quoteTitle } from '$lib/shared/text-format';
 import { queueCache } from '$lib/server/app-cache';
 import type { GrabItemOptions } from '$lib/server/acquisition-domain';
-import { manualSelectionQueuedStatus } from '$lib/server/acquisition-domain';
+import { isTerminalJobStatus, manualSelectionQueuedStatus } from '$lib/server/acquisition-domain';
 import { getAcquisitionRunner } from '$lib/server/acquisition-runner';
 import {
   getAcquisitionJobsResponse,
@@ -34,7 +34,7 @@ import {
   queueItemMatchesManagedIdentity,
   queueItemMatchesManagedTarget,
 } from '$lib/server/queue-matching';
-import { normalizeQueueItem } from '$lib/server/queue-normalize';
+import { normalizeQueueItem, queueItemIsImportBlocked } from '$lib/server/queue-normalize';
 import { asArray, asRecord } from '$lib/server/raw';
 import { grabItem as grabItemInternal } from '$lib/server/acquisition-grab-service';
 import {
@@ -279,6 +279,42 @@ async function deleteQueueEntries(
   return deleted.filter(Boolean).length;
 }
 
+async function currentExternalQueueItem(
+  service: 'radarr' | 'sonarr',
+  queueId: number,
+): Promise<QueueItem | null> {
+  return (
+    await fetchQueueRecords(service)
+  )
+    .filter((record) => queueRecordId(record) === queueId)
+    .map((record) => normalizeQueueItem(service, record))
+    .find((queueItem): queueItem is QueueItem => queueItem !== null) ?? null;
+}
+
+async function requireCurrentExternalQueueItem(
+  service: 'radarr' | 'sonarr',
+  queueId: number,
+): Promise<QueueItem> {
+  const queueItem = await currentExternalQueueItem(service, queueId);
+  if (!queueItem) {
+    throw new Error('This queue entry is no longer current. Refresh the queue and try again.');
+  }
+
+  return queueItem;
+}
+
+function assertCancelableExternalQueueItem(queueItem: QueueItem): void {
+  if (queueItemIsImportBlocked(queueItem)) {
+    throw new Error('This queue entry is no longer actively downloading. Clear the stale queue entry instead.');
+  }
+}
+
+function assertRemovableExternalQueueItem(queueItem: QueueItem): void {
+  if (!queueItemIsImportBlocked(queueItem)) {
+    throw new Error('This queue entry is still active. Cancel the download instead.');
+  }
+}
+
 export async function getManualReleaseResults(jobId: string): Promise<ManualReleaseListResponse> {
   ensureAcquisitionWorkers();
   const job = getAcquisitionJobRepository().getJob(jobId);
@@ -352,6 +388,9 @@ export async function cancelAcquisitionJob(jobId: string): Promise<AcquisitionJo
   if (!job) {
     throw new Error(`Acquisition job ${jobId} was not found.`);
   }
+  if (isTerminalJobStatus(job.status)) {
+    throw new Error('This queue entry is no longer current. Refresh the queue and try again.');
+  }
 
   const queueIdsByIdentity = await findQueueEntryIdsForManagedIdentity(job);
   const deletedQueueEntries = await deleteQueueEntries(
@@ -375,6 +414,9 @@ async function cancelExternalQueueItem(
   if (item.queueId === null) {
     throw new Error('This download cannot be cancelled.');
   }
+
+  const currentQueueItem = await requireCurrentExternalQueueItem(item.sourceService, item.queueId);
+  assertCancelableExternalQueueItem(currentQueueItem);
 
   await deleteQueueEntries(item.sourceService, [item.queueId]);
 
@@ -410,6 +452,8 @@ export async function cancelQueueEntry(entry: QueueCancelRequest): Promise<Queue
 export async function deleteArrItem(item: ArrDeleteTarget): Promise<MediaItemActionResponse> {
   invalidateQueueCache();
   if (item.deleteMode === 'queue-entry') {
+    const currentQueueItem = await requireCurrentExternalQueueItem(item.sourceService, item.queueId);
+    assertRemovableExternalQueueItem(currentQueueItem);
     const serviceLabel = item.sourceService === 'radarr' ? 'Radarr' : 'Sonarr';
     await deleteQueueEntries(item.sourceService, [item.queueId]);
     return {

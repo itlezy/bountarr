@@ -226,6 +226,76 @@ describe('API routes', () => {
     });
   });
 
+  it('returns conflict when cancelling a stale external queue row', async () => {
+    const cancelQueueEntry = vi
+      .fn()
+      .mockRejectedValue(
+        new Error(
+          'This queue entry is no longer actively downloading. Clear the stale queue entry instead.',
+        ),
+      );
+    const route = await loadRouteModule<{
+      POST: (event: { request: Request }) => Promise<Response>;
+    }>('../../routes/api/queue/cancel/+server', {
+      '$lib/server/acquisition-service': () => ({
+        cancelQueueEntry,
+      }),
+    });
+
+    const response = await route.POST(
+      createPostEvent('http://local.test/api/queue/cancel', {
+        kind: 'external',
+        id: 'radarr:queue:1996958567',
+        arrItemId: 727,
+        queueId: 1996958567,
+        sourceService: 'radarr',
+        title: 'Dangerous Animals',
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.text()).toBe(
+      'This queue entry is no longer actively downloading. Clear the stale queue entry instead.',
+    );
+    expect(cancelQueueEntry).toHaveBeenCalledWith({
+      kind: 'external',
+      id: 'radarr:queue:1996958567',
+      arrItemId: 727,
+      queueId: 1996958567,
+      sourceService: 'radarr',
+      title: 'Dangerous Animals',
+    });
+  });
+
+  it('returns conflict when cancelling a terminal managed queue job', async () => {
+    const cancelQueueEntry = vi
+      .fn()
+      .mockRejectedValue(new Error('This queue entry is no longer current. Refresh the queue and try again.'));
+    const route = await loadRouteModule<{
+      POST: (event: { request: Request }) => Promise<Response>;
+    }>('../../routes/api/queue/cancel/+server', {
+      '$lib/server/acquisition-service': () => ({
+        cancelQueueEntry,
+      }),
+    });
+
+    const response = await route.POST(
+      createPostEvent('http://local.test/api/queue/cancel', {
+        kind: 'managed',
+        jobId: 'job-failed',
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.text()).toBe(
+      'This queue entry is no longer current. Refresh the queue and try again.',
+    );
+    expect(cancelQueueEntry).toHaveBeenCalledWith({
+      kind: 'managed',
+      jobId: 'job-failed',
+    });
+  });
+
   it('returns conflict for manual release lists on terminal jobs', async () => {
     const getManualReleaseResults = vi
       .fn()
@@ -245,6 +315,67 @@ describe('API routes', () => {
       status: 409,
     });
     expect(getManualReleaseResults).toHaveBeenCalledWith('job-1');
+  });
+
+  it('passes Arr override flags through manual release select requests', async () => {
+    const selectManualRelease = vi.fn().mockResolvedValue({
+      job: {
+        id: 'job-1',
+        status: 'queued',
+      },
+      message: 'Queued manual release override.',
+    });
+    const route = await loadRouteModule<{
+      POST: (event: { params: { jobId: string }; request: Request }) => Promise<Response>;
+    }>('../../routes/api/acquisition/[jobId]/select/+server', {
+      '$lib/server/acquisition-service': () => ({
+        selectManualRelease,
+      }),
+    });
+
+    const response = await route.POST({
+      ...createPostEvent('http://local.test/api/acquisition/job-1/select', {
+        guid: 'guid-1',
+        indexerId: 11,
+        selectionMode: 'override-arr-rejection',
+      }),
+      params: { jobId: 'job-1' },
+    });
+    const payload = await readJson<{ message: string }>(response);
+
+    expect(response.status).toBe(200);
+    expect(selectManualRelease).toHaveBeenCalledWith(
+      'job-1',
+      'guid-1',
+      11,
+      'override-arr-rejection',
+    );
+    expect(payload.message).toBe('Queued manual release override.');
+  });
+
+  it('rejects manual release select requests without guid and indexer id', async () => {
+    const selectManualRelease = vi.fn();
+    const route = await loadRouteModule<{
+      POST: (event: { params: { jobId: string }; request: Request }) => Promise<Response>;
+    }>('../../routes/api/acquisition/[jobId]/select/+server', {
+      '$lib/server/acquisition-service': () => ({
+        selectManualRelease,
+      }),
+    });
+
+    await expect(
+      route.POST({
+        ...createPostEvent('http://local.test/api/acquisition/job-1/select', {
+          guid: '',
+          indexerId: null,
+          selectionMode: 'direct',
+        }),
+        params: { jobId: 'job-1' },
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+    });
+    expect(selectManualRelease).not.toHaveBeenCalled();
   });
 
   it('rejects grab calls without a media item', async () => {
@@ -510,6 +641,35 @@ describe('API routes', () => {
       title: 'The Matrix',
     });
     expect(payload.itemId).toBe('radarr:queue:1');
+  });
+
+  it('returns conflict when clearing an active queue row through media delete', async () => {
+    const deleteArrItem = vi
+      .fn()
+      .mockRejectedValue(new Error('This queue entry is still active. Cancel the download instead.'));
+    const route = await loadRouteModule<{
+      POST: (event: { request: Request }) => Promise<Response>;
+    }>('../../routes/api/media/delete/+server', {
+      '$lib/server/acquisition-service': () => ({
+        deleteArrItem,
+      }),
+    });
+
+    const response = await route.POST(
+      createPostEvent('http://local.test/api/media/delete', {
+        deleteMode: 'queue-entry',
+        id: 'radarr:queue:1',
+        kind: 'movie',
+        queueId: 1,
+        sourceService: 'radarr',
+        title: 'The Matrix',
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.text()).toBe(
+      'This queue entry is still active. Cancel the download instead.',
+    );
   });
 
   it('returns plain-text grab errors when the acquisition service fails', async () => {

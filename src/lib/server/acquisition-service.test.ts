@@ -156,9 +156,23 @@ describe('acquisition service', () => {
       listQueueAcquisitionJobs: vi.fn(),
     }));
     vi.doMock('$lib/server/acquisition-validator-shared', () => ({
-      fetchQueueRecords: vi.fn().mockResolvedValue([]),
+      fetchQueueRecords: vi.fn().mockResolvedValue([
+        {
+          id: 7,
+          movieId: 603,
+          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          status: 'downloading',
+          trackedDownloadStatus: 'ok',
+          trackedDownloadState: 'downloading',
+          movie: {
+            id: 603,
+            title: 'The Matrix',
+            year: 1999,
+          },
+        },
+      ]),
       queueRecordArrItemId: vi.fn(),
-      queueRecordId: vi.fn().mockReturnValue(null),
+      queueRecordId: vi.fn().mockImplementation((record: { id: number }) => record.id),
     }));
     vi.doMock('$lib/server/acquisition-selection', () => ({
       findManualReleaseSelection: vi.fn(),
@@ -210,9 +224,23 @@ describe('acquisition service', () => {
       listQueueAcquisitionJobs: vi.fn(),
     }));
     vi.doMock('$lib/server/acquisition-validator-shared', () => ({
-      fetchQueueRecords: vi.fn().mockResolvedValue([]),
+      fetchQueueRecords: vi.fn().mockResolvedValue([
+        {
+          id: 7,
+          movieId: 603,
+          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          status: 'downloading',
+          trackedDownloadStatus: 'ok',
+          trackedDownloadState: 'downloading',
+          movie: {
+            id: 603,
+            title: 'The Matrix',
+            year: 1999,
+          },
+        },
+      ]),
       queueRecordArrItemId: vi.fn(),
-      queueRecordId: vi.fn().mockReturnValue(null),
+      queueRecordId: vi.fn().mockImplementation((record: { id: number }) => record.id),
     }));
     vi.doMock('$lib/server/acquisition-selection', () => ({
       findManualReleaseSelection: vi.fn(),
@@ -239,6 +267,80 @@ describe('acquisition service', () => {
         skipRedownload: false,
       },
     );
+  });
+
+  it('refuses to cancel external queue rows that are now stale import-blocked leftovers', async () => {
+    const arrFetch = vi.fn();
+    const queueEntry: QueueCancelRequest = {
+      kind: 'external',
+      arrItemId: 727,
+      id: 'radarr:queue:1996958567',
+      queueId: 1996958567,
+      sourceService: 'radarr',
+      title: 'Dangerous Animals',
+    };
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/app-cache', () => ({
+      queueCache: new Map(),
+    }));
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        ensureWorkers: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        cancelJob: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        listActiveJobsByArrItem: vi.fn().mockReturnValue([]),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      getAcquisitionJobsResponse: vi.fn(),
+      listQueueAcquisitionJobs: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-validator-shared', () => ({
+      fetchQueueRecords: vi.fn().mockResolvedValue([
+        {
+          id: 1996958567,
+          movieId: 727,
+          title: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+          status: 'completed',
+          trackedDownloadStatus: 'warning',
+          trackedDownloadState: 'importPending',
+          statusMessages: [
+            {
+              title: 'Import pending',
+              messages: ['Not an upgrade for existing movie file. Existing quality: Bluray-2160p.'],
+            },
+          ],
+          movie: {
+            id: 727,
+            title: 'Dangerous Animals',
+            year: 2025,
+          },
+        },
+      ]),
+      queueRecordArrItemId: vi.fn(),
+      queueRecordId: vi.fn().mockImplementation((record: { id: number }) => record.id),
+    }));
+    vi.doMock('$lib/server/acquisition-selection', () => ({
+      findManualReleaseSelection: vi.fn(),
+      getManualReleaseResults: vi.fn(),
+    }));
+
+    const module = await import('$lib/server/acquisition-service');
+
+    await expect(module.cancelQueueEntry(queueEntry)).rejects.toThrow(
+      'This queue entry is no longer actively downloading. Clear the stale queue entry instead.',
+    );
+    expect(arrFetch).not.toHaveBeenCalled();
   });
 
   it('cancels managed jobs across every matching Arr queue row', async () => {
@@ -465,6 +567,58 @@ describe('acquisition service', () => {
     }));
 
     const module = await import('$lib/server/acquisition-service');
+    await expect(module.cancelQueueEntry(queueEntry)).rejects.toThrow(
+      'This queue entry is no longer current. Refresh the queue and try again.',
+    );
+    expect(arrFetch).not.toHaveBeenCalled();
+  });
+
+  it('rejects managed queue cancels once the job is already terminal', async () => {
+    const arrFetch = vi.fn();
+    const queueEntry: QueueCancelRequest = {
+      kind: 'managed',
+      jobId: 'job-failed',
+    };
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        ensureWorkers: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        cancelJob: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        getJob: vi.fn().mockReturnValue({
+          ...job,
+          completedAt: '2026-04-13T12:05:00.000Z',
+          reasonCode: 'import-blocked',
+          status: 'failed',
+        }),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      getAcquisitionJobsResponse: vi.fn(),
+      listQueueAcquisitionJobs: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-validator-shared', () => ({
+      fetchQueueRecords: vi.fn(),
+      queueRecordArrItemId: vi.fn(),
+      queueRecordId: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-selection', () => ({
+      findManualReleaseSelection: vi.fn(),
+      getManualReleaseResults: vi.fn(),
+    }));
+
+    const module = await import('$lib/server/acquisition-service');
+
     await expect(module.cancelQueueEntry(queueEntry)).rejects.toThrow(
       'This queue entry is no longer current. Refresh the queue and try again.',
     );
@@ -1019,9 +1173,29 @@ describe('acquisition service', () => {
       listQueueAcquisitionJobs: vi.fn(),
     }));
     vi.doMock('$lib/server/acquisition-validator-shared', () => ({
-      fetchQueueRecords: vi.fn().mockResolvedValue([]),
+      fetchQueueRecords: vi.fn().mockResolvedValue([
+        {
+          id: 7,
+          movieId: 603,
+          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          status: 'completed',
+          trackedDownloadStatus: 'warning',
+          trackedDownloadState: 'importPending',
+          statusMessages: [
+            {
+              title: 'Import pending',
+              messages: ['Not an upgrade for existing movie file. Existing quality: Bluray-2160p.'],
+            },
+          ],
+          movie: {
+            id: 603,
+            title: 'The Matrix',
+            year: 1999,
+          },
+        },
+      ]),
       queueRecordArrItemId: vi.fn(),
-      queueRecordId: vi.fn().mockReturnValue(null),
+      queueRecordId: vi.fn().mockImplementation((record: { id: number }) => record.id),
     }));
     vi.doMock('$lib/server/acquisition-selection', () => ({
       findManualReleaseSelection: vi.fn(),
@@ -1055,6 +1229,71 @@ describe('acquisition service', () => {
         skipRedownload: false,
       },
     );
+  });
+
+  it('rejects queue-entry deletes while the external download is still active', async () => {
+    const arrFetch = vi.fn();
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        ensureWorkers: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        cancelJob: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        deleteJobsByArrItem: vi.fn(),
+        listActiveJobsByArrItem: vi.fn().mockReturnValue([]),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      getAcquisitionJobsResponse: vi.fn(),
+      listQueueAcquisitionJobs: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-validator-shared', () => ({
+      fetchQueueRecords: vi.fn().mockResolvedValue([
+        {
+          id: 7,
+          movieId: 603,
+          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          status: 'downloading',
+          trackedDownloadStatus: 'ok',
+          trackedDownloadState: 'downloading',
+          movie: {
+            id: 603,
+            title: 'The Matrix',
+            year: 1999,
+          },
+        },
+      ]),
+      queueRecordArrItemId: vi.fn(),
+      queueRecordId: vi.fn().mockImplementation((record: { id: number }) => record.id),
+    }));
+    vi.doMock('$lib/server/acquisition-selection', () => ({
+      findManualReleaseSelection: vi.fn(),
+      getManualReleaseResults: vi.fn(),
+    }));
+
+    const module = await import('$lib/server/acquisition-service');
+
+    await expect(
+      module.deleteArrItem({
+        deleteMode: 'queue-entry',
+        id: 'radarr:queue:7',
+        kind: 'movie',
+        queueId: 7,
+        sourceService: 'radarr',
+        title: 'The Matrix',
+      }),
+    ).rejects.toThrow('This queue entry is still active. Cancel the download instead.');
+    expect(arrFetch).not.toHaveBeenCalled();
   });
 
   it('rejects manual selections once a job is already grabbing or validating', async () => {
