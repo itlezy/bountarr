@@ -1072,6 +1072,10 @@ export class AppState {
   }
 
   async deleteQueueEntry(entry: QueueEntry): Promise<void> {
+    if (!entry.canRemove) {
+      return;
+    }
+
     if (entry.kind === 'managed') {
       await this.deleteArrItem({
         deleteMode: 'library',

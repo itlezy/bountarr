@@ -1778,6 +1778,17 @@ describe('app state', () => {
     expect(dependencies.api.deleteArrItem).not.toHaveBeenCalled();
   });
 
+  it('ignores delete requests for managed queue entries that are not removable', async () => {
+    const dependencies = createDependencies();
+    const state = new AppState(pageData, dependencies);
+    const managedEntry = buildManagedEntry(acquisitionJob);
+    managedEntry.canRemove = false;
+
+    await state.deleteQueueEntry(managedEntry);
+
+    expect(dependencies.api.deleteArrItem).not.toHaveBeenCalled();
+  });
+
   it('keeps stale external queue-entry delete failures inline on the queue card', async () => {
     const dependencies = createDependencies({
       api: {
