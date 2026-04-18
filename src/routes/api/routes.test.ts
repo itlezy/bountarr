@@ -262,8 +262,46 @@ describe('API routes', () => {
       id: 'radarr:queue:1996958567',
       arrItemId: 727,
       queueId: 1996958567,
+      downloadId: null,
       sourceService: 'radarr',
       title: 'Dangerous Animals',
+    });
+  });
+
+  it('accepts download-id-only external cancel requests', async () => {
+    const cancelQueueEntry = vi.fn().mockResolvedValue({
+      itemId: 'radarr:download:download-shared',
+      message: 'Cancelled',
+    });
+    const route = await loadRouteModule<{
+      POST: (event: { request: Request }) => Promise<Response>;
+    }>('../../routes/api/queue/cancel/+server', {
+      '$lib/server/acquisition-service': () => ({
+        cancelQueueEntry,
+      }),
+    });
+
+    const response = await route.POST(
+      createPostEvent('http://local.test/api/queue/cancel', {
+        kind: 'external',
+        id: 'radarr:download:download-shared',
+        arrItemId: 603,
+        queueId: null,
+        downloadId: 'download-shared',
+        sourceService: 'radarr',
+        title: 'The Matrix',
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(cancelQueueEntry).toHaveBeenCalledWith({
+      kind: 'external',
+      id: 'radarr:download:download-shared',
+      arrItemId: 603,
+      queueId: null,
+      downloadId: 'download-shared',
+      sourceService: 'radarr',
+      title: 'The Matrix',
     });
   });
 
@@ -670,10 +708,49 @@ describe('API routes', () => {
       id: 'radarr:queue:1',
       kind: 'movie',
       queueId: 1,
+      downloadId: null,
       sourceService: 'radarr',
       title: 'The Matrix',
     });
     expect(payload.itemId).toBe('radarr:queue:1');
+  });
+
+  it('accepts download-id-only stale delete requests for media delete', async () => {
+    const deleteArrItem = vi.fn().mockResolvedValue({
+      itemId: 'radarr:download:download-shared',
+      message: 'Deleted',
+    });
+    const route = await loadRouteModule<{
+      POST: (event: { request: Request }) => Promise<Response>;
+    }>('../../routes/api/media/delete/+server', {
+      '$lib/server/acquisition-service': () => ({
+        deleteArrItem,
+      }),
+    });
+
+    const response = await route.POST(
+      createPostEvent('http://local.test/api/media/delete', {
+        deleteMode: 'queue-entry',
+        id: 'radarr:download:download-shared',
+        kind: 'movie',
+        queueId: null,
+        downloadId: 'download-shared',
+        sourceService: 'radarr',
+        title: 'The Matrix',
+      }),
+    );
+    const payload = await readJson<{ itemId: string; message: string }>(response);
+
+    expect(deleteArrItem).toHaveBeenCalledWith({
+      deleteMode: 'queue-entry',
+      id: 'radarr:download:download-shared',
+      kind: 'movie',
+      queueId: null,
+      downloadId: 'download-shared',
+      sourceService: 'radarr',
+      title: 'The Matrix',
+    });
+    expect(payload.itemId).toBe('radarr:download:download-shared');
   });
 
   it('returns conflict when clearing an active queue row through media delete', async () => {

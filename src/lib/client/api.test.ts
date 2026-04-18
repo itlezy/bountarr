@@ -4,6 +4,7 @@ import {
   cancelQueueEntry,
   deleteArrItem,
   fetchQueue,
+  selectManualRelease,
   resolveGrabCandidate,
   fetchSearchResults,
   submitGrab,
@@ -360,6 +361,70 @@ describe('client api', () => {
     });
   });
 
+  it('posts manual release selections without an Arr override by default', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          job: {
+            id: 'job-1',
+            status: 'queued',
+          },
+          message: 'Queued manual release.',
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await selectManualRelease('job-1', 'guid-1', 11, 'direct');
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/acquisition/job-1/select');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({
+      guid: 'guid-1',
+      indexerId: 11,
+      selectionMode: 'direct',
+    });
+  });
+
+  it('posts manual release Arr override flags when requested', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          job: {
+            id: 'job-1',
+            status: 'queued',
+          },
+          message: 'Queued manual release override.',
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await selectManualRelease('job-1', 'guid-2', 12, 'override-arr-rejection');
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/acquisition/job-1/select');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({
+      guid: 'guid-2',
+      indexerId: 12,
+      selectionMode: 'override-arr-rejection',
+    });
+  });
+
   it('posts external queue cancels using the queue-entry id instead of the raw item id', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
@@ -413,9 +478,107 @@ describe('client api', () => {
       id: 'sonarr:queue:23',
       arrItemId: 83867,
       queueId: 23,
+      downloadId: 'download-shared',
       sourceService: 'sonarr',
       title: 'Andor',
     });
+  });
+
+  it('posts external queue cancels with download identity when no queue row id is available', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          itemId: 'radarr:download:download-shared',
+          message: 'Cancelled',
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await cancelQueueEntry({
+      kind: 'external',
+      id: 'radarr:download:download-shared',
+      item: {
+        id: 'radarr:download:download-shared',
+        downloadId: 'download-shared',
+        arrItemId: 603,
+        canCancel: true,
+        kind: 'movie',
+        title: 'The Matrix',
+        year: 1999,
+        poster: null,
+        sourceService: 'radarr',
+        status: 'Downloading',
+        progress: 50,
+        timeLeft: '5m',
+        estimatedCompletionTime: null,
+        size: 1_000,
+        sizeLeft: 500,
+        queueId: null,
+        detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+        episodeIds: null,
+        seasonNumbers: null,
+      },
+      canCancel: true,
+      canRemove: false,
+    });
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/queue/cancel');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({
+      kind: 'external',
+      id: 'radarr:download:download-shared',
+      arrItemId: 603,
+      queueId: null,
+      downloadId: 'download-shared',
+      sourceService: 'radarr',
+      title: 'The Matrix',
+    });
+  });
+
+  it('rejects external queue cancels when the queue entry is not cancelable anymore', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      cancelQueueEntry({
+        kind: 'external',
+        id: 'radarr:queue:1996958567',
+        item: {
+          id: 'radarr:queue:1996958567',
+          arrItemId: 727,
+          canCancel: true,
+          kind: 'movie',
+          title: 'Dangerous Animals',
+          year: 2025,
+          poster: null,
+          sourceService: 'radarr',
+          status: 'Completed',
+          statusDetail:
+            'Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
+          progress: 100,
+          timeLeft: '00:00:00',
+          estimatedCompletionTime: null,
+          size: 7_845_710_150,
+          sizeLeft: 0,
+          queueId: 1996958567,
+          detail: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+          episodeIds: null,
+          seasonNumbers: null,
+        },
+        canCancel: false,
+        canRemove: true,
+      }),
+    ).rejects.toThrow('This download cannot be cancelled.');
+
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('posts Arr delete payloads with Arr identity metadata', async () => {
@@ -491,6 +654,48 @@ describe('client api', () => {
       id: 'radarr:queue:7',
       kind: 'movie',
       queueId: 7,
+      downloadId: null,
+      sourceService: 'radarr',
+      title: 'The Matrix',
+    });
+  });
+
+  it('posts queue-entry deletes with download identity when no queue row id is available', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          itemId: 'radarr:download:download-shared',
+          message: 'Cleared',
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await deleteArrItem({
+      deleteMode: 'queue-entry',
+      downloadId: 'download-shared',
+      id: 'radarr:download:download-shared',
+      kind: 'movie',
+      queueId: null,
+      sourceService: 'radarr',
+      title: 'The Matrix',
+    });
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/media/delete');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({
+      deleteMode: 'queue-entry',
+      id: 'radarr:download:download-shared',
+      kind: 'movie',
+      queueId: null,
+      downloadId: 'download-shared',
       sourceService: 'radarr',
       title: 'The Matrix',
     });

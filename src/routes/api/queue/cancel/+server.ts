@@ -26,6 +26,7 @@ export const POST = async ({ request }: { request: Request }) => {
     payload.queueId === null || payload.queueId === undefined
       ? payload.queueId
       : asNumber(payload.queueId);
+  const downloadId = asString(payload.downloadId);
   const arrItemId =
     payload.arrItemId === null || payload.arrItemId === undefined
       ? payload.arrItemId
@@ -50,7 +51,12 @@ export const POST = async ({ request }: { request: Request }) => {
         : null;
     const title = asString(payload.title);
 
-    if (!id || queueId === null || queueId === undefined || !sourceService || !title) {
+    if (
+      !id ||
+      (queueId === null || queueId === undefined) && !downloadId ||
+      !sourceService ||
+      !title
+    ) {
       throw error(400, 'A cancelable external queue entry is required.');
     }
 
@@ -58,7 +64,8 @@ export const POST = async ({ request }: { request: Request }) => {
       kind: 'external',
       id,
       arrItemId: arrItemId ?? null,
-      queueId,
+      queueId: queueId ?? null,
+      downloadId: downloadId ?? null,
       sourceService,
       title,
     };

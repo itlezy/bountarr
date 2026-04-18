@@ -165,7 +165,8 @@ export type ArrDeleteTarget =
       deleteMode: 'queue-entry';
       id: string;
       kind: MediaKind;
-      queueId: number;
+      queueId: number | null;
+      downloadId?: string | null;
       sourceService: 'radarr' | 'sonarr';
       title: string;
     };
@@ -321,6 +322,8 @@ export interface QueueItem {
   sourceService: 'radarr' | 'sonarr';
   status: string;
   statusDetail?: string | null;
+  trackedDownloadStatus?: string | null;
+  trackedDownloadState?: string | null;
   progress: number | null;
   timeLeft: string | null;
   estimatedCompletionTime: string | null;
@@ -378,7 +381,8 @@ export type QueueCancelRequest =
       kind: 'external';
       id: string;
       arrItemId: number | null;
-      queueId: number;
+      queueId: number | null;
+      downloadId?: string | null;
       sourceService: 'radarr' | 'sonarr';
       title: string;
     };

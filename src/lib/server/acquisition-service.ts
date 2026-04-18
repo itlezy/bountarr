@@ -262,28 +262,55 @@ async function deleteQueueEntries(
   return deleted.filter(Boolean).length;
 }
 
+type ExternalQueueLookupTarget = {
+  downloadId?: string | null;
+  queueId: number | null;
+};
+
 async function currentExternalQueueItem(
   service: 'radarr' | 'sonarr',
-  queueId: number,
+  target: ExternalQueueLookupTarget,
 ): Promise<QueueItem | null> {
-  return (
-    await fetchQueueRecords(service)
-  )
-    .filter((record) => queueRecordId(record) === queueId)
+  const queueItems = (await fetchQueueRecords(service))
     .map((record) => normalizeQueueItem(service, record))
-    .find((queueItem): queueItem is QueueItem => queueItem !== null) ?? null;
+    .filter((queueItem): queueItem is QueueItem => queueItem !== null);
+
+  if (target.queueId !== null) {
+    const byQueueId = queueItems.find((queueItem) => queueItem.queueId === target.queueId) ?? null;
+    if (byQueueId) {
+      return byQueueId;
+    }
+  }
+
+  if (target.downloadId) {
+    return (
+      queueItems.find((queueItem) => queueItem.downloadId === target.downloadId) ?? null
+    );
+  }
+
+  return null;
 }
 
 async function requireCurrentExternalQueueItem(
   service: 'radarr' | 'sonarr',
-  queueId: number,
+  target: ExternalQueueLookupTarget,
 ): Promise<QueueItem> {
-  const queueItem = await currentExternalQueueItem(service, queueId);
+  const queueItem = await currentExternalQueueItem(service, target);
   if (!queueItem) {
     throw new Error('This queue entry is no longer current. Refresh the queue and try again.');
   }
 
   return queueItem;
+}
+
+function assertExternalQueueItemHasQueueId(queueItem: QueueItem, action: 'cancelled' | 'cleared'): number {
+  if (queueItem.queueId === null) {
+    throw new Error(
+      `This live Arr queue row cannot be ${action} because Arr did not expose a queue id. Refresh the queue and stop it directly in Arr if it is still running.`,
+    );
+  }
+
+  return queueItem.queueId;
 }
 
 function assertCancelableExternalQueueItem(queueItem: QueueItem): void {
@@ -395,16 +422,20 @@ export async function cancelAcquisitionJob(jobId: string): Promise<AcquisitionJo
 }
 
 async function cancelExternalQueueItem(
-  item: Pick<QueueItem, 'arrItemId' | 'id' | 'queueId' | 'sourceService' | 'title'>,
+  item: Pick<QueueItem, 'arrItemId' | 'downloadId' | 'id' | 'queueId' | 'sourceService' | 'title'>,
 ): Promise<QueueActionResponse> {
-  if (item.queueId === null) {
+  if (item.queueId === null && !item.downloadId) {
     throw new Error('This download cannot be cancelled.');
   }
 
-  const currentQueueItem = await requireCurrentExternalQueueItem(item.sourceService, item.queueId);
+  const currentQueueItem = await requireCurrentExternalQueueItem(item.sourceService, {
+    downloadId: item.downloadId ?? null,
+    queueId: item.queueId,
+  });
   assertCancelableExternalQueueItem(currentQueueItem);
+  const queueId = assertExternalQueueItemHasQueueId(currentQueueItem, 'cancelled');
 
-  await deleteQueueEntries(item.sourceService, [item.queueId]);
+  await deleteQueueEntries(item.sourceService, [queueId]);
 
   return {
     itemId: item.id,
@@ -428,6 +459,7 @@ export async function cancelQueueEntry(entry: QueueCancelRequest): Promise<Queue
 
   return cancelExternalQueueItem({
     arrItemId: entry.arrItemId,
+    downloadId: entry.downloadId ?? null,
     id: entry.id,
     queueId: entry.queueId,
     sourceService: entry.sourceService,
@@ -438,10 +470,18 @@ export async function cancelQueueEntry(entry: QueueCancelRequest): Promise<Queue
 export async function deleteArrItem(item: ArrDeleteTarget): Promise<MediaItemActionResponse> {
   invalidateQueueCache();
   if (item.deleteMode === 'queue-entry') {
-    const currentQueueItem = await requireCurrentExternalQueueItem(item.sourceService, item.queueId);
+    if (item.queueId === null && !item.downloadId) {
+      throw new Error('This queue entry is no longer current. Refresh the queue and try again.');
+    }
+
+    const currentQueueItem = await requireCurrentExternalQueueItem(item.sourceService, {
+      downloadId: item.downloadId ?? null,
+      queueId: item.queueId,
+    });
     assertRemovableExternalQueueItem(currentQueueItem);
+    const queueId = assertExternalQueueItemHasQueueId(currentQueueItem, 'cleared');
     const serviceLabel = item.sourceService === 'radarr' ? 'Radarr' : 'Sonarr';
-    await deleteQueueEntries(item.sourceService, [item.queueId]);
+    await deleteQueueEntries(item.sourceService, [queueId]);
     return {
       itemId: item.id,
       message: `${quoteTitle(item.title)} stale queue entry was removed from ${serviceLabel}.`,

@@ -10,6 +10,7 @@ export const POST = async ({ request }: { request: Request }) => {
   const payload = (await request.json()) as {
     deleteMode?: 'library' | 'queue-entry';
     arrItemId?: number | null;
+    downloadId?: string | null;
     id?: string;
     kind?: MediaItem['kind'];
     queueId?: number | null;
@@ -56,8 +57,9 @@ export const POST = async ({ request }: { request: Request }) => {
       payload.queueId === null || payload.queueId === undefined
         ? null
         : (asNumber(payload.queueId) ?? null);
-    if (queueId === null) {
-      throw error(400, 'A queue-entry delete requires a queue row id.');
+    const downloadId = asString(payload.downloadId);
+    if (queueId === null && !downloadId) {
+      throw error(400, 'A queue-entry delete requires a queue row id or download id.');
     }
 
     deletableItem = {
@@ -65,6 +67,7 @@ export const POST = async ({ request }: { request: Request }) => {
       id: baseItem.id,
       kind: baseItem.kind,
       queueId,
+      downloadId: downloadId ?? null,
       sourceService: baseItem.sourceService,
       title: baseItem.title,
     };
@@ -90,6 +93,12 @@ export const POST = async ({ request }: { request: Request }) => {
     return json(result);
   } catch (requestError) {
     const message = getErrorMessage(requestError, 'Unable to delete the selected Arr item.');
+    const status =
+      message.includes('was not found')
+        ? 404
+        : message.includes('no longer current') || message.includes('still active')
+          ? 409
+          : 500;
     logger.error('Media delete request failed', {
       deleteMode: deletableItem.deleteMode,
       itemId: deletableItem.id,
@@ -99,7 +108,7 @@ export const POST = async ({ request }: { request: Request }) => {
     });
 
     return new Response(message, {
-      status: 500,
+      status,
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
       },

@@ -4,6 +4,8 @@ import type {
   DashboardResponse,
   GrabResponse,
   ManualReleaseListResponse,
+  ManualReleaseSelectRequest,
+  ManualReleaseSelectionMode,
   MediaItemActionResponse,
   MediaItem,
   Preferences,
@@ -107,7 +109,14 @@ export async function selectManualRelease(
   jobId: string,
   guid: string,
   indexerId: number,
+  selectionMode: ManualReleaseSelectionMode,
 ): Promise<AcquisitionJobActionResponse> {
+  const payload: ManualReleaseSelectRequest = {
+    guid,
+    indexerId,
+    selectionMode,
+  };
+
   return requestJson<AcquisitionJobActionResponse>(
     `/api/acquisition/${encodeURIComponent(jobId)}/select`,
     {
@@ -115,10 +124,7 @@ export async function selectManualRelease(
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        guid,
-        indexerId,
-      }),
+      body: JSON.stringify(payload),
     },
     'Unable to select the requested release.',
   );
@@ -142,7 +148,11 @@ function queueCancelPayload(entry: QueueEntry): QueueCancelRequest {
     };
   }
 
-  if (entry.item.queueId === null) {
+  if (!entry.canCancel) {
+    throw new Error('This download cannot be cancelled.');
+  }
+
+  if (entry.item.queueId === null && !entry.item.downloadId) {
     throw new Error('This download cannot be cancelled.');
   }
 
@@ -151,6 +161,7 @@ function queueCancelPayload(entry: QueueEntry): QueueCancelRequest {
     id: entry.id,
     arrItemId: entry.item.arrItemId,
     queueId: entry.item.queueId,
+    downloadId: entry.item.downloadId ?? null,
     sourceService: entry.item.sourceService,
     title: entry.item.title,
   };
@@ -186,6 +197,7 @@ export async function deleteArrItem(item: ArrDeleteTarget): Promise<MediaItemAct
           id: item.id,
           kind: item.kind,
           queueId: item.queueId,
+          downloadId: item.downloadId ?? null,
           sourceService: item.sourceService,
           title: item.title,
         };
