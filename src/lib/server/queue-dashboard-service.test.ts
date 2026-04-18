@@ -1363,6 +1363,71 @@ describe('queue dashboard service', () => {
     });
   });
 
+  it('keeps dashboard queue card ids stable when Arr later adds a queue id', async () => {
+    const arrFetch = vi.fn().mockImplementation(async (_service: string, path: string) => {
+      if (path === '/api/v3/history') {
+        return {
+          records: [],
+        };
+      }
+
+      if (path === '/api/v3/queue') {
+        return {
+          records: [
+            {
+              id: 359204595,
+              downloadId: 'radarr-download-7',
+              movieId: 793,
+              title: 'American.Rickshaw.1989.1080p.BluRay.x265',
+              status: 'downloading',
+              movie: {
+                id: 793,
+                title: 'American Rickshaw',
+                year: 1989,
+              },
+            },
+          ],
+        };
+      }
+
+      return { records: [] };
+    });
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/runtime', () => ({
+      getConfiguredServiceFlags: () => ({
+        configured: true,
+        plexConfigured: false,
+        radarrConfigured: true,
+        sonarrConfigured: false,
+      }),
+    }));
+    vi.doMock('$lib/server/lookup-service', () => ({
+      fetchExistingMovie: vi.fn(),
+      fetchExistingSeries: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-service', () => ({
+      ensureAcquisitionWorkers: vi.fn(),
+      getQueueAcquisitionJobs: () => [],
+    }));
+
+    const module = await import('$lib/server/queue-dashboard-service');
+    const dashboard = await module.getDashboard({
+      cardsView: 'rounded',
+      preferredLanguage: 'English',
+      subtitleLanguage: 'English',
+      theme: 'system',
+    });
+
+    expect(dashboard.items[0]).toMatchObject({
+      id: 'movie:queue:radarr:download:radarr-download-7:radarr-793-american-rickshaw-1989-1080p-bluray-x265-noscope',
+      title: 'American Rickshaw',
+      inArr: true,
+    });
+  });
+
   it('merges matching recent Plex items onto dashboard cards', async () => {
     const arrFetch = vi.fn().mockImplementation(async (_service: string, path: string) => {
       if (path === '/api/v3/history') {
