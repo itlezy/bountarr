@@ -259,6 +259,7 @@ test('queue item cancel refreshes queue and dashboard state', async ({ page }) =
   expect(api.queueCancelBodies[0]).toEqual({
     kind: 'external',
     arrItemId: queueItemFixture.arrItemId,
+    downloadId: null,
     id: queueItemFixture.id,
     queueId: queueItemFixture.queueId,
     sourceService: queueItemFixture.sourceService,

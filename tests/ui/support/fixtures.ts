@@ -1,4 +1,5 @@
 import { queueItemIsStaleExternal } from '$lib/server/queue-normalize';
+import { managedQueueEntryCapabilities } from '$lib/shared/queue-entry-capabilities';
 import type {
   AcquisitionJob,
   AcquisitionJobActionResponse,
@@ -218,14 +219,6 @@ function buildManagedLiveSummary(items: QueueItem[]): ManagedQueueLiveSummary | 
 }
 
 function queueEntryId(item: QueueItem): string {
-  if (item.queueId !== null) {
-    return `${item.sourceService}:queue:${item.queueId}`;
-  }
-
-  if (item.downloadId) {
-    return `${item.sourceService}:download:${item.downloadId}`;
-  }
-
   return item.id;
 }
 
@@ -254,6 +247,7 @@ function buildQueueEntries(acquisitionJobs: AcquisitionJob[], items: QueueItem[]
         unmatchedItems.splice(matchIndex, 1);
       }
     }
+    const capabilities = managedQueueEntryCapabilities(job, liveQueueItems);
 
     return {
       kind: 'managed',
@@ -261,8 +255,8 @@ function buildQueueEntries(acquisitionJobs: AcquisitionJob[], items: QueueItem[]
       job,
       liveQueueItems,
       liveSummary: buildManagedLiveSummary(liveQueueItems),
-      canCancel: job.status !== 'completed' && job.status !== 'cancelled',
-      canRemove: true,
+      canCancel: capabilities.canCancel,
+      canRemove: capabilities.canRemove,
     };
   });
 

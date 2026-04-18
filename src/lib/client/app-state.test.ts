@@ -3,6 +3,7 @@ import { AppState } from '$lib/client/app-state.svelte';
 import type { AppStateDependencies } from '$lib/client/app-state.svelte';
 import type { PageData } from '$lib/client/app-state.svelte';
 import { queueItemIsStaleExternal } from '$lib/server/queue-normalize';
+import { managedQueueEntryCapabilities } from '$lib/shared/queue-entry-capabilities';
 import type {
   AcquisitionJob,
   DashboardResponse,
@@ -271,14 +272,15 @@ function buildManagedEntry(
   job: AcquisitionJob = acquisitionJob,
   liveQueueItems: QueueItem[] = [],
 ): ManagedQueueEntry {
+  const capabilities = managedQueueEntryCapabilities(job, liveQueueItems);
   return {
     kind: 'managed',
     id: job.id,
     job,
     liveQueueItems,
     liveSummary: buildManagedLiveSummary(liveQueueItems),
-    canCancel: job.status !== 'completed' && job.status !== 'cancelled',
-    canRemove: true,
+    canCancel: capabilities.canCancel,
+    canRemove: capabilities.canRemove,
   };
 }
 
