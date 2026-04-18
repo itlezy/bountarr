@@ -27,8 +27,6 @@ import { getAcquisitionJobRepository } from '$lib/server/acquisition-job-reposit
 import { arrFetch } from '$lib/server/arr-client';
 import {
   fetchQueueRecords,
-  queueRecordArrItemId,
-  queueRecordId,
 } from '$lib/server/acquisition-validator-shared';
 import {
   queueItemMatchesManagedIdentity,
@@ -197,19 +195,15 @@ function managedCancelMessage(
   return `${quoteTitle(job.title)} grab was cancelled and unmonitored, but no matching Arr queue rows were found. Refresh the queue if a live download is still running.`;
 }
 
-async function findQueueEntryIdsForArrItem(
+async function findQueueItemsForArrItem(
   service: 'radarr' | 'sonarr',
   arrItemId: number,
-): Promise<number[]> {
-  const queueRecords = await fetchQueueRecords(service);
-  return [
-    ...new Set(
-      queueRecords
-        .filter((record) => queueRecordArrItemId(service, record) === arrItemId)
-        .map((record) => queueRecordId(record))
-        .filter((queueId): queueId is number => queueId !== null),
-    ),
-  ];
+): Promise<QueueItem[]> {
+  return (await fetchQueueRecords(service))
+    .map((record) => normalizeQueueItem(service, record))
+    .filter(
+      (item): item is QueueItem => item !== null && item.arrItemId === arrItemId,
+    );
 }
 
 async function findManagedQueueItemsForTarget(target: ManagedQueueTarget): Promise<QueueItem[]> {
@@ -240,12 +234,18 @@ function queueIdsFromItems(items: QueueItem[]): number[] {
   return [...new Set(items.map((item) => item.queueId).filter((queueId): queueId is number => queueId !== null))];
 }
 
-function assertManagedQueueItemsCancelable(items: QueueItem[]): void {
+function assertQueueItemsHaveQueueIds(items: QueueItem[], action: 'cancelled' | 'cleared'): number[] {
   if (items.some((item) => item.queueId === null)) {
     throw new Error(
-      'This live Arr queue row cannot be cancelled because Arr did not expose a queue id. Refresh the queue and stop it directly in Arr if it is still running.',
+      `This live Arr queue row cannot be ${action} because Arr did not expose a queue id. Refresh the queue and stop it directly in Arr if it is still running.`,
     );
   }
+
+  return queueIdsFromItems(items);
+}
+
+function assertManagedQueueItemsCancelable(items: QueueItem[]): void {
+  assertQueueItemsHaveQueueIds(items, 'cancelled');
 }
 
 async function deleteQueueEntries(
@@ -495,7 +495,8 @@ export async function deleteArrItem(item: ArrDeleteTarget): Promise<MediaItemAct
       item.sourceService,
     );
   const serviceLabel = item.sourceService === 'radarr' ? 'Radarr' : 'Sonarr';
-  const queueIds = await findQueueEntryIdsForArrItem(item.sourceService, item.arrItemId);
+  const queueItems = await findQueueItemsForArrItem(item.sourceService, item.arrItemId);
+  const queueIds = assertQueueItemsHaveQueueIds(queueItems, 'cleared');
   await deleteQueueEntries(item.sourceService, queueIds);
 
   for (const job of jobs) {

@@ -1515,6 +1515,82 @@ describe('acquisition service', () => {
     expect(result.message).toContain('already missing from Radarr');
   });
 
+  it('rejects library deletes when the matching live Arr row has no queue id', async () => {
+    const arrFetch = vi.fn();
+    const cancelJob = vi.fn();
+    const deleteJobsByArrItem = vi.fn();
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        ensureWorkers: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        cancelJob,
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        deleteJobsByArrItem,
+        listActiveJobsByArrItem: vi.fn().mockReturnValue([]),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      getAcquisitionJobsResponse: vi.fn(),
+      listQueueAcquisitionJobs: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-validator-shared', () => ({
+      fetchQueueRecords: vi.fn().mockResolvedValue([
+        {
+          downloadId: 'radarr-download-7',
+          movieId: 603,
+          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          status: 'completed',
+          trackedDownloadStatus: 'warning',
+          trackedDownloadState: 'importPending',
+          statusMessages: [
+            {
+              title: 'Import pending',
+              messages: ['Import failed, destination path already exists.'],
+            },
+          ],
+          movie: {
+            id: 603,
+            title: 'The Matrix',
+            year: 1999,
+          },
+        },
+      ]),
+    }));
+    vi.doMock('$lib/server/acquisition-selection', () => ({
+      findManualReleaseSelection: vi.fn(),
+      getManualReleaseResults: vi.fn(),
+    }));
+
+    const module = await import('$lib/server/acquisition-service');
+
+    await expect(
+      module.deleteArrItem({
+        deleteMode: 'library',
+        arrItemId: 603,
+        id: 'movie:603',
+        kind: 'movie',
+        sourceService: 'radarr',
+        title: 'The Matrix',
+      }),
+    ).rejects.toThrow(
+      'This live Arr queue row cannot be cleared because Arr did not expose a queue id. Refresh the queue and stop it directly in Arr if it is still running.',
+    );
+
+    expect(arrFetch).not.toHaveBeenCalled();
+    expect(cancelJob).not.toHaveBeenCalled();
+    expect(deleteJobsByArrItem).not.toHaveBeenCalled();
+  });
+
   it('clears stale queue rows without deleting the tracked Arr title', async () => {
     const arrFetch = vi.fn().mockResolvedValue({});
 
