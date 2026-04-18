@@ -1,6 +1,13 @@
 import { arrFetch } from '$lib/server/arr-client';
 import { normalizeToken } from '$lib/server/media-identity';
-import { asNumber, asPositiveNumber, asRecord, asRecordsArray, asString } from '$lib/server/raw';
+import {
+  asArray,
+  asNumber,
+  asPositiveNumber,
+  asRecord,
+  asRecordsArray,
+  asString,
+} from '$lib/server/raw';
 import type { ArrService, PersistedAcquisitionJob } from '$lib/server/acquisition-domain';
 import type { AcquisitionReasonCode, MediaItem } from '$lib/shared/types';
 
@@ -22,11 +29,23 @@ export type ValidationProbe = {
   summary: string | null;
 };
 
+export type QueueImportBlock = {
+  queueStatus: string;
+  reasonCode: AcquisitionReasonCode;
+  summary: string;
+};
+
 type PagedArrResponse = {
   pageSize: number | null;
   records: Record<string, unknown>[];
   totalRecords: number | null;
 };
+
+const importHistoryEventTypes = new Set([
+  'downloadFolderImported',
+  'episodeFileImported',
+  'movieFileImported',
+]);
 
 export function normalizeReleaseTitle(value: string | null): string {
   return normalizeToken(value ?? '');
@@ -147,6 +166,16 @@ export async function fetchHistoryRecords(
   return records.filter((record) => historyRecordArrItemId(service, record) === itemId);
 }
 
+export function historyRecordSignalsImport(record: Record<string, unknown>): boolean {
+  const eventType = asString(record.eventType);
+  if (eventType) {
+    return importHistoryEventTypes.has(eventType);
+  }
+
+  const data = asRecord(record.data);
+  return asString(record.importedPath) !== null || asString(data.importedPath) !== null;
+}
+
 export function historySince(
   records: Record<string, unknown>[],
   startedAt: string,
@@ -161,6 +190,10 @@ export function historySince(
       return false;
     }
 
+    if (!historyRecordSignalsImport(record)) {
+      return false;
+    }
+
     if (!normalizedReleaseTitle) {
       return true;
     }
@@ -172,6 +205,44 @@ export function historySince(
       normalizedReleaseTitle.includes(sourceTitle)
     );
   });
+}
+
+function queueStatusMessages(record: Record<string, unknown>): string[] {
+  return asArray(record.statusMessages)
+    .flatMap((entry) => {
+      const item = asRecord(entry);
+      return [asString(item.title), ...asArray(item.messages).map(asString)];
+    })
+    .filter((value): value is string => value !== null);
+}
+
+export function queueImportBlock(record: Record<string, unknown>): QueueImportBlock | null {
+  const trackedDownloadState = asString(record.trackedDownloadState)?.toLowerCase() ?? null;
+  const trackedDownloadStatus = asString(record.trackedDownloadStatus)?.toLowerCase() ?? null;
+  const status = asString(record.status)?.toLowerCase() ?? null;
+  const messages = queueStatusMessages(record);
+  const blockingMessage =
+    messages.find((message) => /not an upgrade for existing .* file/i.test(message)) ??
+    messages.find((message) => /not a custom format upgrade for existing .* file/i.test(message)) ??
+    null;
+
+  if (!blockingMessage) {
+    return null;
+  }
+
+  if (trackedDownloadState !== 'importpending') {
+    return null;
+  }
+
+  if (trackedDownloadStatus !== 'warning' && status !== 'completed') {
+    return null;
+  }
+
+  return {
+    queueStatus: 'Import blocked',
+    reasonCode: 'import-blocked',
+    summary: `Arr refused to import the release: ${blockingMessage}`,
+  };
 }
 
 export function validationSummary(item: MediaItem): string | null {

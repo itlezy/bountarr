@@ -21,6 +21,7 @@ function createDatabase(): DatabaseSync {
 function createSelectionResult(guid: string, title: string): ReleaseSelectionResult {
   return {
     manualResults: [],
+    manualSelectionMode: null,
     mappedReleases: 1,
     releasesFound: 1,
     selectedGuid: guid,
@@ -62,6 +63,7 @@ function createRejectedSelectionResult(
 ): ReleaseSelectionResult {
   return {
     manualResults: [],
+    manualSelectionMode: null,
     mappedReleases: 1,
     releasesFound: 1,
     selectedGuid: null,
@@ -363,6 +365,10 @@ describe('AcquisitionRunner', () => {
     expect(failed?.reasonCode).toBe('no-acceptable-release');
     expect(failed?.autoRetrying).toBe(false);
     expect(failed?.failureReason).toBe('No acceptable release passed the local scoring rules');
+    expect(failed?.queueStatus).toBe('No acceptable release found');
+    expect(failed?.attempts[0]?.status).toBe('failed');
+    expect(failed?.attempts[0]?.reasonCode).toBe('no-acceptable-release');
+    expect(failed?.attempts[0]?.finishedAt).not.toBeNull();
   });
 
   it('stops cleanly when the job disappears during processing', async () => {
@@ -767,6 +773,55 @@ describe('AcquisitionRunner', () => {
     const failed = harness.jobs.getJob(job.id);
     expect(failed?.progress).toBe(67);
     expect(failed?.queueStatus).toBe('Downloading');
+  });
+
+  it('stops immediately without retrying when Arr blocks import after download completion', async () => {
+    const harness = createHarness();
+    const job = harness.jobs.createJob({
+      arrItemId: 901,
+      itemId: 'movie:901',
+      kind: 'movie',
+      maxRetries: 4,
+      preferredReleaser: null,
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      sourceService: 'radarr',
+      title: 'Blocked Import Title',
+    });
+
+    const runner = new AcquisitionRunner(harness.jobs, harness.lifecycle, {
+      findReleaseSelection: vi
+        .fn()
+        .mockResolvedValue(
+          createSelectionResult('guid-blocked', 'Blocked.Import.Title.2026.1080p.WEB-DL-GROUP'),
+        ),
+      probeAttempt: vi.fn(),
+      submitSelectedRelease: vi.fn().mockResolvedValue(undefined),
+      waitForAttemptOutcome: vi.fn().mockResolvedValue({
+        outcome: 'failure',
+        preferredReleaser: null,
+        progress: 100,
+        queueStatus: 'Import blocked',
+        reasonCode: 'import-blocked',
+        summary:
+          'Arr refused to import the release: Not an upgrade for existing movie file.',
+      }),
+    });
+
+    runner.enqueue(job.id);
+
+    await vi.waitFor(() => {
+      expect(harness.jobs.getJob(job.id)?.status).toBe('failed');
+    });
+
+    const failed = harness.jobs.getJob(job.id);
+    expect(failed?.autoRetrying).toBe(false);
+    expect(failed?.reasonCode).toBe('import-blocked');
+    expect(failed?.queueStatus).toBe('Import blocked');
+    expect(failed?.attempts[0]?.status).toBe('failed');
+    expect(failed?.attempts[0]?.reasonCode).toBe('import-blocked');
   });
 
   it('prefers a manual selection that arrives while auto-search results are being processed', async () => {

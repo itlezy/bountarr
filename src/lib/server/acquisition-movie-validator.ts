@@ -7,6 +7,7 @@ import {
   fetchHistoryRecords,
   fetchQueueRecords,
   historySince,
+  queueImportBlock,
   type ValidationProbe,
   validationSummary,
 } from '$lib/server/acquisition-validator-shared';
@@ -25,16 +26,37 @@ export async function validateMovieAttempt(
     fetchQueueRecords('radarr'),
     fetchHistoryRecords('radarr', job.arrItemId),
   ]);
-  const queueItems = queueRecords
-    .map((record) => normalizeQueueItem('radarr', record))
+  const matchingQueueEntries = queueRecords
+    .map((record) => ({
+      item: normalizeQueueItem('radarr', record),
+      record,
+    }))
     .filter(
-      (item): item is QueueItem => item !== null && queueItemMatchesManagedTarget(job, item),
+      (entry): entry is { item: QueueItem; record: Record<string, unknown> } =>
+        entry.item !== null && queueItemMatchesManagedTarget(job, entry.item),
     );
+  const queueItems = matchingQueueEntries.map((entry) => entry.item);
   const liveSummary = buildManagedLiveSummary(queueItems);
   const claimedQueueItem = bestQueueIdentityCandidate(job, queueItems);
+  const importBlock = matchingQueueEntries
+    .map((entry) => queueImportBlock(entry.record))
+    .find((entry) => entry !== null);
   const relevantHistory = historySince(historyRecords, attemptStart, job.currentRelease);
 
   if (relevantHistory.length === 0) {
+    if (importBlock) {
+      return {
+        outcome: 'failure',
+        preferredReleaser: null,
+        progress: 100,
+        queueStatus: importBlock.queueStatus,
+        liveDownloadId: null,
+        liveQueueId: null,
+        reasonCode: importBlock.reasonCode,
+        summary: importBlock.summary,
+      };
+    }
+
     if (liveSummary) {
       return {
         outcome: 'pending',

@@ -43,74 +43,81 @@ describe('validateSeriesAttempt', () => {
   it('keeps a targeted series job pending until every targeted episode imports', async () => {
     const fetchEpisodeFile = vi.fn();
 
-    vi.doMock('$lib/server/acquisition-validator-shared', () => ({
-      fetchHistoryRecords: vi.fn().mockResolvedValue([
-        {
-          date: '2026-04-13T12:05:00.000Z',
-          episodeFileId: 5001,
-          sourceTitle: 'Andor.S01E01.1080p.WEB-DL-FLUX',
-        },
-      ]),
-      fetchQueueRecords: vi.fn().mockResolvedValue([
-        {
-          id: 7,
-          episode: {
-            id: 101,
-            seasonNumber: 1,
-            title: 'Kassa',
+    vi.doMock('$lib/server/acquisition-validator-shared', async () => {
+      const actual = await vi.importActual<typeof import('$lib/server/acquisition-validator-shared')>(
+        '$lib/server/acquisition-validator-shared',
+      );
+
+      return {
+        ...actual,
+        fetchHistoryRecords: vi.fn().mockResolvedValue([
+          {
+            date: '2026-04-13T12:05:00.000Z',
+            episodeFileId: 5001,
+            sourceTitle: 'Andor.S01E01.1080p.WEB-DL-FLUX',
           },
-          seriesId: 701,
-          trackedDownloadStatus: 'downloading',
-          size: 1000,
-          sizeleft: 750,
-          title: 'Andor.S01E01.1080p.WEB-DL-FLUX',
-          series: {
-            id: 701,
-            title: 'Andor',
-            year: 2022,
+        ]),
+        fetchQueueRecords: vi.fn().mockResolvedValue([
+          {
+            id: 7,
+            episode: {
+              id: 101,
+              seasonNumber: 1,
+              title: 'Kassa',
+            },
+            seriesId: 701,
+            trackedDownloadStatus: 'downloading',
+            size: 1000,
+            sizeleft: 750,
+            title: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+            series: {
+              id: 701,
+              title: 'Andor',
+              year: 2022,
+            },
           },
-        },
-        {
-          id: 8,
-          episode: {
-            id: 102,
-            seasonNumber: 1,
-            title: 'That Would Be Me',
+          {
+            id: 8,
+            episode: {
+              id: 102,
+              seasonNumber: 1,
+              title: 'That Would Be Me',
+            },
+            seriesId: 701,
+            status: 'Downloading',
+            trackedDownloadStatus: 'downloading',
+            size: 1000,
+            sizeleft: 250,
+            title: 'Andor.S01E02.1080p.WEB-DL-FLUX',
+            series: {
+              id: 701,
+              title: 'Andor',
+              year: 2022,
+            },
           },
-          seriesId: 701,
-          status: 'Downloading',
-          trackedDownloadStatus: 'downloading',
-          size: 1000,
-          sizeleft: 250,
-          title: 'Andor.S01E02.1080p.WEB-DL-FLUX',
-          series: {
-            id: 701,
-            title: 'Andor',
-            year: 2022,
+          {
+            id: 9,
+            episode: {
+              id: 201,
+              seasonNumber: 2,
+              title: 'One Year Later',
+            },
+            seriesId: 701,
+            status: 'Downloading',
+            trackedDownloadStatus: 'downloading',
+            size: 1000,
+            sizeleft: 100,
+            title: 'Andor.S02E01.1080p.WEB-DL-FLUX',
+            series: {
+              id: 701,
+              title: 'Andor',
+              year: 2022,
+            },
           },
-        },
-        {
-          id: 9,
-          episode: {
-            id: 201,
-            seasonNumber: 2,
-            title: 'One Year Later',
-          },
-          seriesId: 701,
-          status: 'Downloading',
-          trackedDownloadStatus: 'downloading',
-          size: 1000,
-          sizeleft: 100,
-          title: 'Andor.S02E01.1080p.WEB-DL-FLUX',
-          series: {
-            id: 701,
-            title: 'Andor',
-            year: 2022,
-          },
-        },
-      ]),
-      historySince: vi.fn().mockImplementation((records: Array<Record<string, unknown>>) => records),
-    }));
+        ]),
+        historySince: vi.fn().mockImplementation((records: Array<Record<string, unknown>>) => records),
+      };
+    });
     vi.doMock('$lib/server/lookup-service', () => ({
       fetchEpisodeFile,
       fetchSeriesEpisodeRecords: vi.fn().mockResolvedValue([
@@ -127,6 +134,8 @@ describe('validateSeriesAttempt', () => {
     );
 
     expect(result).toEqual({
+      liveDownloadId: null,
+      liveQueueId: 7,
       outcome: 'pending',
       preferredReleaser: null,
       progress: 50,
@@ -195,6 +204,8 @@ describe('validateSeriesAttempt', () => {
     );
 
     expect(result).toEqual({
+      liveDownloadId: null,
+      liveQueueId: null,
       outcome: 'success',
       preferredReleaser: 'flux',
       progress: 100,
@@ -208,44 +219,51 @@ describe('validateSeriesAttempt', () => {
   });
 
   it('ignores unrelated same-series queue rows when reporting targeted validation progress', async () => {
-    vi.doMock('$lib/server/acquisition-validator-shared', () => ({
-      fetchHistoryRecords: vi.fn().mockResolvedValue([]),
-      fetchQueueRecords: vi.fn().mockResolvedValue([
-        {
-          id: 10,
-          seasonNumbers: [1],
-          series: {
-            id: 701,
-            title: 'Andor',
-            year: 2022,
+    vi.doMock('$lib/server/acquisition-validator-shared', async () => {
+      const actual = await vi.importActual<typeof import('$lib/server/acquisition-validator-shared')>(
+        '$lib/server/acquisition-validator-shared',
+      );
+
+      return {
+        ...actual,
+        fetchHistoryRecords: vi.fn().mockResolvedValue([]),
+        fetchQueueRecords: vi.fn().mockResolvedValue([
+          {
+            id: 10,
+            seasonNumbers: [1],
+            series: {
+              id: 701,
+              title: 'Andor',
+              year: 2022,
+            },
+            seriesId: 701,
+            size: 4000,
+            sizeleft: 2000,
+            status: 'Downloading',
+            title: 'Andor.S01.1080p.WEB-DL-FLUX',
           },
-          seriesId: 701,
-          size: 4000,
-          sizeleft: 2000,
-          status: 'Downloading',
-          title: 'Andor.S01.1080p.WEB-DL-FLUX',
-        },
-        {
-          id: 11,
-          episode: {
-            id: 201,
-            seasonNumber: 2,
-            title: 'One Year Later',
+          {
+            id: 11,
+            episode: {
+              id: 201,
+              seasonNumber: 2,
+              title: 'One Year Later',
+            },
+            series: {
+              id: 701,
+              title: 'Andor',
+              year: 2022,
+            },
+            seriesId: 701,
+            size: 1000,
+            sizeleft: 50,
+            status: 'Downloading',
+            title: 'Andor.S02E01.1080p.WEB-DL-FLUX',
           },
-          series: {
-            id: 701,
-            title: 'Andor',
-            year: 2022,
-          },
-          seriesId: 701,
-          size: 1000,
-          sizeleft: 50,
-          status: 'Downloading',
-          title: 'Andor.S02E01.1080p.WEB-DL-FLUX',
-        },
-      ]),
-      historySince: vi.fn().mockImplementation((records: Array<Record<string, unknown>>) => records),
-    }));
+        ]),
+        historySince: vi.fn().mockImplementation((records: Array<Record<string, unknown>>) => records),
+      };
+    });
     vi.doMock('$lib/server/lookup-service', () => ({
       fetchEpisodeFile: vi.fn(),
       fetchSeriesEpisodeRecords: vi.fn().mockResolvedValue([
@@ -262,6 +280,8 @@ describe('validateSeriesAttempt', () => {
     );
 
     expect(result).toEqual({
+      liveDownloadId: null,
+      liveQueueId: 10,
       outcome: 'pending',
       preferredReleaser: null,
       progress: 50,
@@ -312,6 +332,8 @@ describe('validateSeriesAttempt', () => {
     );
 
     expect(result).toEqual({
+      liveDownloadId: null,
+      liveQueueId: null,
       outcome: 'pending',
       preferredReleaser: null,
       progress: 10,
@@ -320,5 +342,163 @@ describe('validateSeriesAttempt', () => {
       summary: 'Imported 3 of 4 targeted episodes',
     });
     expect(fetchEpisodeFile).not.toHaveBeenCalled();
+  });
+
+  it('fails when every matching Sonarr queue row is import-blocked before the remaining targets import', async () => {
+    vi.doMock('$lib/server/acquisition-validator-shared', async () => {
+      const actual = await vi.importActual<typeof import('$lib/server/acquisition-validator-shared')>(
+        '$lib/server/acquisition-validator-shared',
+      );
+
+      return {
+        ...actual,
+        fetchHistoryRecords: vi.fn().mockResolvedValue([
+          {
+            date: '2026-04-13T12:05:00.000Z',
+            eventType: 'grabbed',
+            sourceTitle: 'Andor.S01E01-E02.1080p.WEB-DL-FLUX',
+          },
+        ]),
+        fetchQueueRecords: vi.fn().mockResolvedValue([
+          {
+            id: 12,
+            downloadId: 'sonarr-download-blocked',
+            seriesId: 701,
+            seasonNumbers: [1],
+            title: 'Andor.S01E01-E02.1080p.WEB-DL-FLUX',
+            status: 'completed',
+            trackedDownloadStatus: 'warning',
+            trackedDownloadState: 'importPending',
+            statusMessages: [
+              {
+                title: 'Andor.S01E01-E02.1080p.WEB-DL-FLUX',
+                messages: [
+                  'Not an upgrade for existing episode file(s). Existing quality: Bluray-1080p. New Quality WEBDL-1080p.',
+                ],
+              },
+            ],
+            series: {
+              id: 701,
+              title: 'Andor',
+              year: 2022,
+            },
+          },
+        ]),
+      };
+    });
+    vi.doMock('$lib/server/lookup-service', () => ({
+      fetchEpisodeFile: vi.fn(),
+      fetchSeriesEpisodeRecords: vi.fn().mockResolvedValue([
+        { airDateUtc: '2026-04-01T00:00:00.000Z', episodeFileId: 5001, id: 101, seasonNumber: 1 },
+        { airDateUtc: '2026-04-08T00:00:00.000Z', episodeFileId: 5002, id: 102, seasonNumber: 1 },
+      ]),
+    }));
+
+    const module = await import('$lib/server/acquisition-series-validator');
+    const result = await module.validateSeriesAttempt(
+      seriesJob,
+      '2026-04-13T12:00:00.000Z',
+    );
+
+    expect(result).toEqual({
+      liveDownloadId: null,
+      liveQueueId: null,
+      outcome: 'failure',
+      preferredReleaser: null,
+      progress: 100,
+      queueStatus: 'Import blocked',
+      reasonCode: 'import-blocked',
+      summary:
+        'Arr refused to import the release: Not an upgrade for existing episode file(s). Existing quality: Bluray-1080p. New Quality WEBDL-1080p.',
+    });
+  });
+
+  it('keeps waiting when only one of several matching Sonarr queue rows is blocked', async () => {
+    vi.doMock('$lib/server/acquisition-validator-shared', async () => {
+      const actual = await vi.importActual<typeof import('$lib/server/acquisition-validator-shared')>(
+        '$lib/server/acquisition-validator-shared',
+      );
+
+      return {
+        ...actual,
+        fetchHistoryRecords: vi.fn().mockResolvedValue([]),
+        fetchQueueRecords: vi.fn().mockResolvedValue([
+          {
+            id: 13,
+            downloadId: 'sonarr-download-blocked',
+            seriesId: 701,
+            episode: {
+              id: 101,
+              seasonNumber: 1,
+              title: 'Kassa',
+            },
+            title: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+            status: 'completed',
+            trackedDownloadStatus: 'warning',
+            trackedDownloadState: 'importPending',
+            statusMessages: [
+              {
+                title: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+                messages: [
+                  'Not an upgrade for existing episode file(s). Existing quality: Bluray-1080p. New Quality WEBDL-1080p.',
+                ],
+              },
+            ],
+            series: {
+              id: 701,
+              title: 'Andor',
+              year: 2022,
+            },
+            size: 1_000,
+            sizeleft: 0,
+          },
+          {
+            id: 14,
+            downloadId: 'sonarr-download-active',
+            seriesId: 701,
+            episode: {
+              id: 102,
+              seasonNumber: 1,
+              title: 'That Would Be Me',
+            },
+            title: 'Andor.S01E02.1080p.WEB-DL-FLUX',
+            status: 'downloading',
+            trackedDownloadStatus: 'ok',
+            trackedDownloadState: 'downloading',
+            series: {
+              id: 701,
+              title: 'Andor',
+              year: 2022,
+            },
+            size: 1_000,
+            sizeleft: 250,
+          },
+        ]),
+      };
+    });
+    vi.doMock('$lib/server/lookup-service', () => ({
+      fetchEpisodeFile: vi.fn(),
+      fetchSeriesEpisodeRecords: vi.fn().mockResolvedValue([
+        { airDateUtc: '2026-04-01T00:00:00.000Z', episodeFileId: 5001, id: 101, seasonNumber: 1 },
+        { airDateUtc: '2026-04-08T00:00:00.000Z', episodeFileId: 5002, id: 102, seasonNumber: 1 },
+      ]),
+    }));
+
+    const module = await import('$lib/server/acquisition-series-validator');
+    const result = await module.validateSeriesAttempt(
+      seriesJob,
+      '2026-04-13T12:00:00.000Z',
+    );
+
+    expect(result).toEqual({
+      liveDownloadId: 'sonarr-download-blocked',
+      liveQueueId: 13,
+      outcome: 'pending',
+      preferredReleaser: null,
+      progress: 87.5,
+      queueStatus: '2 live downloads active',
+      reasonCode: null,
+      summary: null,
+    });
   });
 });

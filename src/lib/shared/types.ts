@@ -22,6 +22,7 @@ export type AcquisitionReasonCode =
   | 'validated'
   | 'missing-audio'
   | 'missing-subs'
+  | 'import-blocked'
   | 'import-timeout'
   | 'no-release-available'
   | 'no-acceptable-release'
@@ -183,6 +184,11 @@ export interface ReleaseDecisionCandidate {
 
 export type ReleaseIdentityStatus = 'exact-match' | 'weak-match' | 'mismatch';
 export type ReleaseScopeStatus = 'not-applicable' | 'exact' | 'partial' | 'mismatch' | 'unknown';
+export type ManualReleaseSelectionMode = 'direct' | 'override-arr-rejection';
+export type ManualReleaseBlockReason =
+  | 'title-mismatch'
+  | 'scope-mismatch'
+  | 'already-selected';
 
 export type ManualReleaseStatus =
   | 'selected'
@@ -193,14 +199,16 @@ export type ManualReleaseStatus =
 
 export interface ManualReleaseResult extends ReleaseDecisionCandidate {
   canSelect: boolean;
-  downloadAllowed: boolean;
-  identityReason: string;
+  selectionMode: ManualReleaseSelectionMode | null;
+  blockReason: ManualReleaseBlockReason | null;
   identityStatus: ReleaseIdentityStatus;
-  scopeReason: string | null;
   scopeStatus: ReleaseScopeStatus;
-  selectionBlockedReason: string | null;
-  rejectedByArr: boolean;
-  rejectionReasons: string[];
+  explanation: {
+    summary: string;
+    matchReasons: string[];
+    warningReasons: string[];
+    arrReasons: string[];
+  };
   status: ManualReleaseStatus;
 }
 
@@ -219,6 +227,12 @@ export interface ManualReleaseListResponse {
   updatedAt: string;
 }
 
+export interface ManualReleaseSelectRequest {
+  guid: string;
+  indexerId: number;
+  selectionMode: ManualReleaseSelectionMode;
+}
+
 export interface AcquisitionAttempt {
   attempt: number;
   status: AcquisitionStatus;
@@ -226,6 +240,7 @@ export interface AcquisitionAttempt {
   releaseTitle: string | null;
   releaser: string | null;
   reason: string | null;
+  manualSelectionMode?: ManualReleaseSelectionMode | null;
   submittedGuid?: string | null;
   submittedIndexerId?: number | null;
   submissionClaimedAt?: string | null;

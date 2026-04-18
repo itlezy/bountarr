@@ -43,6 +43,14 @@ function selectionFailureReasonCode(
   return releaseSelection.mappedReleases === 0 ? 'no-release-available' : 'no-acceptable-release';
 }
 
+function selectionFailureQueueStatus(releaseSelection: ReleaseSelectionResult): string {
+  return releaseSelection.mappedReleases === 0 ? 'No releases found' : 'No acceptable release found';
+}
+
+function validationFailureIsTerminal(waitResult: WaitForAttemptOutcomeResult): boolean {
+  return waitResult.reasonCode === 'import-blocked';
+}
+
 export class AcquisitionLifecycle {
   readonly events: AcquisitionEventRepository;
   readonly jobs: AcquisitionJobRepository;
@@ -143,12 +151,23 @@ export class AcquisitionLifecycle {
       return current ?? job;
     }
 
+    const reasonCode = selectionFailureReasonCode(releaseSelection);
+
+    this.jobs.upsertAttempt(current.id, {
+      attempt: current.attempt,
+      finishedAt: new Date().toISOString(),
+      reasonCode,
+      reason: releaseSelection.selection.decision.reason,
+      status: 'failed',
+    });
+
     const next = this.jobs.updateJob(current.id, {
       autoRetrying: false,
       completedAt: new Date().toISOString(),
       liveDownloadId: null,
       liveQueueId: null,
-      reasonCode: selectionFailureReasonCode(releaseSelection),
+      queueStatus: selectionFailureQueueStatus(releaseSelection),
+      reasonCode,
       failureReason: releaseSelection.selection.decision.reason,
       queuedManualSelection: null,
       status: 'failed',
@@ -203,6 +222,7 @@ export class AcquisitionLifecycle {
     this.jobs.upsertAttempt(job.id, {
       attempt: current.attempt,
       finishedAt: null,
+      manualSelectionMode: null,
       reasonCode: null,
       reason: null,
       releaseTitle: selectedRelease.title,
@@ -265,6 +285,7 @@ export class AcquisitionLifecycle {
     this.jobs.upsertAttempt(job.id, {
       attempt: current.attempt,
       finishedAt: null,
+      manualSelectionMode: releaseSelection.manualSelectionMode,
       reasonCode: null,
       reason: null,
       releaseTitle: selectedRelease.title,
@@ -420,7 +441,7 @@ export class AcquisitionLifecycle {
       this.jobs.addFailedGuid(current.id, selectedGuid);
     }
     const nextAttempt = current.attempt + 1;
-    const terminal = nextAttempt > current.maxRetries;
+    const terminal = validationFailureIsTerminal(waitResult) || nextAttempt > current.maxRetries;
 
     this.jobs.upsertAttempt(current.id, {
       attempt: current.attempt,

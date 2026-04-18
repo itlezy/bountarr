@@ -8,6 +8,8 @@ export function acquisitionReasonLabel(code: AcquisitionReasonCode | null): stri
       return 'Missing preferred audio';
     case 'missing-subs':
       return 'Missing selected subtitles';
+    case 'import-blocked':
+      return 'Import was blocked';
     case 'import-timeout':
       return 'Download or import took too long';
     case 'no-release-available':
@@ -58,6 +60,10 @@ export function acquisitionNextAction(
 
     if (job.reasonCode === 'manual-selection-lost') {
       return 'Stopped because the queued manual release selection was lost.';
+    }
+
+    if (job.reasonCode === 'import-blocked') {
+      return 'Stopped because Arr refused to import the downloaded release.';
     }
 
     if (job.reasonCode === 'crashed') {

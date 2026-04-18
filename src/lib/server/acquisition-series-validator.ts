@@ -3,6 +3,7 @@ import {
   fetchHistoryRecords,
   fetchQueueRecords,
   historySince,
+  queueImportBlock,
   type ValidationProbe,
 } from '$lib/server/acquisition-validator-shared';
 import { buildManagedLiveSummary } from '$lib/server/queue-live-summary';
@@ -70,12 +71,20 @@ export async function validateSeriesAttempt(
     fetchHistoryRecords('sonarr', job.arrItemId),
     fetchSeriesEpisodeRecords(job.arrItemId),
   ]);
-  const queueItems = queueRecords
-    .map((record) => normalizeQueueItem('sonarr', record))
+  const matchingQueueEntries = queueRecords
+    .map((record) => ({
+      item: normalizeQueueItem('sonarr', record),
+      record,
+    }))
     .filter(
-      (item): item is QueueItem => item !== null && queueItemMatchesManagedTarget(job, item),
+      (entry): entry is { item: QueueItem; record: Record<string, unknown> } =>
+        entry.item !== null && queueItemMatchesManagedTarget(job, entry.item),
     );
+  const queueItems = matchingQueueEntries.map((entry) => entry.item);
   const claimedQueueItem = bestQueueIdentityCandidate(job, queueItems);
+  const importBlocks = matchingQueueEntries
+    .map((entry) => queueImportBlock(entry.record))
+    .filter((entry) => entry !== null);
   const relevantHistory = historySince(historyRecords, attemptStart, job.currentRelease);
   const historyEpisodeFileIds = new Set(
     relevantHistory
@@ -88,6 +97,10 @@ export async function validateSeriesAttempt(
       episode.episodeFileId !== null && historyEpisodeFileIds.has(episode.episodeFileId),
   );
   const progress = pendingProgress(job, queueItems);
+  const blockingImport =
+    importBlocks.length > 0 && importBlocks.length === matchingQueueEntries.length
+      ? importBlocks[0]
+      : null;
 
   if (targetEpisodes.length === 0) {
     return {
@@ -99,6 +112,19 @@ export async function validateSeriesAttempt(
       liveQueueId: claimedQueueItem?.queueId ?? null,
       reasonCode: null,
       summary: 'Waiting for Sonarr to resolve the targeted episodes for this grab.',
+    };
+  }
+
+  if (blockingImport && importedTargetEpisodes.length < targetEpisodes.length) {
+    return {
+      outcome: 'failure',
+      preferredReleaser: null,
+      progress: 100,
+      queueStatus: blockingImport.queueStatus,
+      liveDownloadId: null,
+      liveQueueId: null,
+      reasonCode: blockingImport.reasonCode,
+      summary: blockingImport.summary,
     };
   }
 
