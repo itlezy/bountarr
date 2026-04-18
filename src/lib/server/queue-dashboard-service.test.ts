@@ -376,7 +376,7 @@ describe('queue dashboard service', () => {
     ]);
   });
 
-  it('marks generic Arr warning rows as stale external entries', async () => {
+  it('marks recognized terminal Arr import warnings as stale external entries', async () => {
     const { composeQueueEntries } = await import('$lib/server/queue-dashboard-service');
 
     const queueItem: QueueItem = {
@@ -411,6 +411,45 @@ describe('queue dashboard service', () => {
         item: queueItem,
         canCancel: false,
         canRemove: true,
+      },
+    ]);
+  });
+
+  it('keeps generic Arr warning rows cancelable until they match a known terminal import warning', async () => {
+    const { composeQueueEntries } = await import('$lib/server/queue-dashboard-service');
+
+    const queueItem: QueueItem = {
+      id: 'radarr:queue:46',
+      downloadId: 'radarr-download-46',
+      arrItemId: 603,
+      canCancel: true,
+      kind: 'movie',
+      title: 'The Matrix',
+      year: 1999,
+      poster: null,
+      sourceService: 'radarr',
+      status: 'Completed',
+      statusDetail: 'Import failed, temporary permission issue.',
+      trackedDownloadStatus: 'warning',
+      trackedDownloadState: 'importpending',
+      progress: 100,
+      timeLeft: '00:00:00',
+      estimatedCompletionTime: '2026-04-13T12:10:00.000Z',
+      size: 1_000_000_000,
+      sizeLeft: 0,
+      queueId: 46,
+      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      episodeIds: null,
+      seasonNumbers: null,
+    };
+
+    expect(composeQueueEntries([], [queueItem])).toEqual([
+      {
+        kind: 'external',
+        id: queueItem.id,
+        item: queueItem,
+        canCancel: true,
+        canRemove: false,
       },
     ]);
   });

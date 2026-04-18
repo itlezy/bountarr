@@ -162,7 +162,7 @@ describe('normalizeQueueItem', () => {
     ).toBe(false);
   });
 
-  it('treats generic Arr warning rows in import-pending state as stale externals', () => {
+  it('treats known terminal Arr import warnings as stale externals', () => {
     expect(
       queueItemIsStaleExternal({
         status: 'Completed',
@@ -175,8 +175,8 @@ describe('normalizeQueueItem', () => {
     expect(
       queueItemIsStaleExternal({
         status: 'Completed',
-        statusDetail: 'Import pending',
-        trackedDownloadStatus: 'ok',
+        statusDetail: 'Import failed, temporary permission issue.',
+        trackedDownloadStatus: 'warning',
         trackedDownloadState: 'importpending',
       }),
     ).toBe(false);

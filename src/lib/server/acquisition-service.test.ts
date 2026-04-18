@@ -343,7 +343,7 @@ describe('acquisition service', () => {
     expect(arrFetch).not.toHaveBeenCalled();
   });
 
-  it('refuses to cancel external queue rows when Arr reports a generic import-pending warning', async () => {
+  it('refuses to cancel external queue rows when Arr reports a recognized terminal import warning', async () => {
     const arrFetch = vi.fn();
     const queueEntry: QueueCancelRequest = {
       kind: 'external',
@@ -415,6 +415,88 @@ describe('acquisition service', () => {
       'This queue entry is no longer actively downloading. Clear the stale queue entry instead.',
     );
     expect(arrFetch).not.toHaveBeenCalled();
+  });
+
+  it('still allows canceling external queue rows for generic import-pending warnings', async () => {
+    const arrFetch = vi.fn().mockResolvedValue({});
+    const queueEntry: QueueCancelRequest = {
+      kind: 'external',
+      arrItemId: 603,
+      id: 'radarr:queue:10',
+      queueId: 10,
+      sourceService: 'radarr',
+      title: 'The Matrix',
+    };
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/app-cache', () => ({
+      queueCache: new Map(),
+    }));
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        ensureWorkers: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        cancelJob: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        listActiveJobsByArrItem: vi.fn().mockReturnValue([]),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      getAcquisitionJobsResponse: vi.fn(),
+      listQueueAcquisitionJobs: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-validator-shared', () => ({
+      fetchQueueRecords: vi.fn().mockResolvedValue([
+        {
+          id: 10,
+          movieId: 603,
+          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          status: 'completed',
+          trackedDownloadStatus: 'warning',
+          trackedDownloadState: 'importPending',
+          statusMessages: [
+            {
+              title: 'Import pending',
+              messages: ['Import failed, temporary permission issue.'],
+            },
+          ],
+          movie: {
+            id: 603,
+            title: 'The Matrix',
+            year: 1999,
+          },
+        },
+      ]),
+      queueRecordArrItemId: vi.fn(),
+      queueRecordId: vi.fn().mockImplementation((record: { id: number }) => record.id),
+    }));
+    vi.doMock('$lib/server/acquisition-selection', () => ({
+      findManualReleaseSelection: vi.fn(),
+      getManualReleaseResults: vi.fn(),
+    }));
+
+    const module = await import('$lib/server/acquisition-service');
+    const result = await module.cancelQueueEntry(queueEntry);
+
+    expect(result).toEqual({
+      itemId: 'radarr:queue:10',
+      message: '"The Matrix" download was cancelled.',
+    });
+    expect(arrFetch).toHaveBeenCalledWith('radarr', '/api/v3/queue/10', {
+      method: 'DELETE',
+    }, {
+      blocklist: false,
+      removeFromClient: true,
+      skipRedownload: false,
+    });
   });
 
   it('cancels managed jobs across every matching Arr queue row', async () => {
@@ -1370,7 +1452,7 @@ describe('acquisition service', () => {
     expect(arrFetch).not.toHaveBeenCalled();
   });
 
-  it('clears generic Arr warning rows through the stale queue-entry delete path', async () => {
+  it('clears recognized terminal import-warning rows through the stale queue-entry delete path', async () => {
     const arrFetch = vi.fn().mockResolvedValue({});
 
     vi.doMock('$lib/server/arr-client', () => ({

@@ -9,6 +9,11 @@ const importBlockedMessagePatterns = [
   /not a custom format upgrade for existing .* file/i,
 ];
 
+const staleExternalMessagePatterns = [
+  ...importBlockedMessagePatterns,
+  /destination path already exists/i,
+];
+
 function formatQueueStatus(record: Record<string, unknown>): string {
   return (
     asString(record.status) ??
@@ -85,20 +90,17 @@ export function queueItemIsImportBlocked(
 export function queueItemIsStaleExternal(
   item: Pick<QueueItem, 'status' | 'statusDetail' | 'trackedDownloadState' | 'trackedDownloadStatus'>,
 ): boolean {
-  if (queueItemIsImportBlocked(item)) {
-    return true;
-  }
-
   if (item.trackedDownloadState !== 'importpending') {
     return false;
   }
 
-  if (item.trackedDownloadStatus !== 'warning') {
+  const normalizedStatus = item.status.trim().toLowerCase();
+  if (item.trackedDownloadStatus !== 'warning' && normalizedStatus !== 'completed') {
     return false;
   }
 
   const detail = item.statusDetail?.trim() ?? '';
-  return detail.length > 0;
+  return staleExternalMessagePatterns.some((pattern) => pattern.test(detail));
 }
 
 export function normalizeQueueItem(service: ArrService, rawValue: unknown): QueueItem | null {
