@@ -451,6 +451,73 @@ describe('queue dashboard service', () => {
     ]);
   });
 
+  it('disables managed cancel when the attached live Arr row has no queue id', async () => {
+    const { composeQueueEntries } = await import('$lib/server/queue-dashboard-service');
+
+    const acquisitionJob: AcquisitionJob = {
+      id: 'job-download-only',
+      itemId: 'movie:603',
+      arrItemId: 603,
+      kind: 'movie',
+      title: 'The Matrix',
+      sourceService: 'radarr',
+      status: 'grabbing',
+      attempt: 1,
+      maxRetries: 3,
+      currentRelease: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      selectedReleaser: 'flux',
+      preferredReleaser: 'flux',
+      reasonCode: null,
+      failureReason: null,
+      validationSummary: null,
+      autoRetrying: false,
+      progress: 50,
+      queueStatus: 'Downloading',
+      liveQueueId: null,
+      liveDownloadId: 'download-shared',
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      targetSeasonNumbers: null,
+      targetEpisodeIds: null,
+      startedAt: '2026-04-13T12:00:00.000Z',
+      updatedAt: '2026-04-13T12:01:00.000Z',
+      completedAt: null,
+      attempts: [],
+    };
+    const queueItem: QueueItem = {
+      id: 'radarr:download:download-shared',
+      downloadId: 'download-shared',
+      arrItemId: 603,
+      canCancel: false,
+      kind: 'movie',
+      title: 'The Matrix',
+      year: 1999,
+      poster: null,
+      sourceService: 'radarr',
+      status: 'Downloading',
+      progress: 50,
+      timeLeft: '10m',
+      estimatedCompletionTime: '2026-04-13T12:10:00.000Z',
+      size: 1_000_000_000,
+      sizeLeft: 500_000_000,
+      queueId: null,
+      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      episodeIds: null,
+      seasonNumbers: null,
+    };
+
+    expect(composeQueueEntries([acquisitionJob], [queueItem])).toEqual([
+      expect.objectContaining({
+        kind: 'managed',
+        id: acquisitionJob.id,
+        liveQueueItems: [queueItem],
+        canCancel: false,
+      }),
+    ]);
+  });
+
   it('keeps download-id-only stale external rows removable', async () => {
     const { composeQueueEntries } = await import('$lib/server/queue-dashboard-service');
 

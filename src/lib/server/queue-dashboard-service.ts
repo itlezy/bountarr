@@ -355,13 +355,14 @@ function buildManagedQueueEntry(
   liveQueueItems: QueueItem[],
 ): ManagedQueueEntry {
   const liveSummary = buildManagedLiveSummary(liveQueueItems);
+  const hasUncancelableLiveRow = liveQueueItems.some((item) => item.queueId === null);
   return {
     kind: 'managed',
     id: job.id,
     job,
     liveQueueItems,
     liveSummary,
-    canCancel: !isTerminalJobStatus(job.status),
+    canCancel: !isTerminalJobStatus(job.status) && !hasUncancelableLiveRow,
     canRemove: true,
   };
 }
