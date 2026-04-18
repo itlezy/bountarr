@@ -20,6 +20,11 @@ type QueueCancelResponseResolver = (
   request: Request,
   url: URL,
 ) => MockRouteResult | unknown;
+type MediaDeleteResponseResolver = (
+  body: Record<string, unknown>,
+  request: Request,
+  url: URL,
+) => MockRouteResult | unknown;
 type RequestAwareResolver = (request: Request, url: URL) => unknown;
 type ManualReleaseResponseResolver = (jobId: string, request: Request, url: URL) => unknown;
 type SelectManualReleaseResponseResolver = (
@@ -35,6 +40,7 @@ type MockApiOptions = {
   resolveGrabResponse?: ResolveGrabResponseResolver;
   manualReleaseResponse?: ManualReleaseResponseResolver;
   plexRecent?: unknown;
+  mediaDeleteResponse?: MediaDeleteResponseResolver;
   queueCancelResponse?: QueueCancelResponseResolver;
   queue?: unknown | RequestAwareResolver;
   searchResponse?: SearchResponseResolver;
@@ -44,6 +50,7 @@ type MockApiOptions = {
 export type MockApiController = {
   dashboardRequests: string[];
   grabBodies: Record<string, unknown>[];
+  mediaDeleteBodies: Record<string, unknown>[];
   queueCancelBodies: Record<string, unknown>[];
   resolveGrabBodies: Record<string, unknown>[];
   manualReleaseRequests: string[];
@@ -143,6 +150,7 @@ export async function mockAppApi(
   const controller: MockApiController = {
     dashboardRequests: [],
     grabBodies: [],
+    mediaDeleteBodies: [],
     queueCancelBodies: [],
     resolveGrabBodies: [],
     manualReleaseRequests: [],
@@ -253,14 +261,36 @@ export async function mockAppApi(
       const title =
         typeof body.title === 'string' && body.title.trim().length > 0
           ? body.title
-          : 'Selected';
+          : isManagedCancel
+            ? acquisitionJobFixture.title
+            : 'Selected';
       const payload =
         options.queueCancelResponse?.(body, request, url) ??
         mockJson({
           itemId: String(body.id ?? body.jobId ?? ''),
           message: isManagedCancel
-            ? `${title} download was cancelled and unmonitored.`
-            : `${title} download was cancelled.`,
+            ? `"${title}" download was cancelled and unmonitored.`
+            : `"${title}" download was cancelled.`,
+        });
+      await fulfillResolvedRoute(route, payload);
+      return;
+    }
+
+    if (url.pathname === '/api/media/delete') {
+      const body = (request.postDataJSON() as Record<string, unknown> | null) ?? {};
+      controller.mediaDeleteBodies.push(body);
+      const payload =
+        options.mediaDeleteResponse?.(body, request, url) ??
+        mockJson({
+          itemId: String(body.id ?? ''),
+          message:
+            body.deleteMode === 'queue-entry'
+              ? `"${String(body.title ?? 'Selected')}" stale queue entry was removed from ${
+                  body.sourceService === 'sonarr' ? 'Sonarr' : 'Radarr'
+                }.`
+              : `"${String(body.title ?? 'Selected')}" was deleted from ${
+                  body.sourceService === 'sonarr' ? 'Sonarr' : 'Radarr'
+                } and its files were removed.`,
         });
       await fulfillResolvedRoute(route, payload);
       return;

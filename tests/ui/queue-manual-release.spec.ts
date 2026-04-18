@@ -294,6 +294,65 @@ test('queue item cancel errors stay inline on the queue card', async ({ page }) 
   await expect(downloadCard).toContainText('Unable to cancel the selected download.');
 });
 
+test('managed queue cancel refreshes queue and dashboard state', async ({ page }) => {
+  let queueCall = 0;
+  const api = await mockAppApi(page, {
+    dashboard: (_request: Request, url: URL) =>
+      url.pathname === '/api/dashboard/refresh'
+        ? mockJson(emptyDashboardResponse)
+        : emptyDashboardResponse,
+    queue: () => {
+      queueCall += 1;
+      return queueCall > 1
+        ? { updatedAt: '2026-04-18T11:06:10.000Z', entries: [], total: 0 }
+        : buildQueueResponse([acquisitionJobFixture], []);
+    },
+  });
+
+  await openQueue(page, api);
+
+  const jobCard = managedJobCard(page, acquisitionJobFixture.title);
+  await expect(jobCard).toBeVisible();
+  await jobCard.getByRole('button', { name: 'Cancel download' }).click();
+
+  await expect
+    .poll(() => api.queueCancelBodies.length, {
+      message: 'managed queue cancel should submit one cancel request body',
+    })
+    .toBe(1);
+  expect(api.queueCancelBodies[0]).toEqual({
+    kind: 'managed',
+    jobId: acquisitionJobFixture.id,
+  });
+
+  await expect(page.getByText('"Andor" download was cancelled and unmonitored.')).toBeVisible();
+  await expect
+    .poll(() => api.queueRequests.length, {
+      message: 'queue should refresh after cancelling a managed queue job',
+    })
+    .toBeGreaterThan(1);
+  await expect(jobCard).toHaveCount(0);
+});
+
+test('managed queue cancel conflicts stay inline on the job card', async ({ page }) => {
+  const api = await mockAppApi(page, {
+    queue: buildQueueResponse([acquisitionJobFixture], []),
+    queueCancelResponse: () =>
+      mockTextError('This queue entry is no longer current. Refresh the queue and try again.', 409, 150),
+  });
+
+  await openQueue(page, api);
+
+  const jobCard = managedJobCard(page, acquisitionJobFixture.title);
+  await expect(jobCard).toBeVisible();
+  await jobCard.getByRole('button', { name: 'Cancel download' }).click();
+
+  await expect(jobCard).toContainText(
+    'This queue entry is no longer current. Refresh the queue and try again.',
+  );
+  await expect(page.getByRole('heading', { name: 'Grab Progress' })).toBeVisible();
+});
+
 test('queue item cards do not expose title deletion for live external downloads', async ({ page }) => {
   const api = await mockAppApi(page, {
     queue: buildQueueResponse(),
@@ -356,6 +415,248 @@ test('stale external queue rows expose only the clear action', async ({ page }) 
   await expect(downloadCard).toBeVisible();
   await expect(downloadCard.getByRole('button', { name: 'Cancel download' })).toHaveCount(0);
   await expect(downloadCard.getByRole('button', { name: 'Clear stale queue entry' })).toBeVisible();
+});
+
+test('stale external queue clears refresh queue and dashboard state', async ({ page }) => {
+  const staleEntry = {
+    kind: 'external' as const,
+    id: 'radarr:queue:1996958567',
+    canCancel: false,
+    canRemove: true,
+    item: {
+      id: 'radarr:queue:1996958567',
+      downloadId: 'SABnzbd_nzo_4lejah9m',
+      arrItemId: 727,
+      canCancel: true,
+      kind: 'movie' as const,
+      title: 'Dangerous Animals',
+      year: 2025,
+      poster: null,
+      sourceService: 'radarr' as const,
+      status: 'Completed',
+      statusDetail:
+        'Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
+      trackedDownloadStatus: 'warning',
+      trackedDownloadState: 'importpending',
+      progress: 100,
+      timeLeft: '00:00:00',
+      estimatedCompletionTime: '2026-04-18T11:05:28Z',
+      size: 7_845_710_150,
+      sizeLeft: 0,
+      queueId: 1996958567,
+      detail: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+      episodeIds: null,
+      seasonNumbers: null,
+    },
+  };
+  let queueCall = 0;
+  const api = await mockAppApi(page, {
+    dashboard: (_request: Request, url: URL) =>
+      url.pathname === '/api/dashboard/refresh'
+        ? mockJson(emptyDashboardResponse)
+        : emptyDashboardResponse,
+    queue: () => {
+      queueCall += 1;
+      return queueCall > 1
+        ? { updatedAt: '2026-04-18T11:06:10.000Z', entries: [], total: 0 }
+        : { updatedAt: '2026-04-18T11:05:28.375Z', entries: [staleEntry], total: 1 };
+    },
+  });
+
+  await openQueue(page, api);
+
+  const downloadCard = queueItemCard(page, 'Dangerous Animals');
+  await expect(downloadCard).toBeVisible();
+  page.once('dialog', (dialog) => dialog.accept());
+  await downloadCard.getByRole('button', { name: 'Clear stale queue entry' }).click();
+
+  await expect
+    .poll(() => api.mediaDeleteBodies.length, {
+      message: 'stale queue clear should submit one delete request body',
+    })
+    .toBe(1);
+  expect(api.mediaDeleteBodies[0]).toEqual({
+    deleteMode: 'queue-entry',
+    downloadId: 'SABnzbd_nzo_4lejah9m',
+    id: 'radarr:queue:1996958567',
+    kind: 'movie',
+    queueId: 1996958567,
+    sourceService: 'radarr',
+    title: 'Dangerous Animals',
+  });
+
+  await expect(
+    page.getByText('"Dangerous Animals" stale queue entry was removed from Radarr.'),
+  ).toBeVisible();
+  await expect
+    .poll(() => api.queueRequests.length, {
+      message: 'queue should refresh after clearing a stale queue row',
+    })
+    .toBeGreaterThan(1);
+  await expect(downloadCard).toHaveCount(0);
+});
+
+test('download-id-only stale queue rows clear using the download identity', async ({ page }) => {
+  const api = await mockAppApi(page, {
+    queue: {
+      updatedAt: '2026-04-18T11:05:28.375Z',
+      total: 1,
+      entries: [
+        {
+          kind: 'external',
+          id: 'radarr:download:download-shared:radarr-603-the-matrix-1999-1080p-web-dl-flux-noscope',
+          canCancel: false,
+          canRemove: true,
+          item: {
+            id: 'radarr:download:download-shared:radarr-603-the-matrix-1999-1080p-web-dl-flux-noscope',
+            downloadId: 'download-shared',
+            arrItemId: 603,
+            canCancel: false,
+            kind: 'movie',
+            title: 'The Matrix',
+            year: 1999,
+            poster: null,
+            sourceService: 'radarr',
+            status: 'Completed',
+            statusDetail: 'Import failed, destination path already exists.',
+            trackedDownloadStatus: 'warning',
+            trackedDownloadState: 'importpending',
+            progress: 100,
+            timeLeft: '00:00:00',
+            estimatedCompletionTime: '2026-04-18T11:05:28Z',
+            size: 4_000_000_000,
+            sizeLeft: 0,
+            queueId: null,
+            detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+            episodeIds: null,
+            seasonNumbers: null,
+          },
+        },
+      ],
+    },
+  });
+
+  await openQueue(page, api);
+
+  const downloadCard = queueItemCard(page, 'The Matrix');
+  await expect(downloadCard).toBeVisible();
+  page.once('dialog', (dialog) => dialog.accept());
+  await downloadCard.getByRole('button', { name: 'Clear stale queue entry' }).click();
+
+  await expect
+    .poll(() => api.mediaDeleteBodies.length, {
+      message: 'download-only stale queue clear should submit one delete request body',
+    })
+    .toBe(1);
+  expect(api.mediaDeleteBodies[0]).toEqual({
+    deleteMode: 'queue-entry',
+    downloadId: 'download-shared',
+    id: 'radarr:download:download-shared:radarr-603-the-matrix-1999-1080p-web-dl-flux-noscope',
+    kind: 'movie',
+    queueId: null,
+    sourceService: 'radarr',
+    title: 'The Matrix',
+  });
+});
+
+test('stale queue clear errors stay inline on the queue card', async ({ page }) => {
+  const api = await mockAppApi(page, {
+    queue: {
+      updatedAt: '2026-04-18T11:05:28.375Z',
+      total: 1,
+      entries: [
+        {
+          kind: 'external',
+          id: 'radarr:queue:1996958567',
+          canCancel: false,
+          canRemove: true,
+          item: {
+            id: 'radarr:queue:1996958567',
+            downloadId: 'SABnzbd_nzo_4lejah9m',
+            arrItemId: 727,
+            canCancel: true,
+            kind: 'movie',
+            title: 'Dangerous Animals',
+            year: 2025,
+            poster: null,
+            sourceService: 'radarr',
+            status: 'Completed',
+            statusDetail:
+              'Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
+            trackedDownloadStatus: 'warning',
+            trackedDownloadState: 'importpending',
+            progress: 100,
+            timeLeft: '00:00:00',
+            estimatedCompletionTime: '2026-04-18T11:05:28Z',
+            size: 7_845_710_150,
+            sizeLeft: 0,
+            queueId: 1996958567,
+            detail: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+            episodeIds: null,
+            seasonNumbers: null,
+          },
+        },
+      ],
+    },
+    mediaDeleteResponse: () =>
+      mockTextError('This queue entry is still active. Cancel the download instead.', 409, 150),
+  });
+
+  await openQueue(page, api);
+
+  const downloadCard = queueItemCard(page, 'Dangerous Animals');
+  await expect(downloadCard).toBeVisible();
+  page.once('dialog', (dialog) => dialog.accept());
+  await downloadCard.getByRole('button', { name: 'Clear stale queue entry' }).click();
+
+  await expect(downloadCard).toContainText(
+    'This queue entry is still active. Cancel the download instead.',
+  );
+  await expect(page.getByRole('heading', { name: 'Grab Progress' })).toBeVisible();
+});
+
+test('managed remove from library refreshes queue and dashboard state', async ({ page }) => {
+  let queueCall = 0;
+  const api = await mockAppApi(page, {
+    dashboard: (_request: Request, url: URL) =>
+      url.pathname === '/api/dashboard/refresh'
+        ? mockJson(emptyDashboardResponse)
+        : emptyDashboardResponse,
+    queue: () => {
+      queueCall += 1;
+      return queueCall > 1
+        ? { updatedAt: '2026-04-18T11:06:10.000Z', entries: [], total: 0 }
+        : buildQueueResponse([acquisitionJobFixture], []);
+    },
+  });
+
+  await openQueue(page, api);
+
+  const jobCard = managedJobCard(page, acquisitionJobFixture.title);
+  await expect(jobCard).toBeVisible();
+  page.once('dialog', (dialog) => dialog.accept());
+  await jobCard.getByRole('button', { name: 'Remove from Library' }).click();
+
+  await expect
+    .poll(() => api.mediaDeleteBodies.length, {
+      message: 'managed remove should submit one library delete request body',
+    })
+    .toBe(1);
+  expect(api.mediaDeleteBodies[0]).toEqual({
+    arrItemId: acquisitionJobFixture.arrItemId,
+    deleteMode: 'library',
+    id: acquisitionJobFixture.id,
+    kind: acquisitionJobFixture.kind,
+    sourceService: acquisitionJobFixture.sourceService,
+    title: acquisitionJobFixture.title,
+  });
+
+  await expect(page.getByText('"Andor" was deleted from Sonarr and its files were removed.')).toBeVisible();
+  await expect
+    .poll(() => api.queueRequests.length, {
+      message: 'queue should refresh after removing a managed title from the library',
+    })
+    .toBeGreaterThan(1);
 });
 
 test('queue view shows explicit ETA for downloads and matched grab jobs', async ({ page }) => {
