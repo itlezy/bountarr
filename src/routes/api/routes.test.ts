@@ -782,6 +782,40 @@ describe('API routes', () => {
     );
   });
 
+  it('returns conflict when clearing a queue row that Arr exposed without a queue id', async () => {
+    const deleteArrItem = vi
+      .fn()
+      .mockRejectedValue(
+        new Error(
+          'This live Arr queue row cannot be cleared because Arr did not expose a queue id. Refresh the queue and stop it directly in Arr if it is still running.',
+        ),
+      );
+    const route = await loadRouteModule<{
+      POST: (event: { request: Request }) => Promise<Response>;
+    }>('../../routes/api/media/delete/+server', {
+      '$lib/server/acquisition-service': () => ({
+        deleteArrItem,
+      }),
+    });
+
+    const response = await route.POST(
+      createPostEvent('http://local.test/api/media/delete', {
+        deleteMode: 'queue-entry',
+        id: 'radarr:download:download-shared',
+        kind: 'movie',
+        queueId: null,
+        downloadId: 'download-shared',
+        sourceService: 'radarr',
+        title: 'The Matrix',
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.text()).toBe(
+      'This live Arr queue row cannot be cleared because Arr did not expose a queue id. Refresh the queue and stop it directly in Arr if it is still running.',
+    );
+  });
+
   it('returns plain-text grab errors when the acquisition service fails', async () => {
     const grabItem = vi.fn().mockRejectedValue(new Error('Arr is unavailable'));
     const route = await loadRouteModule<{

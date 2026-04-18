@@ -96,7 +96,9 @@ export const POST = async ({ request }: { request: Request }) => {
     const status =
       message.includes('was not found')
         ? 404
-        : message.includes('no longer current') || message.includes('still active')
+        : message.includes('no longer current') ||
+            message.includes('still active') ||
+            message.includes('did not expose a queue id')
           ? 409
           : 500;
     logger.error('Media delete request failed', {
