@@ -1261,6 +1261,55 @@ describe('app state', () => {
     expect(state.selectedQueueEntry?.id).toBe(externalEntry.id);
   });
 
+  it('clears queue selection instead of jumping to another row when the selected entry disappears', async () => {
+    const managedEntry = buildManagedEntry(acquisitionJob);
+    const externalEntry = buildExternalEntry({
+      id: 'radarr:queue:10',
+      arrItemId: 603,
+      canCancel: true,
+      kind: 'movie',
+      title: 'The Matrix',
+      year: 1999,
+      poster: null,
+      sourceService: 'radarr',
+      status: 'Downloading',
+      progress: 64,
+      timeLeft: '9m',
+      estimatedCompletionTime: '2026-04-02T10:14:00.000Z',
+      size: 4_000_000_000,
+      sizeLeft: 1_200_000_000,
+      queueId: 10,
+      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      episodeIds: null,
+      seasonNumbers: null,
+    });
+    const replacementEntry = buildExternalEntry({
+      ...externalEntry.item,
+      id: 'radarr:queue:11',
+      queueId: 11,
+      detail: 'The.Matrix.1999.1080p.BluRay-OLD',
+    });
+    const fetchQueue = vi
+      .fn()
+      .mockResolvedValueOnce(buildQueue([managedEntry, externalEntry]))
+      .mockResolvedValueOnce(buildQueue([managedEntry, replacementEntry]));
+    const state = new AppState(
+      pageData,
+      createDependencies({
+        api: {
+          fetchQueue,
+        },
+      }),
+    );
+
+    await state.loadQueue();
+    state.selectQueueEntry(externalEntry.id);
+    await state.loadQueue();
+
+    expect(state.selectedQueueEntry).toBeNull();
+    expect(state.queueSelectionNeedsManualChoice).toBe(true);
+  });
+
   it('stores queue cancel failures separately from manual release errors', async () => {
     const dependencies = createDependencies({
       api: {

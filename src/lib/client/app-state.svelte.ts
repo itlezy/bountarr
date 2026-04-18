@@ -389,6 +389,7 @@ export class AppState {
   guidedQueueJobId = $state<string | null>(null);
   guidedQueueTitle = $state<string | null>(null);
   selectedQueueEntryId = $state<string | null>(null);
+  queueSelectionNeedsManualChoice = $state(false);
 
   constructor(
     dataSource: PageData | (() => PageData),
@@ -505,6 +506,10 @@ export class AppState {
       if (selectedEntry) {
         return selectedEntry;
       }
+    }
+
+    if (this.queueSelectionNeedsManualChoice || this.queue.entries.length > 1) {
+      return null;
     }
 
     return this.queue.entries[0] ?? null;
@@ -708,6 +713,7 @@ export class AppState {
   private syncSelectedQueueEntry(): void {
     if (!this.queue || this.queue.entries.length === 0) {
       this.selectedQueueEntryId = null;
+      this.queueSelectionNeedsManualChoice = false;
       return;
     }
 
@@ -718,11 +724,22 @@ export class AppState {
       return;
     }
 
+    if (this.selectedQueueEntryId) {
+      this.selectedQueueEntryId = null;
+      this.queueSelectionNeedsManualChoice = true;
+      return;
+    }
+
     const guidedEntry = this.guidedQueueJobId
       ? this.queue.entries.find(
           (entry) => entry.kind === 'managed' && entry.job.id === this.guidedQueueJobId,
         )
       : null;
+
+    if (this.queueSelectionNeedsManualChoice) {
+      return;
+    }
+
     this.selectedQueueEntryId = guidedEntry?.id ?? this.queue.entries[0]?.id ?? null;
   }
 
@@ -732,6 +749,7 @@ export class AppState {
     }
 
     this.selectedQueueEntryId = entryId;
+    this.queueSelectionNeedsManualChoice = false;
   }
 
   async openAddConfirm(item: MediaItem): Promise<void> {
