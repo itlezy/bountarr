@@ -659,6 +659,77 @@ test('managed remove from library refreshes queue and dashboard state', async ({
     .toBeGreaterThan(1);
 });
 
+test('managed remove failures stay inline on the job card', async ({ page }) => {
+  const api = await mockAppApi(page, {
+    queue: buildQueueResponse([acquisitionJobFixture], []),
+    mediaDeleteResponse: () =>
+      mockTextError('Unable to delete the selected Arr item.', 500, 150),
+  });
+
+  await openQueue(page, api);
+
+  const jobCard = managedJobCard(page, acquisitionJobFixture.title);
+  await expect(jobCard).toBeVisible();
+  page.once('dialog', (dialog) => dialog.accept());
+  await jobCard.getByRole('button', { name: 'Remove from Library' }).click();
+
+  await expect(jobCard).toContainText('Unable to delete the selected Arr item.');
+  await expect(page.getByRole('heading', { name: 'Grab Progress' })).toBeVisible();
+});
+
+test('dismissing stale queue clear confirmation does not send a delete request', async ({ page }) => {
+  const api = await mockAppApi(page, {
+    queue: {
+      updatedAt: '2026-04-18T11:05:28.375Z',
+      total: 1,
+      entries: [
+        {
+          kind: 'external',
+          id: 'radarr:queue:1996958567',
+          canCancel: false,
+          canRemove: true,
+          item: {
+            id: 'radarr:queue:1996958567',
+            downloadId: 'SABnzbd_nzo_4lejah9m',
+            arrItemId: 727,
+            canCancel: true,
+            kind: 'movie',
+            title: 'Dangerous Animals',
+            year: 2025,
+            poster: null,
+            sourceService: 'radarr',
+            status: 'Completed',
+            statusDetail:
+              'Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
+            trackedDownloadStatus: 'warning',
+            trackedDownloadState: 'importpending',
+            progress: 100,
+            timeLeft: '00:00:00',
+            estimatedCompletionTime: '2026-04-18T11:05:28Z',
+            size: 7_845_710_150,
+            sizeLeft: 0,
+            queueId: 1996958567,
+            detail: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+            episodeIds: null,
+            seasonNumbers: null,
+          },
+        },
+      ],
+    },
+  });
+
+  await openQueue(page, api);
+
+  const downloadCard = queueItemCard(page, 'Dangerous Animals');
+  await expect(downloadCard).toBeVisible();
+  page.once('dialog', (dialog) => dialog.dismiss());
+  await downloadCard.getByRole('button', { name: 'Clear stale queue entry' }).click();
+
+  await page.waitForTimeout(150);
+  expect(api.mediaDeleteBodies).toHaveLength(0);
+  await expect(downloadCard).toBeVisible();
+});
+
 test('queue view shows explicit ETA for downloads and matched grab jobs', async ({ page }) => {
   const matchingAcquisitionQueueItem = {
     id: 'sonarr:queue:2',
