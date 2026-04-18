@@ -819,6 +819,79 @@ describe('queue dashboard service', () => {
     ]);
   });
 
+  it('does not attach same-scope Sonarr sibling rows before the managed live identity is known unless the release family matches', async () => {
+    const { composeQueueEntries } = await import('$lib/server/queue-dashboard-service');
+
+    const acquisitionJob: AcquisitionJob = {
+      id: 'job-series-bootstrap',
+      itemId: 'series:83867',
+      arrItemId: 83867,
+      kind: 'series',
+      title: 'Andor',
+      sourceService: 'sonarr',
+      status: 'grabbing',
+      attempt: 1,
+      maxRetries: 3,
+      currentRelease: 'Andor.S01.1080p.WEB-DL-FLUX',
+      selectedReleaser: 'flux',
+      preferredReleaser: 'flux',
+      reasonCode: null,
+      failureReason: null,
+      validationSummary: null,
+      autoRetrying: false,
+      progress: 15,
+      queueStatus: 'Queued',
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      targetSeasonNumbers: [1],
+      targetEpisodeIds: [101, 102],
+      startedAt: '2026-04-13T12:00:00.000Z',
+      updatedAt: '2026-04-13T12:05:00.000Z',
+      completedAt: null,
+      attempts: [],
+    };
+    const staleSiblingQueueItem: QueueItem = {
+      id: 'sonarr:queue:13',
+      downloadId: 'download-old',
+      arrItemId: 83867,
+      canCancel: true,
+      kind: 'series',
+      title: 'Andor.Release.Old',
+      year: 2022,
+      poster: null,
+      sourceService: 'sonarr',
+      status: 'Downloading',
+      progress: 33,
+      timeLeft: '36m',
+      estimatedCompletionTime: '2026-04-13T12:36:00.000Z',
+      size: 12_000_000_000,
+      sizeLeft: 8_040_000_000,
+      queueId: 13,
+      detail: 'Andor.S01E01.1080p.WEB-DL-OLD',
+      episodeIds: [101],
+      seasonNumbers: [1],
+    };
+
+    const entries = composeQueueEntries([acquisitionJob], [staleSiblingQueueItem]);
+
+    expect(entries).toEqual([
+      expect.objectContaining({
+        kind: 'managed',
+        liveQueueItems: [],
+        liveSummary: null,
+      }),
+      {
+        kind: 'external',
+        id: staleSiblingQueueItem.id,
+        item: staleSiblingQueueItem,
+        canCancel: true,
+        canRemove: false,
+      },
+    ]);
+  });
+
   it('keeps distinct queue rows when Arr reuses one download id across multiple queue ids', async () => {
     const { composeQueueEntries } = await import('$lib/server/queue-dashboard-service');
 

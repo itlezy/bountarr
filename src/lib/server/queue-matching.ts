@@ -33,6 +33,31 @@ function releaseMatchesTarget(currentRelease: string | null, item: QueueItem): b
     .some((candidate) => candidate === expected);
 }
 
+function normalizeSeriesReleaseFamily(value: string | null): string {
+  const normalized = normalizedReleaseText(value);
+  if (!normalized) {
+    return '';
+  }
+
+  return normalized
+    .replace(/\bs(\d{1,2})e\d{1,3}(?:\s*e\d{1,3})*\b/giu, 's$1')
+    .replace(/\b(\d{1,2})x\d{1,3}(?:\s+\d{1,3})*\b/giu, 's$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function seriesReleaseMatchesTarget(currentRelease: string | null, item: QueueItem): boolean {
+  const expected = normalizeSeriesReleaseFamily(currentRelease);
+  if (!expected) {
+    return false;
+  }
+
+  return [item.detail ?? item.title]
+    .map((value) => normalizeSeriesReleaseFamily(value))
+    .filter((value) => value.length > 0)
+    .some((candidate) => candidate === expected);
+}
+
 function hasManagedQueueIdentity(target: ManagedQueueTarget): boolean {
   return (target.liveQueueId ?? null) !== null || Boolean(target.liveDownloadId);
 }
@@ -84,10 +109,18 @@ export function queueItemMatchesManagedTarget(
   const targetScope = scopeFromTarget(target);
   const itemScope = extractSeriesScope(item);
   if (itemScope.episodeIds || itemScope.seasonNumbers) {
-    return seriesScopeBelongsToTarget(targetScope, itemScope);
+    if (!seriesScopeBelongsToTarget(targetScope, itemScope)) {
+      return false;
+    }
+
+    if (hasManagedQueueIdentity(target) || target.currentRelease === null) {
+      return true;
+    }
+
+    return seriesReleaseMatchesTarget(target.currentRelease, item);
   }
 
-  return releaseMatchesTarget(target.currentRelease, item);
+  return seriesReleaseMatchesTarget(target.currentRelease, item);
 }
 
 export function bestQueueIdentityCandidate(
@@ -112,7 +145,7 @@ export function bestQueueIdentityCandidate(
       priority =
         itemScope.episodeIds || itemScope.seasonNumbers
           ? 1
-          : releaseMatchesTarget(target.currentRelease, item)
+          : seriesReleaseMatchesTarget(target.currentRelease, item)
             ? 2
             : 3;
     }

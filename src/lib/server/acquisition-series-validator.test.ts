@@ -291,6 +291,64 @@ describe('validateSeriesAttempt', () => {
     });
   });
 
+  it('ignores stale same-scope Sonarr sibling rows before the live identity is known', async () => {
+    vi.doMock('$lib/server/acquisition-validator-shared', async () => {
+      const actual = await vi.importActual<typeof import('$lib/server/acquisition-validator-shared')>(
+        '$lib/server/acquisition-validator-shared',
+      );
+
+      return {
+        ...actual,
+        fetchHistoryRecords: vi.fn().mockResolvedValue([]),
+        fetchQueueRecords: vi.fn().mockResolvedValue([
+          {
+            id: 10,
+            episode: {
+              id: 101,
+              seasonNumber: 1,
+              title: 'Kassa',
+            },
+            series: {
+              id: 701,
+              title: 'Andor',
+              year: 2022,
+            },
+            seriesId: 701,
+            size: 4000,
+            sizeleft: 2000,
+            status: 'Downloading',
+            title: 'Andor.S01E01.1080p.WEB-DL-OLD',
+          },
+        ]),
+        historySince: vi.fn().mockImplementation((records: Array<Record<string, unknown>>) => records),
+      };
+    });
+    vi.doMock('$lib/server/lookup-service', () => ({
+      fetchEpisodeFile: vi.fn(),
+      fetchSeriesEpisodeRecords: vi.fn().mockResolvedValue([
+        { airDateUtc: '2026-04-01T00:00:00.000Z', episodeFileId: 5001, id: 101, seasonNumber: 1 },
+        { airDateUtc: '2026-04-08T00:00:00.000Z', episodeFileId: 5002, id: 102, seasonNumber: 1 },
+      ]),
+    }));
+
+    const module = await import('$lib/server/acquisition-series-validator');
+    const result = await module.validateSeriesAttempt(
+      seriesJob,
+      '2026-04-13T12:00:00.000Z',
+    );
+
+    expect(result).toEqual({
+      liveDownloadId: null,
+      liveQueueId: null,
+      outcome: 'pending',
+      preferredReleaser: null,
+      progress: 10,
+      queueStatus: 'Downloading',
+      reasonCode: null,
+      summary: null,
+    });
+  });
+
   it('treats the selected seasons as the completion contract during validation', async () => {
     const fetchEpisodeFile = vi.fn();
 
