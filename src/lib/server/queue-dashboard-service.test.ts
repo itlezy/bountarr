@@ -169,6 +169,83 @@ describe('queue dashboard service', () => {
     });
   });
 
+  it('does not attach a wrong-release sibling movie row before the managed live identity is known', async () => {
+    const { composeQueueEntries } = await import('$lib/server/queue-dashboard-service');
+
+    const acquisitionJob: AcquisitionJob = {
+      id: 'job-movie-bootstrap',
+      itemId: 'movie:603',
+      arrItemId: 603,
+      kind: 'movie',
+      title: 'The Matrix',
+      sourceService: 'radarr',
+      status: 'validating',
+      attempt: 1,
+      maxRetries: 4,
+      currentRelease: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      liveQueueId: null,
+      liveDownloadId: null,
+      selectedReleaser: 'flux',
+      preferredReleaser: 'flux',
+      reasonCode: null,
+      failureReason: null,
+      validationSummary: null,
+      autoRetrying: false,
+      progress: 50,
+      queueStatus: 'Downloading',
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      targetSeasonNumbers: null,
+      targetEpisodeIds: null,
+      startedAt: '2026-04-13T12:00:00.000Z',
+      updatedAt: '2026-04-13T12:05:00.000Z',
+      completedAt: null,
+      attempts: [],
+    };
+    const siblingQueueItem: QueueItem = {
+      id: 'radarr:queue:21',
+      downloadId: 'radarr-download-1',
+      arrItemId: 603,
+      canCancel: true,
+      kind: 'movie',
+      title: 'The.Matrix.1999.1080p.BluRay-OLD',
+      year: 1999,
+      poster: null,
+      sourceService: 'radarr',
+      status: 'Downloading',
+      progress: 35,
+      timeLeft: '30m',
+      estimatedCompletionTime: '2026-04-13T12:30:00.000Z',
+      size: 4_000_000_000,
+      sizeLeft: 2_600_000_000,
+      queueId: 21,
+      detail: null,
+      episodeIds: null,
+      seasonNumbers: null,
+    };
+
+    const entries = composeQueueEntries([acquisitionJob], [siblingQueueItem]);
+
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toEqual({
+      kind: 'managed',
+      id: acquisitionJob.id,
+      job: acquisitionJob,
+      liveQueueItems: [],
+      liveSummary: null,
+      canCancel: true,
+      canRemove: true,
+    });
+    expect(entries[1]).toMatchObject({
+      kind: 'external',
+      id: siblingQueueItem.id,
+      canCancel: true,
+      canRemove: false,
+    });
+  });
+
   it('leaves stale Arr rows external once the managed job is terminal', async () => {
     const { composeQueueEntries } = await import('$lib/server/queue-dashboard-service');
 

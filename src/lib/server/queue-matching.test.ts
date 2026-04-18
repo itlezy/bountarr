@@ -47,6 +47,48 @@ describe('queue matching', () => {
     expect(queueItemMatchesManagedTarget(target, siblingItem)).toBe(false);
   });
 
+  it('does not match sibling movie rows before identity is known unless the release text matches', () => {
+    const target = {
+      arrItemId: 603,
+      currentRelease: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      kind: 'movie' as const,
+      sourceService: 'radarr' as const,
+      targetEpisodeIds: null,
+      targetSeasonNumbers: null,
+    };
+    const matchingItem: QueueItem = {
+      id: 'radarr:queue:22',
+      downloadId: 'radarr-download-2',
+      arrItemId: 603,
+      canCancel: true,
+      kind: 'movie',
+      title: 'The Matrix',
+      year: 1999,
+      poster: null,
+      sourceService: 'radarr',
+      status: 'Downloading',
+      progress: 61,
+      timeLeft: '8m',
+      estimatedCompletionTime: '2026-04-13T12:08:00.000Z',
+      size: 3_400_000_000,
+      sizeLeft: 1_326_000_000,
+      queueId: 22,
+      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      episodeIds: null,
+      seasonNumbers: null,
+    };
+    const siblingItem: QueueItem = {
+      ...matchingItem,
+      id: 'radarr:queue:21',
+      downloadId: 'radarr-download-1',
+      queueId: 21,
+      detail: 'The.Matrix.1999.1080p.BluRay-OLD',
+    };
+
+    expect(queueItemMatchesManagedTarget(target, matchingItem)).toBe(true);
+    expect(queueItemMatchesManagedTarget(target, siblingItem)).toBe(false);
+  });
+
   it('does not match scope-less series rows when the release text is only a partial title match', () => {
     const target = {
       arrItemId: 83867,

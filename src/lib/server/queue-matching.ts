@@ -78,7 +78,7 @@ export function queueItemMatchesManagedTarget(
   }
 
   if (target.kind === 'movie') {
-    return !hasManagedQueueIdentity(target);
+    return releaseMatchesTarget(target.currentRelease, item);
   }
 
   const targetScope = scopeFromTarget(target);
