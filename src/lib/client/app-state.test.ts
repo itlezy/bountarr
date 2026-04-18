@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { AppState } from '$lib/client/app-state.svelte';
 import type { AppStateDependencies } from '$lib/client/app-state.svelte';
 import type { PageData } from '$lib/client/app-state.svelte';
+import { queueItemIsStaleExternal } from '$lib/server/queue-normalize';
 import type {
   AcquisitionJob,
   DashboardResponse,
@@ -282,12 +283,7 @@ function buildManagedEntry(
 }
 
 function buildExternalEntry(item: QueueItem): ExternalQueueEntry {
-  const stale =
-    item.trackedDownloadState === 'importpending' &&
-    (item.trackedDownloadStatus === 'warning' || item.status.trim().toLowerCase() === 'completed') &&
-    /not an upgrade for existing .* file|not a custom format upgrade for existing .* file/i.test(
-      item.statusDetail ?? '',
-    );
+  const stale = queueItemIsStaleExternal(item);
   return {
     kind: 'external',
     id: item.id,

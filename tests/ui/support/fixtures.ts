@@ -1,3 +1,4 @@
+import { queueItemIsStaleExternal } from '$lib/server/queue-normalize';
 import type {
   AcquisitionJob,
   AcquisitionJobActionResponse,
@@ -269,8 +270,8 @@ function buildQueueEntries(acquisitionJobs: AcquisitionJob[], items: QueueItem[]
     kind: 'external',
     id: queueEntryId(item),
     item,
-    canCancel: item.canCancel && item.queueId !== null,
-    canRemove: item.arrItemId === null && item.queueId !== null,
+    canCancel: item.canCancel && item.queueId !== null && !queueItemIsStaleExternal(item),
+    canRemove: item.queueId !== null && queueItemIsStaleExternal(item),
   }));
 
   return [...managedEntries, ...externalEntries];
@@ -301,14 +302,19 @@ export const manualReleaseFixture: ManualReleaseResult = {
   score: 160,
   reason: 'Matched the preferred releaser.',
   canSelect: true,
-  downloadAllowed: true,
-  identityReason: 'Structured series title matched Andor',
+  selectionMode: 'direct',
+  blockReason: null,
   identityStatus: 'exact-match',
-  scopeReason: 'Release scope matches the targeted seasons exactly.',
   scopeStatus: 'exact',
-  selectionBlockedReason: null,
-  rejectedByArr: false,
-  rejectionReasons: [],
+  explanation: {
+    summary: 'Matched the preferred releaser.',
+    matchReasons: [
+      'Structured series title matched Andor',
+      'Release scope matches the targeted seasons exactly.',
+    ],
+    warningReasons: [],
+    arrReasons: [],
+  },
   status: 'accepted',
 };
 
@@ -321,16 +327,18 @@ export const manualReleaseRejectedFixture: ManualReleaseResult = {
   size: 18_000_000_000,
   languages: ['English', 'Spanish'],
   score: 90,
-  reason: 'Rejected locally because it does not match the selected releaser.',
-  canSelect: false,
-  downloadAllowed: false,
-  identityReason: 'Structured series titles point to a different title: Random Show',
-  identityStatus: 'mismatch',
-  scopeReason: null,
+  reason: 'Would otherwise be selectable, but Arr rejected this release.',
+  canSelect: true,
+  selectionMode: 'override-arr-rejection',
+  blockReason: null,
+  identityStatus: 'exact-match',
   scopeStatus: 'not-applicable',
-  selectionBlockedReason: null,
-  rejectedByArr: true,
-  rejectionReasons: ['Custom format score too low'],
+  explanation: {
+    summary: 'Would otherwise be selectable, but Arr rejected this release.',
+    matchReasons: ['Structured series title matched Andor'],
+    warningReasons: [],
+    arrReasons: ['Custom format score too low'],
+  },
   status: 'arr-rejected',
 };
 
@@ -444,7 +452,7 @@ export function buildGrabResponse(item: GrabItem, seasonNumbers?: number[]): Gra
   return {
     existing: false,
     item: requestedItem,
-    message: `${item.title} was added to ${item.kind === 'movie' ? 'Radarr' : 'Sonarr'}.`,
+    message: `"${item.title}" was added to ${item.kind === 'movie' ? 'Radarr' : 'Sonarr'}.`,
     releaseDecision: null,
     job: {
       id: `job-${item.id}`,
