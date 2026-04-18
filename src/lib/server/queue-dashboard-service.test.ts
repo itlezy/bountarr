@@ -228,22 +228,24 @@ describe('queue dashboard service', () => {
 
     const entries = composeQueueEntries([acquisitionJob], [siblingQueueItem]);
 
-    expect(entries).toHaveLength(2);
-    expect(entries[0]).toEqual({
-      kind: 'managed',
-      id: acquisitionJob.id,
-      job: acquisitionJob,
-      liveQueueItems: [],
-      liveSummary: null,
-      canCancel: true,
-      canRemove: true,
-    });
-    expect(entries[1]).toMatchObject({
-      kind: 'external',
-      id: siblingQueueItem.id,
-      canCancel: true,
-      canRemove: false,
-    });
+    expect(entries).toEqual([
+      {
+        kind: 'managed',
+        id: acquisitionJob.id,
+        job: acquisitionJob,
+        liveQueueItems: [],
+        liveSummary: null,
+        canCancel: true,
+        canRemove: true,
+      },
+      {
+        kind: 'external',
+        id: siblingQueueItem.id,
+        item: siblingQueueItem,
+        canCancel: true,
+        canRemove: false,
+      },
+    ]);
   });
 
   it('leaves stale Arr rows external once the managed job is terminal', async () => {

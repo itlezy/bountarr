@@ -383,12 +383,8 @@ function enrichQueueItemsWithManagedTitles(
   items: QueueItem[],
 ): QueueItem[] {
   return items.map((item) => {
-    if (item.arrItemId === null) {
-      return item;
-    }
-
     const matchingJob =
-      acquisitionJobs.find((job) => job.kind === item.kind && job.arrItemId === item.arrItemId) ?? null;
+      acquisitionJobs.find((job) => queueItemMatchesManagedTarget(job, item)) ?? null;
     if (!matchingJob || item.title === matchingJob.title) {
       return item;
     }
