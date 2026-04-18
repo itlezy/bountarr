@@ -1679,6 +1679,86 @@ describe('acquisition service', () => {
     expect(deleteJobsByArrItem).not.toHaveBeenCalled();
   });
 
+  it('does not mutate local acquisition jobs when the tracked Arr delete fails after queue cleanup', async () => {
+    const arrFetch = vi
+      .fn()
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce(new Error('500 Internal Server Error'));
+    const cancelJob = vi.fn();
+    const deleteJobsByArrItem = vi.fn();
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        ensureWorkers: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        cancelJob,
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        deleteJobsByArrItem,
+        listActiveJobsByArrItem: vi.fn().mockReturnValue([
+          {
+            ...job,
+            status: 'validating',
+          },
+        ]),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      getAcquisitionJobsResponse: vi.fn(),
+      listQueueAcquisitionJobs: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-validator-shared', () => ({
+      fetchQueueRecords: vi.fn().mockResolvedValue([
+        {
+          id: 7,
+          movieId: 603,
+          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          status: 'downloading',
+          trackedDownloadStatus: 'ok',
+          trackedDownloadState: 'downloading',
+          movie: {
+            id: 603,
+            title: 'The Matrix',
+            year: 1999,
+          },
+        },
+      ]),
+      queueRecordArrItemId: vi.fn(),
+      queueRecordId: vi.fn().mockImplementation((record: { id: number }) => record.id),
+    }));
+    vi.doMock('$lib/server/acquisition-selection', () => ({
+      findManualReleaseSelection: vi.fn(),
+      getManualReleaseResults: vi.fn(),
+    }));
+
+    const module = await import('$lib/server/acquisition-service');
+
+    await expect(
+      module.deleteArrItem({
+        deleteMode: 'library',
+        arrItemId: 603,
+        id: 'movie:603',
+        kind: 'movie',
+        sourceService: 'radarr',
+        title: 'The Matrix',
+      }),
+    ).rejects.toThrow('500 Internal Server Error');
+
+    expect(arrFetch).toHaveBeenCalledTimes(2);
+    expect(arrFetch.mock.calls[0]?.[1]).toBe('/api/v3/queue/7');
+    expect(arrFetch.mock.calls[1]?.[1]).toBe('/api/v3/movie/603');
+    expect(cancelJob).not.toHaveBeenCalled();
+    expect(deleteJobsByArrItem).not.toHaveBeenCalled();
+  });
+
   it('clears stale queue rows without deleting the tracked Arr title', async () => {
     const arrFetch = vi.fn().mockResolvedValue({});
 

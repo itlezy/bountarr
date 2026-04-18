@@ -498,20 +498,11 @@ export async function deleteArrItem(item: ArrDeleteTarget): Promise<MediaItemAct
     };
   }
 
-  const jobs =
-    getAcquisitionJobRepository().listActiveJobsByArrItem(
-      item.arrItemId,
-      item.kind,
-      item.sourceService,
-    );
+  const jobs = getAcquisitionJobRepository();
   const serviceLabel = item.sourceService === 'radarr' ? 'Radarr' : 'Sonarr';
   const queueItems = await findQueueItemsForArrItem(item.sourceService, item.arrItemId);
   const queueIds = assertQueueItemsHaveQueueIds(queueItems, 'cleared');
   await deleteQueueEntries(item.sourceService, queueIds);
-
-  for (const job of jobs) {
-    getAcquisitionLifecycle().cancelJob(job, 'Deleted from Arr by user');
-  }
 
   try {
     await deleteTrackedItem(item.sourceService, item.arrItemId, true);
@@ -520,7 +511,7 @@ export async function deleteArrItem(item: ArrDeleteTarget): Promise<MediaItemAct
       throw error;
     }
 
-    getAcquisitionJobRepository().deleteJobsByArrItem(
+    jobs.deleteJobsByArrItem(
       item.arrItemId,
       item.kind,
       item.sourceService,
@@ -532,7 +523,7 @@ export async function deleteArrItem(item: ArrDeleteTarget): Promise<MediaItemAct
     };
   }
 
-  getAcquisitionJobRepository().deleteJobsByArrItem(item.arrItemId, item.kind, item.sourceService);
+  jobs.deleteJobsByArrItem(item.arrItemId, item.kind, item.sourceService);
 
   return {
     itemId: item.id,
