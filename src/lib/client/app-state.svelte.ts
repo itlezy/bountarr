@@ -951,6 +951,10 @@ export class AppState {
   }
 
   async cancelQueueEntry(entry: QueueEntry): Promise<void> {
+    if (!entry.canCancel) {
+      return;
+    }
+
     this.cancelingQueueEntryId = entry.id;
     this.queueError = null;
     this.latestActionMessage = null;
@@ -979,7 +983,10 @@ export class AppState {
     }
   }
 
-  async deleteArrItem(item: ArrDeleteTarget): Promise<void> {
+  async deleteArrItem(
+    item: ArrDeleteTarget,
+    options?: { queueEntryId?: string | null },
+  ): Promise<void> {
     const serviceName = item.sourceService === 'radarr' ? 'Radarr' : 'Sonarr';
     const confirmationMessage =
       item.deleteMode === 'library'
@@ -992,10 +999,22 @@ export class AppState {
     this.deletingItemId = item.id;
     this.deleteError = null;
     this.latestActionMessage = null;
+    if (options?.queueEntryId) {
+      this.queueEntryErrors = {
+        ...this.queueEntryErrors,
+        [options.queueEntryId]: null,
+      };
+    }
 
     try {
       const result = await this.dependencies.api.deleteArrItem(item);
       this.latestActionMessage = result.message;
+      if (options?.queueEntryId) {
+        this.queueEntryErrors = {
+          ...this.queueEntryErrors,
+          [options.queueEntryId]: null,
+        };
+      }
       await Promise.all([
         this.loadDashboard(true),
         this.loadQueue(),
@@ -1004,8 +1023,16 @@ export class AppState {
           : Promise.resolve(),
       ]);
     } catch (error) {
-      this.deleteError =
+      const message =
         error instanceof Error ? error.message : 'Unable to delete the selected Arr item.';
+      if (options?.queueEntryId) {
+        this.queueEntryErrors = {
+          ...this.queueEntryErrors,
+          [options.queueEntryId]: message,
+        };
+      } else {
+        this.deleteError = message;
+      }
     } finally {
       this.deletingItemId = null;
     }
@@ -1035,7 +1062,13 @@ export class AppState {
         kind: entry.job.kind,
         sourceService: entry.job.sourceService,
         title: entry.job.title,
+      }, {
+        queueEntryId: entry.id,
       });
+      return;
+    }
+
+    if (!entry.canRemove) {
       return;
     }
 
@@ -1050,6 +1083,8 @@ export class AppState {
       queueId: entry.item.queueId,
       sourceService: entry.item.sourceService,
       title: entry.item.title,
+    }, {
+      queueEntryId: entry.id,
     });
   }
 

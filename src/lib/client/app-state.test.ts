@@ -282,12 +282,18 @@ function buildManagedEntry(
 }
 
 function buildExternalEntry(item: QueueItem): ExternalQueueEntry {
+  const stale =
+    item.trackedDownloadState === 'importpending' &&
+    (item.trackedDownloadStatus === 'warning' || item.status.trim().toLowerCase() === 'completed') &&
+    /not an upgrade for existing .* file|not a custom format upgrade for existing .* file/i.test(
+      item.statusDetail ?? '',
+    );
   return {
     kind: 'external',
     id: item.id,
     item,
-    canCancel: item.canCancel && item.queueId !== null,
-    canRemove: item.arrItemId === null && item.queueId !== null,
+    canCancel: item.canCancel && item.queueId !== null && !stale,
+    canRemove: item.queueId !== null && stale,
   };
 }
 
@@ -1271,6 +1277,40 @@ describe('app state', () => {
     expect(state.manualSelectionError[acquisitionJob.id] ?? null).toBeNull();
   });
 
+  it('ignores cancel requests for queue entries that are no longer cancelable', async () => {
+    const dependencies = createDependencies();
+    const state = new AppState(pageData, dependencies);
+    const staleEntry = buildExternalEntry({
+      id: 'radarr:queue:1996958567',
+      arrItemId: 727,
+      canCancel: true,
+      kind: 'movie',
+      title: 'Dangerous Animals',
+      year: 2025,
+      poster: null,
+      sourceService: 'radarr',
+      status: 'Completed',
+      statusDetail:
+        'Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
+      progress: 100,
+      timeLeft: '00:00:00',
+      estimatedCompletionTime: null,
+      size: 7_845_710_150,
+      sizeLeft: 0,
+      queueId: 1996958567,
+      detail: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+      episodeIds: null,
+      seasonNumbers: null,
+    });
+    staleEntry.canCancel = false;
+    staleEntry.canRemove = true;
+
+    await state.cancelQueueEntry(staleEntry);
+
+    expect(dependencies.api.cancelQueueEntry).not.toHaveBeenCalled();
+    expect(state.queueEntryError(staleEntry.id)).toBeNull();
+  });
+
   it('treats the filter UI as an overlay only on mobile viewports', () => {
     const state = new AppState(pageData, createDependencies());
 
@@ -1489,18 +1529,22 @@ describe('app state', () => {
       buildExternalEntry({
         id: 'radarr:queue:1',
         arrItemId: null,
-        canCancel: true,
+        canCancel: false,
         kind: 'movie',
         title: 'The Matrix',
         year: 1999,
         poster: null,
         sourceService: 'radarr',
-        status: 'Downloading',
-        progress: 50,
-        timeLeft: '5m',
+        status: 'Completed',
+        statusDetail:
+          'Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
+        trackedDownloadStatus: 'warning',
+        trackedDownloadState: 'importpending',
+        progress: 100,
+        timeLeft: '00:00:00',
         estimatedCompletionTime: null,
         size: 1_000,
-        sizeLeft: 500,
+        sizeLeft: 0,
         queueId: 1,
         detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
         episodeIds: null,
@@ -1542,6 +1586,8 @@ describe('app state', () => {
         status: 'Completed',
         statusDetail:
           'Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
+        trackedDownloadStatus: 'warning',
+        trackedDownloadState: 'importpending',
         progress: 100,
         timeLeft: '00:00:00',
         estimatedCompletionTime: null,
@@ -1562,6 +1608,97 @@ describe('app state', () => {
       sourceService: 'radarr',
       title: 'Dangerous Animals',
     });
+  });
+
+  it('ignores delete requests for external queue entries that are not removable', async () => {
+    const dependencies = createDependencies();
+    const state = new AppState(pageData, dependencies);
+    const activeEntry = buildExternalEntry({
+      id: 'radarr:queue:7',
+      arrItemId: 603,
+      canCancel: true,
+      kind: 'movie',
+      title: 'The Matrix',
+      year: 1999,
+      poster: null,
+      sourceService: 'radarr',
+      status: 'Downloading',
+      progress: 75,
+      timeLeft: '10m',
+      estimatedCompletionTime: null,
+      size: 1_000_000_000,
+      sizeLeft: 250_000_000,
+      queueId: 7,
+      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      episodeIds: null,
+      seasonNumbers: null,
+    });
+    activeEntry.canRemove = false;
+
+    await state.deleteQueueEntry(activeEntry);
+
+    expect(dependencies.api.deleteArrItem).not.toHaveBeenCalled();
+  });
+
+  it('keeps stale external queue-entry delete failures inline on the queue card', async () => {
+    const dependencies = createDependencies({
+      api: {
+        deleteArrItem: vi
+          .fn()
+          .mockRejectedValue(
+            new Error('This queue entry is still active. Cancel the download instead.'),
+          ),
+      },
+    });
+    const state = new AppState(pageData, dependencies);
+    const staleEntry = buildExternalEntry({
+      id: 'radarr:queue:1996958567',
+      arrItemId: 727,
+      canCancel: false,
+      kind: 'movie',
+      title: 'Dangerous Animals',
+      year: 2025,
+      poster: null,
+      sourceService: 'radarr',
+      status: 'Completed',
+      statusDetail:
+        'Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
+      trackedDownloadStatus: 'warning',
+      trackedDownloadState: 'importpending',
+      progress: 100,
+      timeLeft: '00:00:00',
+      estimatedCompletionTime: null,
+      size: 7_845_710_150,
+      sizeLeft: 0,
+      queueId: 1996958567,
+      detail: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+      episodeIds: null,
+      seasonNumbers: null,
+    });
+
+    await state.deleteQueueEntry(staleEntry);
+
+    expect(state.queueEntryError(staleEntry.id)).toBe(
+      'This queue entry is still active. Cancel the download instead.',
+    );
+    expect(state.deleteError).toBeNull();
+  });
+
+  it('keeps managed queue removal failures inline on the queue card', async () => {
+    const dependencies = createDependencies({
+      api: {
+        deleteArrItem: vi.fn().mockRejectedValue(new Error('Unable to delete the selected Arr item.')),
+      },
+    });
+    const state = new AppState(pageData, dependencies);
+    const managedEntry = buildManagedEntry(acquisitionJob);
+
+    await state.deleteQueueEntry(managedEntry);
+
+    expect(state.queueEntryError(managedEntry.id)).toBe(
+      'Unable to delete the selected Arr item.',
+    );
+    expect(state.deleteError).toBeNull();
   });
 
   it('clears a pending debounced search when Enter submits immediately', async () => {
