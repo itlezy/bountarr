@@ -19,6 +19,7 @@ import { normalizeQueueItem } from '$lib/server/queue-normalize';
 import { asNumber, asRecord, asRecordsArray, asString } from '$lib/server/raw';
 import { getConfiguredServiceFlags } from '$lib/server/runtime';
 import { sanitizePreferences } from '$lib/shared/preferences';
+import { managedQueueEntryCapabilities } from '$lib/shared/queue-entry-capabilities';
 import type {
   AcquisitionJob,
   DashboardResponse,
@@ -347,15 +348,15 @@ function buildManagedQueueEntry(
   liveQueueItems: QueueItem[],
 ): ManagedQueueEntry {
   const liveSummary = buildManagedLiveSummary(liveQueueItems);
-  const hasUncancelableLiveRow = liveQueueItems.some((item) => item.queueId === null);
+  const capabilities = managedQueueEntryCapabilities(job, liveQueueItems);
   return {
     kind: 'managed',
     id: job.id,
     job,
     liveQueueItems,
     liveSummary,
-    canCancel: !isTerminalJobStatus(job.status) && !hasUncancelableLiveRow,
-    canRemove: !hasUncancelableLiveRow,
+    canCancel: capabilities.canCancel,
+    canRemove: capabilities.canRemove,
   };
 }
 

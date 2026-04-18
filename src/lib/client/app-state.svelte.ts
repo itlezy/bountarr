@@ -35,6 +35,7 @@ import {
 } from '$lib/client/storage';
 import { defaultPreferences } from '$lib/shared/preferences';
 import { quoteTitle } from '$lib/shared/text-format';
+import { managedQueueEntryCapabilities } from '$lib/shared/queue-entry-capabilities';
 import type {
   AcquisitionJob,
   ArrDeleteTarget,
@@ -170,17 +171,15 @@ function optimisticQueueResponse(
   currentQueue: QueueResponse | null,
   job: AcquisitionJob,
 ): QueueResponse {
-  const hasUncancelableLiveRow =
-    Boolean(job.liveDownloadId) && (job.liveQueueId ?? null) === null;
+  const capabilities = managedQueueEntryCapabilities(job);
   const optimisticEntry: ManagedQueueEntry = {
     kind: 'managed',
     id: job.id,
     job,
     liveQueueItems: [],
     liveSummary: null,
-    canCancel:
-      job.status !== 'completed' && job.status !== 'cancelled' && !hasUncancelableLiveRow,
-    canRemove: !hasUncancelableLiveRow,
+    canCancel: capabilities.canCancel,
+    canRemove: capabilities.canRemove,
   };
   const entries = [
     optimisticEntry,
