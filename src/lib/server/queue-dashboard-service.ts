@@ -362,13 +362,24 @@ function buildManagedQueueEntry(
   };
 }
 
+function isStaleExternalQueueItem(item: QueueItem): boolean {
+  const normalizedStatus = item.status.trim().toLowerCase();
+  return (
+    item.statusDetail !== null && item.statusDetail !== undefined ||
+    normalizedStatus === 'completed' ||
+    normalizedStatus === 'import blocked' ||
+    (item.progress !== null && item.progress >= 100)
+  );
+}
+
 function buildExternalQueueEntry(item: QueueItem): ExternalQueueEntry {
+  const stale = isStaleExternalQueueItem(item);
   return {
     kind: 'external',
     id: queueItemEntryId(item),
     item,
-    canCancel: item.canCancel && item.queueId !== null,
-    canRemove: item.arrItemId === null && item.queueId !== null,
+    canCancel: item.canCancel && item.queueId !== null && !stale,
+    canRemove: item.queueId !== null && stale,
   };
 }
 

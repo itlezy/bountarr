@@ -248,8 +248,8 @@ describe('queue dashboard service', () => {
           title: 'Dangerous Animals',
           detail: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
         },
-        canCancel: true,
-        canRemove: false,
+        canCancel: false,
+        canRemove: true,
       },
     ]);
   });

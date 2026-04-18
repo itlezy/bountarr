@@ -34,6 +34,7 @@ import {
   saveSearchState,
 } from '$lib/client/storage';
 import { defaultPreferences } from '$lib/shared/preferences';
+import { quoteTitle } from '$lib/shared/text-format';
 import type {
   AcquisitionJob,
   ArrDeleteTarget,
@@ -43,6 +44,7 @@ import type {
   DashboardResponse,
   ManagedQueueEntry,
   ManualReleaseListResponse,
+  ManualReleaseSelectionMode,
   MediaItem,
   Preferences,
   QualityProfileOption,
@@ -700,7 +702,7 @@ export class AppState {
       return null;
     }
 
-    return `Tracking ${this.guidedQueueTitle} below so you can see what happens next.`;
+    return `Tracking ${quoteTitle(this.guidedQueueTitle)} below so you can see what happens next.`;
   }
 
   private syncSelectedQueueEntry(): void {
@@ -748,7 +750,7 @@ export class AppState {
           subtitleLanguage: this.subtitleLanguage,
         });
         if (!resolvedItem) {
-          this.grabError = `Unable to prepare ${item.title} for an alternate release grab.`;
+          this.grabError = `Unable to prepare ${quoteTitle(item.title)} for an alternate release grab.`;
           return;
         }
 
@@ -911,7 +913,12 @@ export class AppState {
     }
   }
 
-  async selectManualRelease(jobId: string, guid: string, indexerId: number): Promise<void> {
+  async selectManualRelease(
+    jobId: string,
+    guid: string,
+    indexerId: number,
+    selectionMode: ManualReleaseSelectionMode,
+  ): Promise<void> {
     this.manualSelectingJobId = jobId;
     this.manualSelectionError = {
       ...this.manualSelectionError,
@@ -920,7 +927,12 @@ export class AppState {
     this.latestActionMessage = null;
 
     try {
-      const result = await this.dependencies.api.selectManualRelease(jobId, guid, indexerId);
+      const result = await this.dependencies.api.selectManualRelease(
+        jobId,
+        guid,
+        indexerId,
+        selectionMode,
+      );
       this.latestActionMessage = result.message;
       this.activeManualReleaseJobId = jobId;
       await Promise.all([
@@ -971,8 +983,8 @@ export class AppState {
     const serviceName = item.sourceService === 'radarr' ? 'Radarr' : 'Sonarr';
     const confirmationMessage =
       item.deleteMode === 'library'
-        ? `Delete ${item.title} from ${serviceName} and remove its files?`
-        : `Clear the stale queue entry for ${item.title} from ${serviceName}?`;
+        ? `Delete ${quoteTitle(item.title)} from ${serviceName} and remove its files?`
+        : `Clear the stale queue entry for ${quoteTitle(item.title)} from ${serviceName}?`;
     if (!this.dependencies.confirm(confirmationMessage)) {
       return;
     }
@@ -1027,20 +1039,18 @@ export class AppState {
       return;
     }
 
-    if (entry.item.arrItemId == null && entry.item.queueId == null) {
+    if (entry.item.queueId == null) {
       return;
     }
 
-    if (entry.item.arrItemId === null && entry.item.queueId !== null) {
-      await this.deleteArrItem({
-        deleteMode: 'queue-entry',
-        id: entry.id,
-        kind: entry.item.kind,
-        queueId: entry.item.queueId,
-        sourceService: entry.item.sourceService,
-        title: entry.item.title,
-      });
-    }
+    await this.deleteArrItem({
+      deleteMode: 'queue-entry',
+      id: entry.id,
+      kind: entry.item.kind,
+      queueId: entry.item.queueId,
+      sourceService: entry.item.sourceService,
+      title: entry.item.title,
+    });
   }
 
   submitGrab(item: MediaItem, qualityProfileId?: number | null): Promise<void>;
@@ -1108,7 +1118,7 @@ export class AppState {
       void (async () => {
         await Promise.all([this.loadDashboard(true), this.loadQueue()]);
         if (this.dashboardError || this.queueError) {
-          this.latestActionMessage = `${result.item.title} was grabbed, but refresh is still catching up. Showing the latest known state.`;
+          this.latestActionMessage = `${quoteTitle(result.item.title)} was grabbed, but refresh is still catching up. Showing the latest known state.`;
         }
       })();
     } catch (error) {

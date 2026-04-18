@@ -210,14 +210,16 @@ const manualReleaseResponse: ManualReleaseListResponse = {
       score: 160,
       reason: 'matched proven releaser',
       canSelect: true,
-      downloadAllowed: true,
-      identityReason: 'Structured movie title matched The Matrix',
+      selectionMode: 'direct',
+      blockReason: null,
       identityStatus: 'exact-match',
-      scopeReason: null,
       scopeStatus: 'not-applicable',
-      selectionBlockedReason: null,
-      rejectedByArr: false,
-      rejectionReasons: [],
+      explanation: {
+        summary: 'matched proven releaser',
+        matchReasons: ['Structured movie title matched The Matrix'],
+        warningReasons: [],
+        arrReasons: [],
+      },
       status: 'accepted',
     },
   ],
@@ -422,7 +424,7 @@ describe('app state', () => {
         canAdd: false,
         status: 'Already in Arr',
       },
-      message: 'The Matrix was added to Radarr. Acquisition started.',
+      message: '"The Matrix" was added to Radarr. Acquisition started.',
       releaseDecision: null,
       job: {
         id: 'job-1',
@@ -493,7 +495,7 @@ describe('app state', () => {
         canAdd: false,
         status: 'Already in Arr',
       },
-      message: 'The Matrix was added to Radarr.',
+      message: '"The Matrix" was added to Radarr.',
       releaseDecision: null,
       job: {
         id: 'job-1',
@@ -566,7 +568,7 @@ describe('app state', () => {
         canAdd: false,
         status: 'Already in Arr',
       },
-      message: 'The Matrix was added to Radarr.',
+      message: '"The Matrix" was added to Radarr.',
       releaseDecision: null,
       job: {
         id: 'job-1',
@@ -648,7 +650,7 @@ describe('app state', () => {
             canAdd: false,
             status: 'Already in Arr',
           },
-          message: 'Game of Thrones was added to Sonarr.',
+          message: '"Game of Thrones" was added to Sonarr.',
           releaseDecision: null,
           job: seriesJob,
         } satisfies GrabResponse),
@@ -741,7 +743,7 @@ describe('app state', () => {
         canAdd: false,
         status: 'Already in Arr',
       },
-      message: 'The Matrix was added to Radarr.',
+      message: '"The Matrix" was added to Radarr.',
       releaseDecision: null,
       job: acquisitionJob,
     });
@@ -766,7 +768,7 @@ describe('app state', () => {
             canAdd: false,
             status: 'Already in Arr',
           },
-          message: 'The Matrix was added to Radarr.',
+          message: '"The Matrix" was added to Radarr.',
           releaseDecision: null,
           job: null,
         } satisfies GrabResponse),
@@ -800,7 +802,7 @@ describe('app state', () => {
             canAdd: false,
             status: 'Already in Arr',
           },
-          message: 'The Matrix was added to Radarr.',
+          message: '"The Matrix" was added to Radarr.',
           releaseDecision: null,
           job: null,
         } satisfies GrabResponse),
@@ -831,7 +833,7 @@ describe('app state', () => {
         canAdd: false,
         status: 'Already in Arr',
       },
-      message: 'The Matrix was added to Radarr. Acquisition started.',
+      message: '"The Matrix" was added to Radarr. Acquisition started.',
       releaseDecision: null,
       job: null,
     };
@@ -1073,6 +1075,61 @@ describe('app state', () => {
     expect(fetchManualReleaseResults).toHaveBeenCalledTimes(2);
     expect(state.activeManualReleaseJobId).toBe(acquisitionJob.id);
     expect(state.manualReleaseList(acquisitionJob.id)).toEqual(refreshedManualReleaseResponse);
+  });
+
+  it('sends Arr override selection mode when selecting an Arr-rejected manual release', async () => {
+    const selectManualRelease = vi.fn().mockResolvedValue({
+      job: {
+        ...acquisitionJob,
+        status: 'queued',
+      },
+      message: 'Queued manual release override.',
+    });
+    const state = new AppState(
+      pageData,
+      createDependencies({
+        api: {
+          fetchManualReleaseResults: vi.fn().mockResolvedValue({
+            ...manualReleaseResponse,
+            releases: [
+              {
+                ...manualReleaseResponse.releases[0],
+                canSelect: true,
+                selectionMode: 'override-arr-rejection',
+                explanation: {
+                  ...manualReleaseResponse.releases[0].explanation,
+                  arrReasons: ['Rejected by Arr custom format rules'],
+                },
+                status: 'arr-rejected',
+              },
+            ],
+          }),
+          selectManualRelease,
+          fetchQueue: vi.fn().mockResolvedValue(buildQueue([buildManagedEntry(acquisitionJob)])),
+          refreshDashboard: vi.fn().mockResolvedValue(dashboardResponse),
+        },
+      }),
+    );
+    state.queue = buildQueue([buildManagedEntry(acquisitionJob)]);
+
+    await state.openManualReleaseList(acquisitionJob.id);
+    const release = state.manualReleaseList(acquisitionJob.id)?.releases[0];
+    expect(release).not.toBeNull();
+
+    await state.selectManualRelease(
+      acquisitionJob.id,
+      release?.guid ?? 'guid-1',
+      release?.indexerId ?? 11,
+      'override-arr-rejection',
+    );
+
+    expect(selectManualRelease).toHaveBeenCalledWith(
+      acquisitionJob.id,
+      'guid-1',
+      11,
+      'override-arr-rejection',
+    );
+    expect(state.latestActionMessage).toBe('Queued manual release override.');
   });
 
   it('keeps managed queue entries matched to live Arr download items', () => {
@@ -1458,6 +1515,52 @@ describe('app state', () => {
       queueId: 1,
       sourceService: 'radarr',
       title: 'The Matrix',
+    });
+  });
+
+  it('deletes tracked stale queue items using the queue id even when an Arr item id is present', async () => {
+    const dependencies = createDependencies({
+      api: {
+        deleteArrItem: vi.fn().mockResolvedValue({
+          itemId: 'radarr:queue:1996958567',
+          message: 'Stale queue entry removed.',
+        }),
+      },
+    });
+    const state = new AppState(pageData, dependencies);
+
+    await state.deleteQueueEntry(
+      buildExternalEntry({
+        id: 'radarr:queue:1996958567',
+        arrItemId: 727,
+        canCancel: false,
+        kind: 'movie',
+        title: 'Dangerous Animals',
+        year: 2025,
+        poster: null,
+        sourceService: 'radarr',
+        status: 'Completed',
+        statusDetail:
+          'Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
+        progress: 100,
+        timeLeft: '00:00:00',
+        estimatedCompletionTime: null,
+        size: 7_845_710_150,
+        sizeLeft: 0,
+        queueId: 1996958567,
+        detail: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+        episodeIds: null,
+        seasonNumbers: null,
+      }),
+    );
+
+    expect(dependencies.api.deleteArrItem).toHaveBeenCalledWith({
+      deleteMode: 'queue-entry',
+      id: 'radarr:queue:1996958567',
+      kind: 'movie',
+      queueId: 1996958567,
+      sourceService: 'radarr',
+      title: 'Dangerous Animals',
     });
   });
 
