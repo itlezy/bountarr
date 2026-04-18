@@ -51,11 +51,46 @@ describe('normalizeQueueItem', () => {
     });
 
     expect(item).toMatchObject({
-      id: 'radarr:download:radarr-download-7',
       downloadId: 'radarr-download-7',
       canCancel: false,
       queueId: null,
     });
+    expect(item?.id).toBe(
+      'radarr:download:radarr-download-7:radarr-793-american-rickshaw-1989-1080p-bluray-x265-noscope',
+    );
+  });
+
+  it('keeps download-only queue ids distinct when Arr reuses one download id', () => {
+    const firstItem = normalizeQueueItem('sonarr', {
+      downloadId: 'sonarr-download-shared',
+      seriesId: 1445,
+      title: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+      status: 'downloading',
+      trackedDownloadStatus: 'ok',
+      trackedDownloadState: 'downloading',
+      episodeIds: [101],
+      series: {
+        title: 'Andor',
+        year: 2022,
+      },
+    });
+    const secondItem = normalizeQueueItem('sonarr', {
+      downloadId: 'sonarr-download-shared',
+      seriesId: 1445,
+      title: 'Andor.S01E02.1080p.WEB-DL-FLUX',
+      status: 'downloading',
+      trackedDownloadStatus: 'ok',
+      trackedDownloadState: 'downloading',
+      episodeIds: [102],
+      series: {
+        title: 'Andor',
+        year: 2022,
+      },
+    });
+
+    expect(firstItem?.id).not.toBe(secondItem?.id);
+    expect(firstItem?.id).toContain('sonarr:download:sonarr-download-shared:');
+    expect(secondItem?.id).toContain('sonarr:download:sonarr-download-shared:');
   });
 
   it('builds a deterministic fallback id when the Arr queue row has no queue id or download id', () => {

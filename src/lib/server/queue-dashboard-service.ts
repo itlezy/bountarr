@@ -44,14 +44,6 @@ function queueRecordIdentitySuffix(
 }
 
 function queueItemEntryId(item: QueueItem): string {
-  if (item.queueId !== null) {
-    return `${item.sourceService}:queue:${item.queueId}`;
-  }
-
-  if (item.downloadId) {
-    return `${item.sourceService}:download:${item.downloadId}`;
-  }
-
   return item.id;
 }
 

@@ -97,11 +97,13 @@ function queueItemId(
     return `${service}:queue:${queueId}`;
   }
 
+  const fallbackId = queueFallbackIdentity(service, record);
+
   if (downloadId) {
-    return `${service}:download:${downloadId}`;
+    return `${service}:download:${downloadId}:${fallbackId}`;
   }
 
-  return `${service}:queue:${queueFallbackIdentity(service, record)}`;
+  return `${service}:queue:${fallbackId}`;
 }
 
 function normalizeTrackedDownloadValue(value: unknown): string | null {
