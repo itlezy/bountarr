@@ -1020,6 +1020,87 @@ describe('queue dashboard service', () => {
     });
   });
 
+  it('keeps wrong same-scope Sonarr sibling rows external after the managed live identity is known', async () => {
+    const { composeQueueEntries } = await import('$lib/server/queue-dashboard-service');
+
+    const acquisitionJob: AcquisitionJob = {
+      id: 'job-series-reregrab',
+      itemId: 'series:83867',
+      arrItemId: 83867,
+      kind: 'series',
+      title: 'Andor',
+      sourceService: 'sonarr',
+      status: 'validating',
+      attempt: 2,
+      maxRetries: 3,
+      currentRelease: 'Andor.S01.1080p.WEB-DL-FLUX',
+      liveQueueId: 21,
+      liveDownloadId: 'download-shared',
+      selectedReleaser: 'flux',
+      preferredReleaser: 'flux',
+      reasonCode: null,
+      failureReason: null,
+      validationSummary: null,
+      autoRetrying: false,
+      progress: 40,
+      queueStatus: 'Downloading',
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      targetSeasonNumbers: [1],
+      targetEpisodeIds: [101, 102],
+      startedAt: '2026-04-13T12:00:00.000Z',
+      updatedAt: '2026-04-13T12:05:00.000Z',
+      completedAt: null,
+      attempts: [],
+    };
+    const matchingQueueItem: QueueItem = {
+      id: 'sonarr:queue:21',
+      downloadId: 'download-shared',
+      arrItemId: 83867,
+      canCancel: true,
+      kind: 'series',
+      title: 'Andor',
+      year: 2022,
+      poster: null,
+      sourceService: 'sonarr',
+      status: 'Downloading',
+      progress: 25,
+      timeLeft: '18m',
+      estimatedCompletionTime: '2026-04-13T12:18:00.000Z',
+      size: 2_000_000_000,
+      sizeLeft: 1_500_000_000,
+      queueId: 21,
+      detail: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+      episodeIds: [101],
+      seasonNumbers: [1],
+    };
+    const staleSiblingQueueItem: QueueItem = {
+      ...matchingQueueItem,
+      id: 'sonarr:queue:22',
+      downloadId: 'download-old',
+      queueId: 22,
+      detail: 'Andor.S01E02.1080p.WEB-DL-OLD',
+      episodeIds: [102],
+    };
+
+    const entries = composeQueueEntries([acquisitionJob], [matchingQueueItem, staleSiblingQueueItem]);
+
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toMatchObject({
+      kind: 'managed',
+      liveQueueItems: [matchingQueueItem],
+    });
+    expect(entries[1]).toEqual({
+      kind: 'external',
+      id: staleSiblingQueueItem.id,
+      item: staleSiblingQueueItem,
+      canCancel: true,
+      canRemove: false,
+    });
+  });
+
   it('keeps Arr ids on dashboard fallback items so audit cards can delete them', async () => {
     const arrFetch = vi.fn().mockImplementation(async (_service: string, path: string) => {
       if (path === '/api/v3/history') {

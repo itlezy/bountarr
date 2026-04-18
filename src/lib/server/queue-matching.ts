@@ -113,7 +113,11 @@ export function queueItemMatchesManagedTarget(
       return false;
     }
 
-    if (hasManagedQueueIdentity(target) || target.currentRelease === null) {
+    if (hasManagedQueueIdentity(target)) {
+      return false;
+    }
+
+    if (target.currentRelease === null) {
       return true;
     }
 

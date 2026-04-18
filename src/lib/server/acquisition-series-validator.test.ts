@@ -559,4 +559,97 @@ describe('validateSeriesAttempt', () => {
       summary: null,
     });
   });
+
+  it('ignores wrong same-scope Sonarr sibling rows after the live identity is known', async () => {
+    vi.doMock('$lib/server/acquisition-validator-shared', async () => {
+      const actual = await vi.importActual<typeof import('$lib/server/acquisition-validator-shared')>(
+        '$lib/server/acquisition-validator-shared',
+      );
+
+      return {
+        ...actual,
+        fetchHistoryRecords: vi.fn().mockResolvedValue([]),
+        fetchQueueRecords: vi.fn().mockResolvedValue([
+          {
+            id: 13,
+            downloadId: 'sonarr-download-shared',
+            seriesId: 701,
+            episode: {
+              id: 101,
+              seasonNumber: 1,
+              title: 'Kassa',
+            },
+            title: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+            status: 'downloading',
+            trackedDownloadStatus: 'ok',
+            trackedDownloadState: 'downloading',
+            series: {
+              id: 701,
+              title: 'Andor',
+              year: 2022,
+            },
+            size: 1_000,
+            sizeleft: 500,
+          },
+          {
+            id: 14,
+            downloadId: 'sonarr-download-old',
+            seriesId: 701,
+            episode: {
+              id: 102,
+              seasonNumber: 1,
+              title: 'That Would Be Me',
+            },
+            title: 'Andor.S01E02.1080p.WEB-DL-OLD',
+            status: 'completed',
+            trackedDownloadStatus: 'warning',
+            trackedDownloadState: 'importPending',
+            statusMessages: [
+              {
+                title: 'Andor.S01E02.1080p.WEB-DL-OLD',
+                messages: [
+                  'Not an upgrade for existing episode file(s). Existing quality: Bluray-1080p. New Quality WEBDL-1080p.',
+                ],
+              },
+            ],
+            series: {
+              id: 701,
+              title: 'Andor',
+              year: 2022,
+            },
+            size: 1_000,
+            sizeleft: 0,
+          },
+        ]),
+      };
+    });
+    vi.doMock('$lib/server/lookup-service', () => ({
+      fetchEpisodeFile: vi.fn(),
+      fetchSeriesEpisodeRecords: vi.fn().mockResolvedValue([
+        { airDateUtc: '2026-04-01T00:00:00.000Z', episodeFileId: 5001, id: 101, seasonNumber: 1 },
+        { airDateUtc: '2026-04-08T00:00:00.000Z', episodeFileId: 5002, id: 102, seasonNumber: 1 },
+      ]),
+    }));
+
+    const module = await import('$lib/server/acquisition-series-validator');
+    const result = await module.validateSeriesAttempt(
+      {
+        ...seriesJob,
+        liveQueueId: 13,
+        liveDownloadId: 'sonarr-download-shared',
+      },
+      '2026-04-13T12:00:00.000Z',
+    );
+
+    expect(result).toEqual({
+      liveDownloadId: 'sonarr-download-shared',
+      liveQueueId: 13,
+      outcome: 'pending',
+      preferredReleaser: null,
+      progress: 50,
+      queueStatus: 'Downloading',
+      reasonCode: null,
+      summary: null,
+    });
+  });
 });

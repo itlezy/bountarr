@@ -232,4 +232,40 @@ describe('queue matching', () => {
 
     expect(queueItemMatchesManagedTarget(target, siblingItem)).toBe(true);
   });
+
+  it('does not match same-scope Sonarr sibling rows after one live row has been claimed when the identity differs', () => {
+    const target = {
+      arrItemId: 83867,
+      currentRelease: 'Andor.S01.1080p.WEB-DL-FLUX',
+      kind: 'series' as const,
+      liveDownloadId: 'sonarr-download-shared',
+      liveQueueId: 15,
+      sourceService: 'sonarr' as const,
+      targetEpisodeIds: [101, 102],
+      targetSeasonNumbers: [1],
+    };
+    const staleSiblingItem: QueueItem = {
+      id: 'sonarr:queue:17',
+      downloadId: 'sonarr-download-old',
+      arrItemId: 83867,
+      canCancel: true,
+      kind: 'series',
+      title: 'Andor',
+      year: 2022,
+      poster: null,
+      sourceService: 'sonarr',
+      status: 'Downloading',
+      progress: 61,
+      timeLeft: '8m',
+      estimatedCompletionTime: '2026-04-13T12:08:00.000Z',
+      size: 3_400_000_000,
+      sizeLeft: 1_326_000_000,
+      queueId: 17,
+      detail: 'Andor.S01E02.1080p.WEB-DL-OLD',
+      episodeIds: [102],
+      seasonNumbers: [1],
+    };
+
+    expect(queueItemMatchesManagedTarget(target, staleSiblingItem)).toBe(false);
+  });
 });
