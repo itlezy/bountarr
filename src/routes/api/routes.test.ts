@@ -296,6 +296,39 @@ describe('API routes', () => {
     });
   });
 
+  it('returns conflict when a managed cancel targets a live Arr row without a queue id', async () => {
+    const cancelQueueEntry = vi
+      .fn()
+      .mockRejectedValue(
+        new Error(
+          'This live Arr queue row cannot be cancelled because Arr did not expose a queue id. Refresh the queue and stop it directly in Arr if it is still running.',
+        ),
+      );
+    const route = await loadRouteModule<{
+      POST: (event: { request: Request }) => Promise<Response>;
+    }>('../../routes/api/queue/cancel/+server', {
+      '$lib/server/acquisition-service': () => ({
+        cancelQueueEntry,
+      }),
+    });
+
+    const response = await route.POST(
+      createPostEvent('http://local.test/api/queue/cancel', {
+        kind: 'managed',
+        jobId: 'job-download-only',
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.text()).toBe(
+      'This live Arr queue row cannot be cancelled because Arr did not expose a queue id. Refresh the queue and stop it directly in Arr if it is still running.',
+    );
+    expect(cancelQueueEntry).toHaveBeenCalledWith({
+      kind: 'managed',
+      jobId: 'job-download-only',
+    });
+  });
+
   it('returns conflict for manual release lists on terminal jobs', async () => {
     const getManualReleaseResults = vi
       .fn()

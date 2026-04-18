@@ -89,7 +89,9 @@ export const POST = async ({ request }: { request: Request }) => {
     const status =
       message.includes('was not found')
         ? 404
-        : message.includes('no longer current')
+        : message.includes('no longer current') ||
+            message.includes('no longer actively downloading') ||
+            message.includes('cannot be cancelled')
           ? 409
           : 500;
     logger.error('Queue cancel request failed', {

@@ -32,6 +32,7 @@ import {
 } from '$lib/server/acquisition-validator-shared';
 import {
   queueItemMatchesManagedIdentity,
+  type ManagedQueueTarget,
   queueItemMatchesManagedTarget,
 } from '$lib/server/queue-matching';
 import { normalizeQueueItem, queueItemIsStaleExternal } from '$lib/server/queue-normalize';
@@ -211,58 +212,40 @@ async function findQueueEntryIdsForArrItem(
   ];
 }
 
-async function findQueueEntryIdsForManagedTarget(target: {
-  arrItemId: number;
-  currentRelease: string | null;
-  kind: 'movie' | 'series';
-  liveDownloadId?: string | null;
-  liveQueueId?: number | null;
-  sourceService: 'radarr' | 'sonarr';
-  targetEpisodeIds: number[] | null;
-  targetSeasonNumbers: number[] | null;
-}): Promise<number[]> {
+async function findManagedQueueItemsForTarget(target: ManagedQueueTarget): Promise<QueueItem[]> {
   const queueRecords = await fetchQueueRecords(target.sourceService);
-  return [
-    ...new Set(
-      queueRecords
-        .map((record) => normalizeQueueItem(target.sourceService, record))
-        .filter(
-          (item): item is NonNullable<typeof item> =>
-            item !== null && queueItemMatchesManagedTarget(target, item),
-        )
-        .map((item) => item.queueId)
-        .filter((queueId): queueId is number => queueId !== null),
-    ),
-  ];
+  return queueRecords
+    .map((record) => normalizeQueueItem(target.sourceService, record))
+    .filter(
+      (item): item is NonNullable<typeof item> =>
+        item !== null && queueItemMatchesManagedTarget(target, item),
+    );
 }
 
-async function findQueueEntryIdsForManagedIdentity(target: {
-  arrItemId: number;
-  currentRelease: string | null;
-  kind: 'movie' | 'series';
-  liveDownloadId?: string | null;
-  liveQueueId?: number | null;
-  sourceService: 'radarr' | 'sonarr';
-  targetEpisodeIds: number[] | null;
-  targetSeasonNumbers: number[] | null;
-}): Promise<number[]> {
+async function findManagedQueueItemsForIdentity(target: ManagedQueueTarget): Promise<QueueItem[]> {
   if ((target.liveQueueId ?? null) === null && !target.liveDownloadId) {
     return [];
   }
 
   const queueRecords = await fetchQueueRecords(target.sourceService);
-  return [
-    ...new Set(
-      queueRecords
-        .map((record) => normalizeQueueItem(target.sourceService, record))
-        .filter(
-          (item): item is NonNullable<typeof item> =>
-            item !== null && queueItemMatchesManagedIdentity(target, item),
-        )
-        .map((item) => item.queueId)
-        .filter((queueId): queueId is number => queueId !== null),
-    ),
-  ];
+  return queueRecords
+    .map((record) => normalizeQueueItem(target.sourceService, record))
+    .filter(
+      (item): item is NonNullable<typeof item> =>
+        item !== null && queueItemMatchesManagedIdentity(target, item),
+    );
+}
+
+function queueIdsFromItems(items: QueueItem[]): number[] {
+  return [...new Set(items.map((item) => item.queueId).filter((queueId): queueId is number => queueId !== null))];
+}
+
+function assertManagedQueueItemsCancelable(items: QueueItem[]): void {
+  if (items.some((item) => item.queueId === null)) {
+    throw new Error(
+      'This live Arr queue row cannot be cancelled because Arr did not expose a queue id. Refresh the queue and stop it directly in Arr if it is still running.',
+    );
+  }
 }
 
 async function deleteQueueEntries(
@@ -392,12 +375,15 @@ export async function cancelAcquisitionJob(jobId: string): Promise<AcquisitionJo
     throw new Error('This queue entry is no longer current. Refresh the queue and try again.');
   }
 
-  const queueIdsByIdentity = await findQueueEntryIdsForManagedIdentity(job);
+  const queueItemsByIdentity = await findManagedQueueItemsForIdentity(job);
+  const managedQueueItems =
+    queueItemsByIdentity.length > 0
+      ? queueItemsByIdentity
+      : await findManagedQueueItemsForTarget(job);
+  assertManagedQueueItemsCancelable(managedQueueItems);
   const deletedQueueEntries = await deleteQueueEntries(
     job.sourceService,
-    queueIdsByIdentity.length > 0
-      ? queueIdsByIdentity
-      : await findQueueEntryIdsForManagedTarget(job),
+    queueIdsFromItems(managedQueueItems),
   );
   await unmonitorTrackedItem(job.sourceService, job.arrItemId);
   const cancelled = getAcquisitionLifecycle().cancelJob(job);

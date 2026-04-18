@@ -662,6 +662,67 @@ describe('acquisition service', () => {
     expect(arrFetch.mock.calls[2]?.[1]).toBe('/api/v3/movie/603');
   });
 
+  it('refuses managed queue cancels when the claimed live row only exposes a download id', async () => {
+    const identityTrackedJob: AcquisitionJob = {
+      ...job,
+      liveQueueId: null,
+      liveDownloadId: 'radarr-download-8',
+    };
+    const cancelJob = vi.fn();
+    const arrFetch = vi.fn();
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        ensureWorkers: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        cancelJob,
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        getJob: vi.fn().mockReturnValue(identityTrackedJob),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      getAcquisitionJobsResponse: vi.fn(),
+      listQueueAcquisitionJobs: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-validator-shared', () => ({
+      fetchQueueRecords: vi.fn().mockResolvedValue([
+        {
+          downloadId: 'radarr-download-8',
+          movieId: 603,
+          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          movie: {
+            id: 603,
+            title: 'The Matrix',
+            year: 1999,
+          },
+        },
+      ]),
+      queueRecordArrItemId: vi.fn().mockImplementation((_service: string, record: { movieId: number }) => record.movieId),
+      queueRecordId: vi.fn().mockReturnValue(null),
+    }));
+    vi.doMock('$lib/server/acquisition-selection', () => ({
+      findManualReleaseSelection: vi.fn(),
+      getManualReleaseResults: vi.fn(),
+    }));
+
+    const module = await import('$lib/server/acquisition-service');
+
+    await expect(module.cancelAcquisitionJob(identityTrackedJob.id)).rejects.toThrow(
+      'This live Arr queue row cannot be cancelled because Arr did not expose a queue id. Refresh the queue and stop it directly in Arr if it is still running.',
+    );
+    expect(cancelJob).not.toHaveBeenCalled();
+    expect(arrFetch).not.toHaveBeenCalled();
+  });
+
   it('rejects stale managed queue cancels when the job is already gone', async () => {
     const arrFetch = vi.fn();
     const queueEntry: QueueCancelRequest = {
