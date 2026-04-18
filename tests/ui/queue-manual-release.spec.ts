@@ -275,6 +275,153 @@ test('queue item cancel refreshes queue and dashboard state', async ({ page }) =
   await expect(downloadCard).toHaveCount(0);
 });
 
+test('download-id-only active queue cancels using the download identity', async ({ page }) => {
+  let queueCall = 0;
+  const activeEntry = {
+    kind: 'external' as const,
+    id: 'radarr:download:download-shared:radarr-603-the-matrix-1999-1080p-web-dl-flux-noscope',
+    canCancel: true,
+    canRemove: false,
+    item: {
+      id: 'radarr:download:download-shared:radarr-603-the-matrix-1999-1080p-web-dl-flux-noscope',
+      downloadId: 'download-shared',
+      arrItemId: 603,
+      canCancel: false,
+      kind: 'movie' as const,
+      title: 'The Matrix',
+      year: 1999,
+      poster: null,
+      sourceService: 'radarr' as const,
+      status: 'Downloading',
+      progress: 64,
+      timeLeft: '9m',
+      estimatedCompletionTime: '2026-04-18T11:14:00Z',
+      size: 4_000_000_000,
+      sizeLeft: 1_200_000_000,
+      queueId: null,
+      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      episodeIds: null,
+      seasonNumbers: null,
+    },
+  };
+  const api = await mockAppApi(page, {
+    dashboard: (_request: Request, url: URL) =>
+      url.pathname === '/api/dashboard/refresh'
+        ? mockJson(emptyDashboardResponse)
+        : emptyDashboardResponse,
+    queue: () => {
+      queueCall += 1;
+      return queueCall > 1
+        ? { updatedAt: '2026-04-18T11:06:10.000Z', entries: [], total: 0 }
+        : { updatedAt: '2026-04-18T11:05:28.375Z', entries: [activeEntry], total: 1 };
+    },
+  });
+
+  await openQueue(page, api);
+
+  const downloadCard = queueItemCard(page, 'The Matrix');
+  await expect(downloadCard).toBeVisible();
+  await downloadCard.getByRole('button', { name: 'Cancel download' }).click();
+
+  await expect
+    .poll(() => api.queueCancelBodies.length, {
+      message: 'download-only active cancel should submit one cancel request body',
+    })
+    .toBe(1);
+  expect(api.queueCancelBodies[0]).toEqual({
+    kind: 'external',
+    arrItemId: 603,
+    downloadId: 'download-shared',
+    id: 'radarr:download:download-shared:radarr-603-the-matrix-1999-1080p-web-dl-flux-noscope',
+    queueId: null,
+    sourceService: 'radarr',
+    title: 'The Matrix',
+  });
+
+  await expect(page.getByText('"The Matrix" download was cancelled.')).toBeVisible();
+  await expect
+    .poll(() => api.queueRequests.length, {
+      message: 'queue should refresh after cancelling a download-only active queue row',
+    })
+    .toBeGreaterThan(1);
+});
+
+test('stale queue clear targets the selected row when siblings share one download id', async ({ page }) => {
+  const sharedDownloadId = 'download-shared';
+  const firstEntry = {
+    kind: 'external' as const,
+    id: 'radarr:download:download-shared:radarr-603-the-matrix-1999-1080p-web-dl-flux-noscope',
+    canCancel: false,
+    canRemove: true,
+    item: {
+      id: 'radarr:download:download-shared:radarr-603-the-matrix-1999-1080p-web-dl-flux-noscope',
+      downloadId: sharedDownloadId,
+      arrItemId: 603,
+      canCancel: false,
+      kind: 'movie' as const,
+      title: 'The Matrix',
+      year: 1999,
+      poster: null,
+      sourceService: 'radarr' as const,
+      status: 'Completed',
+      statusDetail: 'Import failed, destination path already exists.',
+      trackedDownloadStatus: 'warning',
+      trackedDownloadState: 'importpending',
+      progress: 100,
+      timeLeft: '00:00:00',
+      estimatedCompletionTime: '2026-04-18T11:05:28Z',
+      size: 4_000_000_000,
+      sizeLeft: 0,
+      queueId: null,
+      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      episodeIds: null,
+      seasonNumbers: null,
+    },
+  };
+  const secondEntry = {
+    ...firstEntry,
+    id: 'radarr:download:download-shared:radarr-603-the-matrix-1999-1080p-bluray-old-noscope',
+    item: {
+      ...firstEntry.item,
+      id: 'radarr:download:download-shared:radarr-603-the-matrix-1999-1080p-bluray-old-noscope',
+      detail: 'The.Matrix.1999.1080p.BluRay-OLD',
+    },
+  };
+  const api = await mockAppApi(page, {
+    queue: {
+      updatedAt: '2026-04-18T11:05:28.375Z',
+      entries: [firstEntry, secondEntry],
+      total: 2,
+    },
+  });
+
+  await openQueue(page, api);
+
+  await page
+    .getByTestId('queue-entry-list-item')
+    .filter({ hasText: 'The.Matrix.1999.1080p.BluRay-OLD' })
+    .click();
+  const downloadCard = queueItemCard(page, 'The Matrix');
+  await expect(downloadCard).toContainText('The.Matrix.1999.1080p.BluRay-OLD');
+  page.once('dialog', (dialog) => dialog.accept());
+  await downloadCard.getByRole('button', { name: 'Clear stale queue entry' }).click();
+
+  await expect
+    .poll(() => api.mediaDeleteBodies.length, {
+      message: 'shared-download stale clear should submit one delete request body',
+    })
+    .toBe(1);
+  expect(api.mediaDeleteBodies[0]).toEqual({
+    deleteMode: 'queue-entry',
+    downloadId: sharedDownloadId,
+    id: 'radarr:download:download-shared:radarr-603-the-matrix-1999-1080p-bluray-old-noscope',
+    kind: 'movie',
+    queueId: null,
+    sourceService: 'radarr',
+    title: 'The Matrix',
+  });
+});
+
 test('queue item cancel errors stay inline on the queue card', async ({ page }) => {
   const api = await mockAppApi(page, {
     queue: buildQueueResponse(),
@@ -728,6 +875,23 @@ test('dismissing stale queue clear confirmation does not send a delete request',
   await page.waitForTimeout(150);
   expect(api.mediaDeleteBodies).toHaveLength(0);
   await expect(downloadCard).toBeVisible();
+});
+
+test('dismissing managed remove confirmation does not send a delete request', async ({ page }) => {
+  const api = await mockAppApi(page, {
+    queue: buildQueueResponse([acquisitionJobFixture], []),
+  });
+
+  await openQueue(page, api);
+
+  const jobCard = managedJobCard(page, acquisitionJobFixture.title);
+  await expect(jobCard).toBeVisible();
+  page.once('dialog', (dialog) => dialog.dismiss());
+  await jobCard.getByRole('button', { name: 'Remove from Library' }).click();
+
+  await page.waitForTimeout(150);
+  expect(api.mediaDeleteBodies).toHaveLength(0);
+  await expect(jobCard).toBeVisible();
 });
 
 test('queue view shows explicit ETA for downloads and matched grab jobs', async ({ page }) => {
