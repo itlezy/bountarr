@@ -78,7 +78,7 @@ async function findSupplementalPlexItems(
   const knownPlexKeys = new Set(plexItems.flatMap((item) => itemMatchKeys(item)));
   const originalTerms = new Set(searchTermVariants(term));
   const unresolvedItems = sortSearchResults(term, arrItems)
-    .filter((item) => item.canAdd && !item.inPlex)
+    .filter((item) => !item.inPlex && item.requestPayload !== null)
     .filter((item) => itemMatchKeys(item).every((key) => !knownPlexKeys.has(key)))
     // Supplemental Plex lookups only need to cover items that can still appear in the
     // final response. A smaller cutoff caused broad franchise searches like "rambo"

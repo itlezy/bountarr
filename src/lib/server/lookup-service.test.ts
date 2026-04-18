@@ -898,6 +898,127 @@ describe('lookupItems', () => {
     });
   });
 
+  it('uses supplemental alternate-title Plex lookups for tracked Arr titles too', async () => {
+    const arrFetch = vi
+      .fn()
+      .mockImplementation(
+        async (
+          service: string,
+          path: string,
+          _init: unknown,
+          query?: Record<string, string | number>,
+        ) => {
+          if (
+            service === 'radarr' &&
+            path === '/api/v3/movie/lookup' &&
+            query?.term === 'Dangerous Animals'
+          ) {
+            return [
+              {
+                title: 'Dangerous Animals',
+                year: 2025,
+                id: 727,
+                tmdbId: 1285965,
+                imdbId: 'tt32299316',
+                monitored: true,
+                hasFile: true,
+                path: 'C:\\Media\\Movies\\Dangerous Animals (2025)',
+                added: '2026-04-17T11:47:51Z',
+                alternateTitles: [{ title: 'Animales Peligrosos' }],
+              },
+            ];
+          }
+
+          if (service === 'radarr' && path === '/api/v3/movie/727') {
+            return {
+              id: 727,
+              title: 'Dangerous Animals',
+              year: 2025,
+              tmdbId: 1285965,
+              imdbId: 'tt32299316',
+              monitored: true,
+              hasFile: true,
+              path: 'C:\\Media\\Movies\\Dangerous Animals (2025)',
+              alternateTitles: [{ title: 'Animales Peligrosos' }],
+              movieFileId: 349,
+            };
+          }
+
+          if (service === 'radarr' && path === '/api/v3/moviefile/349') {
+            return {
+              id: 349,
+              path: 'C:\\Media\\Movies\\Dangerous Animals (2025)\\Dangerous.Animals.2025.mkv',
+            };
+          }
+
+          return [];
+        },
+      );
+
+    const searchPlex = vi.fn().mockImplementation(async (term: string): Promise<MediaItem[]> => {
+      if (term === 'Animales Peligrosos') {
+        return [
+          {
+            id: 'plex:movie:1285965',
+            kind: 'movie',
+            title: 'Dangerous Animals',
+            year: 2025,
+            rating: 6.4,
+            poster: null,
+            overview: 'Plex copy',
+            status: 'Already in Plex',
+            isExisting: false,
+            isRequested: false,
+            auditStatus: 'pending',
+            audioLanguages: [],
+            subtitleLanguages: [],
+            sourceService: 'plex',
+            origin: 'plex',
+            inArr: false,
+            inPlex: true,
+            plexLibraries: ['Movies ITA'],
+            canAdd: false,
+            detail: null,
+            requestPayload: {
+              Guid: [{ id: 'tmdb://1285965' }],
+            },
+          },
+        ];
+      }
+
+      return [];
+    });
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/plex-service', () => ({
+      searchPlex,
+    }));
+    vi.doMock('$lib/server/runtime', () => ({
+      getConfiguredServiceFlags: () => ({
+        configured: true,
+        plexConfigured: true,
+        radarrConfigured: true,
+        sonarrConfigured: false,
+      }),
+    }));
+
+    const module = await import('$lib/server/lookup-service');
+    const results = await module.lookupItems('Dangerous Animals', 'movie', undefined, {
+      availability: 'all',
+    });
+
+    expect(searchPlex).toHaveBeenCalledWith('Dangerous Animals', 'movie');
+    expect(searchPlex).toHaveBeenCalledWith('Animales Peligrosos', 'movie');
+    expect(results[0]).toMatchObject({
+      title: 'Dangerous Animals',
+      inArr: true,
+      inPlex: true,
+      plexLibraries: ['Movies ITA'],
+    });
+  });
+
   it('resolves Plex-only movie results into Arr-backed grab candidates', async () => {
     const plexOnlyItem: MediaItem = {
       id: 'plex:movie:2105',
