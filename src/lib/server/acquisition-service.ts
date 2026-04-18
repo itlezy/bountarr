@@ -34,7 +34,7 @@ import {
   queueItemMatchesManagedIdentity,
   queueItemMatchesManagedTarget,
 } from '$lib/server/queue-matching';
-import { normalizeQueueItem, queueItemIsImportBlocked } from '$lib/server/queue-normalize';
+import { normalizeQueueItem, queueItemIsStaleExternal } from '$lib/server/queue-normalize';
 import { asArray, asRecord } from '$lib/server/raw';
 import { grabItem as grabItemInternal } from '$lib/server/acquisition-grab-service';
 import {
@@ -304,13 +304,13 @@ async function requireCurrentExternalQueueItem(
 }
 
 function assertCancelableExternalQueueItem(queueItem: QueueItem): void {
-  if (queueItemIsImportBlocked(queueItem)) {
+  if (queueItemIsStaleExternal(queueItem)) {
     throw new Error('This queue entry is no longer actively downloading. Clear the stale queue entry instead.');
   }
 }
 
 function assertRemovableExternalQueueItem(queueItem: QueueItem): void {
-  if (!queueItemIsImportBlocked(queueItem)) {
+  if (!queueItemIsStaleExternal(queueItem)) {
     throw new Error('This queue entry is still active. Cancel the download instead.');
   }
 }

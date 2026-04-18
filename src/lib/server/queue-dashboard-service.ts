@@ -9,6 +9,7 @@ import { fetchExistingMovie, fetchExistingSeries } from '$lib/server/lookup-serv
 import { mergeItems, normalizeItem } from '$lib/server/media-normalize';
 import { getRecentPlexItems, searchPlex } from '$lib/server/plex-service';
 import { buildManagedLiveSummary } from '$lib/server/queue-live-summary';
+import { queueItemIsStaleExternal } from '$lib/server/queue-normalize';
 import {
   bestQueueIdentityCandidate,
   queueItemMatchesManagedIdentity,
@@ -363,13 +364,7 @@ function buildManagedQueueEntry(
 }
 
 function isStaleExternalQueueItem(item: QueueItem): boolean {
-  const normalizedStatus = item.status.trim().toLowerCase();
-  return (
-    item.statusDetail !== null && item.statusDetail !== undefined ||
-    normalizedStatus === 'completed' ||
-    normalizedStatus === 'import blocked' ||
-    (item.progress !== null && item.progress >= 100)
-  );
+  return queueItemIsStaleExternal(item);
 }
 
 function buildExternalQueueEntry(item: QueueItem): ExternalQueueEntry {

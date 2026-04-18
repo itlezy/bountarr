@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeQueueItem } from '$lib/server/queue-normalize';
+import {
+  normalizeQueueItem,
+  queueItemIsImportBlocked,
+  queueItemIsStaleExternal,
+} from '$lib/server/queue-normalize';
 
 describe('normalizeQueueItem', () => {
   it('computes progress and detail from Arr queue payloads', () => {
@@ -101,6 +105,8 @@ describe('normalizeQueueItem', () => {
       status: 'Completed',
       statusDetail:
         'Import pending: Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
+      trackedDownloadStatus: 'warning',
+      trackedDownloadState: 'importpending',
       detail: null,
     });
   });
@@ -124,5 +130,64 @@ describe('normalizeQueueItem', () => {
     expect(item?.statusDetail).toBe(
       'Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
     );
+  });
+
+  it('detects terminal import-blocked queue rows conservatively', () => {
+    expect(
+      queueItemIsImportBlocked({
+        status: 'Completed',
+        statusDetail:
+          'Import pending: Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
+        trackedDownloadStatus: 'warning',
+        trackedDownloadState: 'importpending',
+      }),
+    ).toBe(true);
+
+    expect(
+      queueItemIsImportBlocked({
+        status: 'Completed',
+        statusDetail: 'Import pending',
+        trackedDownloadStatus: 'ok',
+        trackedDownloadState: 'importpending',
+      }),
+    ).toBe(false);
+
+    expect(
+      queueItemIsImportBlocked({
+        status: 'Completed',
+        statusDetail: 'Imported and waiting for library refresh.',
+        trackedDownloadStatus: 'warning',
+        trackedDownloadState: 'importpending',
+      }),
+    ).toBe(false);
+  });
+
+  it('treats generic Arr warning rows in import-pending state as stale externals', () => {
+    expect(
+      queueItemIsStaleExternal({
+        status: 'Completed',
+        statusDetail: 'Import failed, destination path already exists.',
+        trackedDownloadStatus: 'warning',
+        trackedDownloadState: 'importpending',
+      }),
+    ).toBe(true);
+
+    expect(
+      queueItemIsStaleExternal({
+        status: 'Completed',
+        statusDetail: 'Import pending',
+        trackedDownloadStatus: 'ok',
+        trackedDownloadState: 'importpending',
+      }),
+    ).toBe(false);
+
+    expect(
+      queueItemIsStaleExternal({
+        status: 'Downloading',
+        statusDetail: 'Temporary unpack warning.',
+        trackedDownloadStatus: 'warning',
+        trackedDownloadState: 'downloading',
+      }),
+    ).toBe(false);
   });
 });

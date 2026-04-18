@@ -217,6 +217,10 @@ describe('queue dashboard service', () => {
       poster: null,
       sourceService: 'radarr',
       status: 'Completed',
+      statusDetail:
+        'Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
+      trackedDownloadStatus: 'warning',
+      trackedDownloadState: 'importpending',
       progress: 100,
       timeLeft: '00:00:00',
       estimatedCompletionTime: '2026-04-18T11:05:28Z',
@@ -248,6 +252,84 @@ describe('queue dashboard service', () => {
           title: 'Dangerous Animals',
           detail: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
         },
+        canCancel: false,
+        canRemove: true,
+      },
+    ]);
+  });
+
+  it('keeps import-pending completed rows cancelable when Arr has not reported a terminal import block', async () => {
+    const { composeQueueEntries } = await import('$lib/server/queue-dashboard-service');
+
+    const queueItem: QueueItem = {
+      id: 'radarr:queue:44',
+      downloadId: 'radarr-download-44',
+      arrItemId: 603,
+      canCancel: true,
+      kind: 'movie',
+      title: 'The Matrix',
+      year: 1999,
+      poster: null,
+      sourceService: 'radarr',
+      status: 'Completed',
+      statusDetail: 'Import pending',
+      trackedDownloadStatus: 'ok',
+      trackedDownloadState: 'importpending',
+      progress: 100,
+      timeLeft: '00:00:00',
+      estimatedCompletionTime: '2026-04-13T12:10:00.000Z',
+      size: 1_000_000_000,
+      sizeLeft: 0,
+      queueId: 44,
+      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      episodeIds: null,
+      seasonNumbers: null,
+    };
+
+    expect(composeQueueEntries([], [queueItem])).toEqual([
+      {
+        kind: 'external',
+        id: queueItem.id,
+        item: queueItem,
+        canCancel: true,
+        canRemove: false,
+      },
+    ]);
+  });
+
+  it('marks generic Arr warning rows as stale external entries', async () => {
+    const { composeQueueEntries } = await import('$lib/server/queue-dashboard-service');
+
+    const queueItem: QueueItem = {
+      id: 'radarr:queue:45',
+      downloadId: 'radarr-download-45',
+      arrItemId: 603,
+      canCancel: true,
+      kind: 'movie',
+      title: 'The Matrix',
+      year: 1999,
+      poster: null,
+      sourceService: 'radarr',
+      status: 'Completed',
+      statusDetail: 'Import failed, destination path already exists.',
+      trackedDownloadStatus: 'warning',
+      trackedDownloadState: 'importpending',
+      progress: 100,
+      timeLeft: '00:00:00',
+      estimatedCompletionTime: '2026-04-13T12:10:00.000Z',
+      size: 1_000_000_000,
+      sizeLeft: 0,
+      queueId: 45,
+      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      episodeIds: null,
+      seasonNumbers: null,
+    };
+
+    expect(composeQueueEntries([], [queueItem])).toEqual([
+      {
+        kind: 'external',
+        id: queueItem.id,
+        item: queueItem,
         canCancel: false,
         canRemove: true,
       },

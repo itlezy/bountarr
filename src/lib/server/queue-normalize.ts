@@ -4,6 +4,11 @@ import { extractSeriesScope } from '$lib/server/series-scope';
 import type { ArrService } from '$lib/server/acquisition-domain';
 import type { QueueItem } from '$lib/shared/types';
 
+const importBlockedMessagePatterns = [
+  /not an upgrade for existing .* file/i,
+  /not a custom format upgrade for existing .* file/i,
+];
+
 function formatQueueStatus(record: Record<string, unknown>): string {
   return (
     asString(record.status) ??
@@ -56,6 +61,46 @@ function queueItemId(
   return `${service}:queue:${crypto.randomUUID()}`;
 }
 
+function normalizeTrackedDownloadValue(value: unknown): string | null {
+  const normalized = asString(value)?.trim().toLowerCase() ?? null;
+  return normalized && normalized.length > 0 ? normalized : null;
+}
+
+export function queueItemIsImportBlocked(
+  item: Pick<QueueItem, 'status' | 'statusDetail' | 'trackedDownloadState' | 'trackedDownloadStatus'>,
+): boolean {
+  if (item.trackedDownloadState !== 'importpending') {
+    return false;
+  }
+
+  const normalizedStatus = item.status.trim().toLowerCase();
+  if (item.trackedDownloadStatus !== 'warning' && normalizedStatus !== 'completed') {
+    return false;
+  }
+
+  const detail = item.statusDetail ?? '';
+  return importBlockedMessagePatterns.some((pattern) => pattern.test(detail));
+}
+
+export function queueItemIsStaleExternal(
+  item: Pick<QueueItem, 'status' | 'statusDetail' | 'trackedDownloadState' | 'trackedDownloadStatus'>,
+): boolean {
+  if (queueItemIsImportBlocked(item)) {
+    return true;
+  }
+
+  if (item.trackedDownloadState !== 'importpending') {
+    return false;
+  }
+
+  if (item.trackedDownloadStatus !== 'warning') {
+    return false;
+  }
+
+  const detail = item.statusDetail?.trim() ?? '';
+  return detail.length > 0;
+}
+
 export function normalizeQueueItem(service: ArrService, rawValue: unknown): QueueItem | null {
   const record = asRecord(rawValue);
   const parent = service === 'radarr' ? asRecord(record.movie) : asRecord(record.series);
@@ -96,6 +141,8 @@ export function normalizeQueueItem(service: ArrService, rawValue: unknown): Queu
     sourceService: service,
     status: formatQueueStatus(record),
     statusDetail: queueStatusDetail(record),
+    trackedDownloadStatus: normalizeTrackedDownloadValue(record.trackedDownloadStatus),
+    trackedDownloadState: normalizeTrackedDownloadValue(record.trackedDownloadState),
     progress,
     timeLeft: asString(record.timeleft) ?? asString(record.timeLeft),
     estimatedCompletionTime: asString(record.estimatedCompletionTime),
