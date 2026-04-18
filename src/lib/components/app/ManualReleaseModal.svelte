@@ -28,18 +28,20 @@ function manualReleaseActionLabel(
   }
 
   if (!release.canSelect) {
-    if (release.rejectedByArr) {
-      return 'Not downloadable';
+    if (release.blockReason === 'title-mismatch') {
+      return 'Title mismatch';
     }
 
-    if (release.selectionBlockedReason && release.scopeStatus !== 'not-applicable') {
+    if (release.blockReason === 'scope-mismatch') {
       return 'Out of scope';
     }
 
     return 'Unavailable';
   }
 
-  return 'Select release';
+  return release.selectionMode === 'override-arr-rejection'
+    ? 'Override Arr rejection'
+    : 'Select release';
 }
 </script>
 
@@ -119,20 +121,35 @@ function manualReleaseActionLabel(
                   <div class="mt-2 overflow-safe-text text-sm text-[var(--muted)]">
                     {release.languages.length > 0 ? release.languages.join(', ') : 'Unknown audio'} · Score {release.score}
                   </div>
-                  <div class="mt-2 overflow-safe-text text-sm text-[var(--muted)]">{release.reason}</div>
-                  {#if release.identityStatus === 'mismatch'}
-                    <div class="mt-2 overflow-safe-text rounded-[14px] border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
-                      Title mismatch: {release.identityReason}
+                  <div class="mt-2 overflow-safe-text text-sm text-[var(--muted)]">{release.explanation.summary}</div>
+                  {#if release.explanation.matchReasons.length > 0}
+                    <div class="mt-2 rounded-[14px] border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200">
+                      <div class="text-[11px] font-700 uppercase tracking-[0.12em]">Why it matches</div>
+                      <div class="mt-1 space-y-1">
+                        {#each release.explanation.matchReasons as reason}
+                          <div class="overflow-safe-text">{reason}</div>
+                        {/each}
+                      </div>
                     </div>
                   {/if}
-                  {#if release.selectionBlockedReason && !release.rejectedByArr && release.scopeStatus !== 'not-applicable'}
-                    <div class="mt-2 overflow-safe-text rounded-[14px] border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-200">
-                      Scope mismatch: {release.selectionBlockedReason}
+                  {#if release.explanation.warningReasons.length > 0}
+                    <div class="mt-2 rounded-[14px] border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+                      <div class="text-[11px] font-700 uppercase tracking-[0.12em]">Why this is risky</div>
+                      <div class="mt-1 space-y-1">
+                        {#each release.explanation.warningReasons as reason}
+                          <div class="overflow-safe-text">{reason}</div>
+                        {/each}
+                      </div>
                     </div>
                   {/if}
-                  {#if release.rejectionReasons.length > 0}
-                    <div class="mt-2 overflow-safe-text text-sm text-[var(--muted)]">
-                      Arr: {release.rejectionReasons.join('; ')}
+                  {#if release.explanation.arrReasons.length > 0}
+                    <div class="mt-2 rounded-[14px] border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-200">
+                      <div class="text-[11px] font-700 uppercase tracking-[0.12em]">Arr warnings</div>
+                      <div class="mt-1 space-y-1">
+                        {#each release.explanation.arrReasons as reason}
+                          <div class="overflow-safe-text">{reason}</div>
+                        {/each}
+                      </div>
                     </div>
                   {/if}
 
@@ -140,7 +157,13 @@ function manualReleaseActionLabel(
                     <button
                       class="control-primary min-h-10 w-full px-4 text-sm font-700 disabled:cursor-not-allowed disabled:opacity-50"
                       type="button"
-                      onclick={() => void state.selectManualRelease(activeJobId, release.guid, release.indexerId)}
+                      onclick={() =>
+                        void state.selectManualRelease(
+                          activeJobId,
+                          release.guid,
+                          release.indexerId,
+                          release.selectionMode ?? 'direct',
+                        )}
                       disabled={
                         !release.canSelect ||
                         state.manualSelectingJobId === activeJobId ||

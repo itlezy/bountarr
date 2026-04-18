@@ -595,7 +595,7 @@ test('movie live UI covers search, grab, and cancel', async ({ page }) => {
 
   await expect(page.getByRole('heading', { name: 'Grab Progress' })).toBeVisible();
   await expect(page.getByRole('status')).toContainText(
-    `${config.untrackedMovie.title} was added to Radarr.`,
+    `"${config.untrackedMovie.title}" was added to Radarr.`,
   );
 
   const jobCard = acquisitionJobCard(page, config.untrackedMovie.title);
@@ -1051,7 +1051,7 @@ test('series live UI covers search, season selection, remove, and retry grab', a
 
   await expect(page.getByRole('heading', { name: 'Grab Progress' })).toBeVisible();
   await expect(page.getByRole('status')).toContainText(
-    `${seriesTarget.title} was added to Sonarr.`,
+    `"${seriesTarget.title}" was added to Sonarr.`,
   );
 
   const jobCard = acquisitionJobCard(page, seriesTarget.title);
@@ -1081,7 +1081,7 @@ test('series live UI covers search, season selection, remove, and retry grab', a
   await retryDialog.getByRole('button', { name: 'Grab', exact: true }).click();
 
   await expect(page.getByRole('status')).toContainText(
-    `${seriesTarget.title} was added to Sonarr.`,
+    `"${seriesTarget.title}" was added to Sonarr.`,
   );
   const retryJobCard = acquisitionJobCard(page, seriesTarget.title);
   await expect(retryJobCard).toBeVisible();

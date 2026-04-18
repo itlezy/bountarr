@@ -2,6 +2,7 @@ import { error, json } from '@sveltejs/kit';
 import { selectManualRelease } from '$lib/server/acquisition-service';
 import { asNumber, asString } from '$lib/server/raw';
 import { createAreaLogger, getErrorMessage, toErrorLogContext } from '$lib/server/logger';
+import type { ManualReleaseSelectRequest, ManualReleaseSelectionMode } from '$lib/shared/types';
 
 const logger = createAreaLogger('api.acquisition.select');
 
@@ -19,29 +20,37 @@ export const POST = async ({
   params: { jobId: string };
   request: Request;
 }) => {
-  const payload = (await request.json()) as {
-    guid?: string;
-    indexerId?: number;
-  };
+  const payload = (await request.json()) as Partial<ManualReleaseSelectRequest>;
   const guid = asString(payload.guid);
   const indexerId = asNumber(payload.indexerId);
+  const selectionMode =
+    payload.selectionMode === 'direct' || payload.selectionMode === 'override-arr-rejection'
+      ? (payload.selectionMode as ManualReleaseSelectionMode)
+      : null;
 
-  if (!guid || indexerId === null) {
-    throw error(400, 'A release guid and indexer id are required.');
+  if (!guid || indexerId === null || selectionMode === null) {
+    throw error(400, 'A release guid, indexer id, and selection mode are required.');
   }
 
   logger.info('Acquisition manual-select request started', {
     guid,
     indexerId,
     jobId: params.jobId,
+    selectionMode,
   });
 
   try {
-    const result = await selectManualRelease(params.jobId, guid, indexerId);
+    const result = await selectManualRelease(
+      params.jobId,
+      guid,
+      indexerId,
+      selectionMode,
+    );
     logger.info('Acquisition manual-select request completed', {
       guid,
       indexerId,
       jobId: params.jobId,
+      selectionMode,
       status: result.job.status,
     });
     return json(result);
@@ -57,6 +66,7 @@ export const POST = async ({
       guid,
       indexerId,
       jobId: params.jobId,
+      selectionMode,
       ...toErrorLogContext(requestError),
     });
 

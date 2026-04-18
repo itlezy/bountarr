@@ -286,7 +286,7 @@ export const grabResponseFixture: GrabResponse = {
     isRequested: true,
     status: 'Already in Arr',
   },
-  message: 'The Matrix is already tracked in Radarr',
+  message: '"The Matrix" is already tracked in Radarr',
   releaseDecision: null,
   job: acquisitionJobFixture,
 };

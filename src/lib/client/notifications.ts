@@ -1,4 +1,5 @@
 import type { MediaItem } from '$lib/shared/types';
+import { quoteTitle } from '$lib/shared/text-format';
 
 const seenAlerts = new Set<string>();
 
@@ -43,6 +44,6 @@ export function notifyAuditFailures(items: MediaItem[]): void {
         ? 'missing the preferred audio language'
         : 'missing the selected subtitle language';
 
-    pushNotification('Bountarr audit warning', `${item.title} is ${reason}.`);
+    pushNotification('Bountarr audit warning', `${quoteTitle(item.title)} is ${reason}.`);
   }
 }

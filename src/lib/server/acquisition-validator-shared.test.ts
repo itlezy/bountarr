@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   findQueueRecordForArrItem,
+  historyRecordSignalsImport,
+  historySince,
   queueRecordArrItemId,
   queueRecordId,
 } from '$lib/server/acquisition-validator-shared';
@@ -108,5 +110,57 @@ describe('acquisition validator shared helpers', () => {
 
     expect(arrFetch).toHaveBeenCalledTimes(2);
     expect(records).toEqual([{ id: 32, movie: { id: 603 }, date: '2026-04-13T12:01:00.000Z' }]);
+  });
+
+  it('treats only import-like history events as completed releases', () => {
+    expect(
+      historyRecordSignalsImport({
+        eventType: 'grabbed',
+      }),
+    ).toBe(false);
+    expect(
+      historyRecordSignalsImport({
+        eventType: 'downloadFailed',
+      }),
+    ).toBe(false);
+    expect(
+      historyRecordSignalsImport({
+        eventType: 'downloadFolderImported',
+      }),
+    ).toBe(true);
+    expect(
+      historyRecordSignalsImport({
+        data: {
+          importedPath: 'C:\\Media\\Movie.mkv',
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it('ignores grabbed history entries until the matching release is actually imported', () => {
+    const records = [
+      {
+        eventType: 'grabbed',
+        date: '2026-04-18T10:07:54.000Z',
+        sourceTitle: 'Sharing.the.Secret.2000.1080p.AMZN.WEB-DL.DDP2.0.H.264-TEPES',
+      },
+      {
+        eventType: 'downloadFolderImported',
+        date: '2026-04-18T10:16:14.000Z',
+        sourceTitle: 'Sharing.the.Secret.2000.1080p.AMZN.WEB-DL.DDP2.0.H.264-TEPES',
+        data: {
+          importedPath:
+            'C:\\M\\H20T00\\dldz\\TVZZ\\MOVIEZ_ENG_RADARR\\Sharing the Secret (2000) tt0240894\\Sharing.the.Secret.2000.1080p.AMZN.WEB-DL.DDP2.0.H.264-TEPES.mkv',
+        },
+      },
+    ];
+
+    expect(
+      historySince(
+        records,
+        '2026-04-18T10:07:37.402Z',
+        'Sharing.the.Secret.2000.1080p.AMZN.WEB-DL.DDP2.0.H.264-TEPES',
+      ),
+    ).toEqual([records[1]]);
   });
 });

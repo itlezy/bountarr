@@ -57,6 +57,7 @@ describe('AcquisitionJobRepository', () => {
       progress: 55,
       queuedManualSelection: persistManualSelection({
         manualResults: [],
+        manualSelectionMode: 'direct',
         mappedReleases: 1,
         releasesFound: 1,
         selectedGuid: 'guid-manual',
@@ -109,9 +110,11 @@ describe('AcquisitionJobRepository', () => {
     expect(loaded?.attempts).toHaveLength(1);
     expect(loaded?.attempts[0]?.reasonCode).toBe('validated');
     expect(loaded?.attempts[0]?.releaseTitle).toContain('Flux');
+    expect(loaded?.attempts[0]?.manualSelectionMode).toBeNull();
     expect(loaded?.attempts[0]?.submittedGuid).toBeNull();
     expect(loaded?.failedGuids).toEqual(['guid-1']);
     expect(loaded?.queuedManualSelection?.decision.selected.guid).toBe('guid-manual');
+    expect(loaded?.queuedManualSelection?.selectionMode).toBe('direct');
   });
 
   it('claims release submission only once per attempt', () => {

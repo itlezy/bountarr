@@ -75,7 +75,7 @@ const etaLabel = $derived(queueEtaLabel(item));
 
       {#if entry.canCancel || state.hasQueueOperatorActions(entry)}
         <div class="mt-3 space-y-2">
-          {#if item.canCancel && item.queueId !== null}
+          {#if entry.canCancel}
             <button
               class="control-shell min-h-10 w-full border-amber-300 px-4 text-sm font-700 text-amber-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-700 dark:text-amber-200"
               type="button"

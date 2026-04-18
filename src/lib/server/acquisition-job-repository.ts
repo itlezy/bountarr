@@ -10,7 +10,7 @@ import { canTransitionJobStatus, sortJobs } from '$lib/server/acquisition-domain
 import type { AcquisitionReasonCode } from '$lib/shared/types';
 import { sanitizePreferredLanguage } from '$lib/shared/languages';
 import { asNumber, asPositiveNumber, asString } from '$lib/server/raw';
-import type { AcquisitionAttempt, MediaKind } from '$lib/shared/types';
+import type { AcquisitionAttempt, ManualReleaseSelectionMode, MediaKind } from '$lib/shared/types';
 
 type JobRow = {
   id: string;
@@ -52,6 +52,7 @@ type AttemptRow = {
   release_title: string | null;
   releaser: string | null;
   reason: string | null;
+  manual_selection_mode: ManualReleaseSelectionMode | null;
   submitted_guid: string | null;
   submitted_indexer_id: number | null;
   submission_claimed_at: string | null;
@@ -106,6 +107,7 @@ export type UpsertAcquisitionAttemptInput = {
   reason?: string | null;
   releaseTitle?: string | null;
   releaser?: string | null;
+  manualSelectionMode?: ManualReleaseSelectionMode | null;
   submittedGuid?: string | null;
   submittedIndexerId?: number | null;
   submissionClaimedAt?: string | null;
@@ -177,6 +179,8 @@ function parseManualSelectionJson(
       typeof parsed.decision.accepted !== 'number' ||
       typeof parsed.decision.selected !== 'object' ||
       parsed.decision.selected === null ||
+      (parsed.selectionMode !== 'direct' &&
+        parsed.selectionMode !== 'override-arr-rejection') ||
       typeof parsed.selectedResult !== 'object' ||
       parsed.selectedResult === null ||
       typeof parsed.decision.selected.guid !== 'string' ||
@@ -269,6 +273,7 @@ export class AcquisitionJobRepository {
         releaseTitle: row.release_title,
         releaser: row.releaser,
         reason: row.reason,
+        manualSelectionMode: row.manual_selection_mode,
         submittedGuid: row.submitted_guid,
         submittedIndexerId: row.submitted_indexer_id,
         submissionClaimedAt: row.submission_claimed_at,
@@ -703,6 +708,10 @@ export class AcquisitionJobRepository {
       release_title: input.releaseTitle ?? existing?.release_title ?? null,
       releaser: input.releaser ?? existing?.releaser ?? null,
       reason: input.reason ?? existing?.reason ?? null,
+      manual_selection_mode:
+        input.manualSelectionMode !== undefined
+          ? input.manualSelectionMode
+          : (existing?.manual_selection_mode ?? null),
       submitted_guid:
         input.submittedGuid !== undefined ? input.submittedGuid : (existing?.submitted_guid ?? null),
       submitted_indexer_id:
@@ -722,15 +731,16 @@ export class AcquisitionJobRepository {
       this.database
         .prepare(
           `INSERT INTO acquisition_attempts (
-            job_id, attempt, status, reason_code, release_title, releaser, reason,
+            job_id, attempt, status, reason_code, release_title, releaser, reason, manual_selection_mode,
             submitted_guid, submitted_indexer_id, submission_claimed_at, started_at, finished_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(job_id, attempt) DO UPDATE SET
             status = excluded.status,
             reason_code = excluded.reason_code,
             release_title = excluded.release_title,
             releaser = excluded.releaser,
             reason = excluded.reason,
+            manual_selection_mode = excluded.manual_selection_mode,
             submitted_guid = excluded.submitted_guid,
             submitted_indexer_id = excluded.submitted_indexer_id,
             submission_claimed_at = excluded.submission_claimed_at,
@@ -745,6 +755,7 @@ export class AcquisitionJobRepository {
           row.release_title,
           row.releaser,
           row.reason,
+          row.manual_selection_mode,
           row.submitted_guid,
           row.submitted_indexer_id,
           row.submission_claimed_at,

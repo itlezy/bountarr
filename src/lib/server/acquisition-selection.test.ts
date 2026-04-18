@@ -98,26 +98,29 @@ describe('acquisition selection', () => {
         manualResults: [
           {
             canSelect: false,
-            downloadAllowed: true,
+            selectionMode: null,
+            blockReason: 'already-selected',
             guid: 'guid-selected',
-            identityReason: 'Release title matched American History X',
             identityStatus: 'exact-match',
             indexer: 'Indexer',
             indexerId: 11,
             languages: ['English'],
             protocol: 'torrent',
             reason: 'User selected American.History.X.1998.1080p.WEB-DL-NTb',
-            rejectedByArr: false,
-            rejectionReasons: [],
-            scopeReason: null,
             scopeStatus: 'not-applicable',
+            explanation: {
+              summary: 'User selected American.History.X.1998.1080p.WEB-DL-NTb',
+              matchReasons: ['Release title matched American History X'],
+              warningReasons: [],
+              arrReasons: [],
+            },
             score: 500,
-            selectionBlockedReason: null,
             size: 1_000,
             status: 'selected',
             title: 'American.History.X.1998.1080p.WEB-DL-NTb',
           },
         ],
+        manualSelectionMode: 'direct',
         mappedReleases: 7,
         releasesFound: 9,
         selectedGuid: 'guid-selected',
@@ -188,26 +191,29 @@ describe('acquisition selection', () => {
         manualResults: [
           {
             canSelect: false,
-            downloadAllowed: true,
+            selectionMode: null,
+            blockReason: 'already-selected',
             guid: 'guid-selected',
-            identityReason: 'Release title matched American History X',
             identityStatus: 'exact-match',
             indexer: 'Indexer',
             indexerId: 11,
             languages: ['English'],
             protocol: 'torrent',
             reason: 'User selected American.History.X.1998.1080p.WEB-DL-NTb',
-            rejectedByArr: false,
-            rejectionReasons: [],
-            scopeReason: null,
             scopeStatus: 'not-applicable',
+            explanation: {
+              summary: 'User selected American.History.X.1998.1080p.WEB-DL-NTb',
+              matchReasons: ['Release title matched American History X'],
+              warningReasons: [],
+              arrReasons: [],
+            },
             score: 500,
-            selectionBlockedReason: null,
             size: 1_000,
             status: 'selected',
             title: 'American.History.X.1998.1080p.WEB-DL-NTb',
           },
         ],
+        manualSelectionMode: 'direct',
         mappedReleases: 7,
         releasesFound: 9,
         selectedGuid: 'guid-selected',
@@ -264,7 +270,7 @@ describe('acquisition selection', () => {
     ]);
   });
 
-  it('marks Arr-rejected releases as not selectable in manual results', async () => {
+  it('keeps Arr-rejected releases directly selectable in manual results', async () => {
     vi.spyOn(arrClient, 'arrFetch').mockResolvedValue([
         {
           guid: 'guid-accepted',
@@ -304,8 +310,9 @@ describe('acquisition selection', () => {
     const rejected = results.releases.find((release) => release.guid === 'guid-rejected');
 
     expect(rejected).toMatchObject({
-      canSelect: false,
-      rejectedByArr: true,
+      canSelect: true,
+      selectionMode: 'override-arr-rejection',
+      blockReason: null,
       status: 'arr-rejected',
     });
   });
@@ -331,9 +338,50 @@ describe('acquisition selection', () => {
         },
       ]);
 
-    await expect(findManualReleaseSelection(job, 'guid-rejected', 12)).rejects.toThrow(
+    await expect(findManualReleaseSelection(job, 'guid-rejected', 12, 'direct')).rejects.toThrow(
       'Rejected by Arr custom format rules',
     );
+  });
+
+  it('allows manual selection override for releases Arr marked as not downloadable', async () => {
+    vi.spyOn(arrClient, 'arrFetch').mockResolvedValue([
+      {
+        guid: 'guid-rejected',
+        indexerId: 12,
+        indexer: 'Indexer',
+        title: 'American.History.X.1998.2160p.BluRay-BLOCKED',
+        movieTitles: 'American History X',
+        mappedMovieId: 603,
+        languages: [{ name: 'English' }],
+        qualityWeight: 70,
+        releaseWeight: 70,
+        customFormatScore: 0,
+        size: 8_000_000_000,
+        protocol: 'torrent',
+        downloadAllowed: false,
+        rejected: true,
+        rejections: ['Rejected by Arr custom format rules'],
+      },
+    ]);
+
+    const result = await findManualReleaseSelection(
+      job,
+      'guid-rejected',
+      12,
+      'override-arr-rejection',
+    );
+
+    expect(result.selectedGuid).toBe('guid-rejected');
+    expect(result.manualSelectionMode).toBe('override-arr-rejection');
+    expect(result.selection.decision.reason).toContain(
+      'User overrode Arr rejection and selected American.History.X.1998.2160p.BluRay-BLOCKED:',
+    );
+    expect(result.manualResults[0]).toMatchObject({
+      canSelect: false,
+      selectionMode: null,
+      guid: 'guid-rejected',
+      status: 'selected',
+    });
   });
 
   it('marks scope-mismatched series releases as not selectable in manual results', async () => {
@@ -375,8 +423,11 @@ describe('acquisition selection', () => {
 
     expect(wrongSeason).toMatchObject({
       canSelect: false,
+      blockReason: 'scope-mismatch',
       scopeStatus: 'mismatch',
-      selectionBlockedReason: 'Release scope targets different seasons.',
+      explanation: {
+        warningReasons: ['Release scope targets different seasons.'],
+      },
       status: 'locally-rejected',
     });
   });
@@ -400,9 +451,35 @@ describe('acquisition selection', () => {
       },
     ]);
 
-    await expect(findManualReleaseSelection(seriesJob, 'guid-wrong-season', 12)).rejects.toThrow(
-      'Release scope targets different seasons.',
-    );
+    await expect(
+      findManualReleaseSelection(seriesJob, 'guid-wrong-season', 12, 'direct'),
+    ).rejects.toThrow('Release scope targets different seasons.');
+  });
+
+  it('keeps rejecting out-of-scope series releases even when Arr override is requested', async () => {
+    vi.spyOn(arrClient, 'arrFetch').mockResolvedValue([
+      {
+        guid: 'guid-wrong-season',
+        indexerId: 12,
+        indexer: 'Indexer',
+        title: 'Andor.S02.1080p.WEB-DL-FLUX',
+        seriesTitles: 'Andor',
+        mappedSeriesId: 83867,
+        languages: [{ name: 'English' }],
+        qualityWeight: 80,
+        releaseWeight: 80,
+        customFormatScore: 0,
+        size: 8_500_000_000,
+        protocol: 'torrent',
+        downloadAllowed: false,
+        rejected: true,
+        rejections: ['Rejected by Arr custom format rules'],
+      },
+    ]);
+
+    await expect(
+      findManualReleaseSelection(seriesJob, 'guid-wrong-season', 12, 'override-arr-rejection'),
+    ).rejects.toThrow('Release scope targets different seasons.');
   });
 
   it('marks partially overlapping series releases as not selectable in manual results', async () => {
@@ -431,8 +508,11 @@ describe('acquisition selection', () => {
 
     expect(partialTarget).toMatchObject({
       canSelect: false,
+      blockReason: 'scope-mismatch',
       scopeStatus: 'partial',
-      selectionBlockedReason: 'Release appears to cover individual episodes within the targeted seasons.',
+      explanation: {
+        warningReasons: ['Release appears to cover individual episodes within the targeted seasons.'],
+      },
       status: 'locally-rejected',
     });
   });
@@ -458,9 +538,9 @@ describe('acquisition selection', () => {
       },
     ]);
 
-    await expect(findManualReleaseSelection(seriesJob, 'guid-partial-target', 13)).rejects.toThrow(
-      'Release appears to cover individual episodes within the targeted seasons.',
-    );
+    await expect(
+      findManualReleaseSelection(seriesJob, 'guid-partial-target', 13, 'direct'),
+    ).rejects.toThrow('Release appears to cover individual episodes within the targeted seasons.');
   });
 
   it('rejects manual selection for series releases with unknown scope', async () => {
@@ -487,12 +567,15 @@ describe('acquisition selection', () => {
 
     expect(unknownScope).toMatchObject({
       canSelect: false,
+      blockReason: 'scope-mismatch',
       scopeStatus: 'unknown',
-      selectionBlockedReason: 'The release does not expose season or episode scope.',
+      explanation: {
+        warningReasons: ['The release does not expose season or episode scope.'],
+      },
       status: 'locally-rejected',
     });
-    await expect(findManualReleaseSelection(seriesJob, 'guid-unknown-scope', 14)).rejects.toThrow(
-      'The release does not expose season or episode scope.',
-    );
+    await expect(
+      findManualReleaseSelection(seriesJob, 'guid-unknown-scope', 14, 'direct'),
+    ).rejects.toThrow('The release does not expose season or episode scope.');
   });
 });

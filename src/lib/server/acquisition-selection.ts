@@ -13,8 +13,10 @@ import { extractReleaser } from '$lib/server/media-identity';
 import { asNumber, asRecord } from '$lib/server/raw';
 import { defaultPreferences } from '$lib/shared/preferences';
 import type {
+  ManualReleaseBlockReason,
   ManualReleaseListResponse,
   ManualReleaseResult,
+  ManualReleaseSelectionMode,
   MediaKind,
   ReleaseDecisionCandidate,
 } from '$lib/shared/types';
@@ -35,6 +37,7 @@ function selectMappedReleases(
 
 export type ReleaseSelectionResult = {
   manualResults: ManualReleaseResult[];
+  manualSelectionMode: ManualReleaseSelectionMode | null;
   mappedReleases: number;
   releasesFound: number;
   selectedGuid: string | null;
@@ -56,14 +59,16 @@ export function persistManualSelection(
   ) ?? {
     ...structuredClone(result.selection.decision.selected),
     canSelect: false,
-    downloadAllowed: true,
-    identityReason: result.selection.decision.reason,
+    selectionMode: result.manualSelectionMode ?? 'direct',
+    blockReason: 'already-selected',
     identityStatus: 'exact-match',
-    scopeReason: null,
     scopeStatus: 'not-applicable',
-    selectionBlockedReason: null,
-    rejectedByArr: false,
-    rejectionReasons: [],
+    explanation: {
+      summary: result.selection.decision.reason,
+      matchReasons: [result.selection.decision.reason],
+      warningReasons: [],
+      arrReasons: [],
+    },
     status: 'selected',
   };
 
@@ -73,6 +78,7 @@ export function persistManualSelection(
       selected: result.selection.decision.selected,
     },
     payload: structuredClone(result.selection.payload),
+    selectionMode: result.manualSelectionMode ?? 'direct',
     selectedResult: structuredClone(selectedResult),
   };
 }
@@ -85,9 +91,12 @@ export function restoreManualSelection(
       {
         ...structuredClone(selection.selectedResult),
         canSelect: false,
+        blockReason: 'already-selected',
+        selectionMode: null,
         status: 'selected',
       },
     ],
+    manualSelectionMode: selection.selectionMode,
     mappedReleases: selection.decision.considered,
     releasesFound: selection.decision.considered,
     selectedGuid: selection.decision.selected.guid,
@@ -202,6 +211,7 @@ async function fetchReleaseInventory(job: PersistedAcquisitionJob): Promise<Rele
 
 function mapManualReleaseStatus(
   release: EvaluatedRelease,
+  blockReason: ManualReleaseBlockReason | null,
   selectedGuid: string | null,
   failedGuids: string[],
 ): ManualReleaseResult['status'] {
@@ -213,6 +223,10 @@ function mapManualReleaseStatus(
     return 'previously-failed';
   }
 
+  if (blockReason !== null) {
+    return 'locally-rejected';
+  }
+
   if (release.arrRejected) {
     return 'arr-rejected';
   }
@@ -220,29 +234,49 @@ function mapManualReleaseStatus(
   return release.autoSelectable ? 'accepted' : 'locally-rejected';
 }
 
-function canSelectManualRelease(
-  release: EvaluatedRelease,
-  selectedGuid: string | null,
-): boolean {
-  return (
-    !release.arrRejected &&
-    manualSelectionBlockedReason(release) === null &&
-    release.candidate.guid !== selectedGuid
-  );
+function manualSelectionMode(release: EvaluatedRelease): ManualReleaseSelectionMode {
+  return release.arrRejected ? 'override-arr-rejection' : 'direct';
 }
 
-function manualSelectionBlockedReason(release: EvaluatedRelease): string | null {
-  if (release.arrRejected) {
-    return null;
+function manualSelectionBlockReason(release: EvaluatedRelease): ManualReleaseBlockReason | null {
+  if (release.scopeStatus !== 'not-applicable' && release.scopeStatus !== 'exact') {
+    return 'scope-mismatch';
   }
 
-  if (release.scopeStatus !== 'not-applicable' && release.scopeStatus !== 'exact') {
-    return (
-      release.scopeReason ?? 'This release cannot satisfy the targeted scope for the active grab.'
-    );
+  if (release.identityStatus === 'mismatch') {
+    return 'title-mismatch';
   }
 
   return null;
+}
+
+function manualSelectionWarningReasons(release: EvaluatedRelease): string[] {
+  const warnings: string[] = [];
+
+  if (
+    release.identityStatus === 'mismatch' &&
+    (release.scopeStatus === 'not-applicable' || release.scopeStatus === 'exact')
+  ) {
+    warnings.push(release.identityReason);
+  }
+
+  if (release.scopeStatus !== 'not-applicable' && release.scopeStatus !== 'exact') {
+    warnings.push(
+      release.scopeReason ?? 'This release cannot satisfy the targeted scope for the active grab.',
+    );
+  }
+
+  return warnings;
+}
+
+function manualSelectionMatchReasons(release: EvaluatedRelease): string[] {
+  const reasons = [release.identityReason];
+
+  if (release.scopeReason && release.scopeStatus === 'exact') {
+    reasons.push(release.scopeReason);
+  }
+
+  return [...new Set(reasons)];
 }
 
 function toManualReleaseResult(
@@ -250,18 +284,24 @@ function toManualReleaseResult(
   selectedGuid: string | null,
   failedGuids: string[],
 ): ManualReleaseResult {
+  const blockReason =
+    release.candidate.guid === selectedGuid ? 'already-selected' : manualSelectionBlockReason(release);
+  const canSelect = blockReason === null;
+
   return {
     ...release.candidate,
-    canSelect: canSelectManualRelease(release, selectedGuid),
-    downloadAllowed: !release.arrRejected || release.rejectionReasons.length === 0,
-    identityReason: release.identityReason,
+    canSelect,
+    selectionMode: canSelect ? manualSelectionMode(release) : null,
+    blockReason,
     identityStatus: release.identityStatus,
-    scopeReason: release.scopeReason,
     scopeStatus: release.scopeStatus,
-    selectionBlockedReason: manualSelectionBlockedReason(release),
-    rejectedByArr: release.arrRejected,
-    rejectionReasons: release.rejectionReasons,
-    status: mapManualReleaseStatus(release, selectedGuid, failedGuids),
+    explanation: {
+      summary: release.candidate.reason,
+      matchReasons: manualSelectionMatchReasons(release),
+      warningReasons: manualSelectionWarningReasons(release),
+      arrReasons: [...release.rejectionReasons],
+    },
+    status: mapManualReleaseStatus(release, blockReason, selectedGuid, failedGuids),
   };
 }
 
@@ -315,6 +355,7 @@ export async function findReleaseSelection(
         toManualReleaseResult(release, selectedGuid, job.failedGuids),
       ),
     ),
+    manualSelectionMode: null,
     mappedReleases: inventory.mappedReleases,
     releasesFound: inventory.releasesFound,
     selectedGuid,
@@ -365,6 +406,7 @@ export async function findManualReleaseSelection(
   job: PersistedAcquisitionJob,
   guid: string,
   indexerId: number,
+  selectionMode: ManualReleaseSelectionMode,
 ): Promise<ReleaseSelectionResult> {
   const inventory = await fetchReleaseInventory(job);
   const matched = inventory.evaluated.find(
@@ -375,7 +417,8 @@ export async function findManualReleaseSelection(
     throw new Error('The selected manual-search release is no longer available.');
   }
 
-  if (matched.arrRejected) {
+  const requiredSelectionMode = manualSelectionMode(matched);
+  if (matched.arrRejected && selectionMode !== 'override-arr-rejection') {
     const rejectionReason =
       matched.rejectionReasons.find(
         (reason) => reason !== 'Arr marked this release as not downloadable',
@@ -387,8 +430,13 @@ export async function findManualReleaseSelection(
     );
   }
 
-  const blockedReason = manualSelectionBlockedReason(matched);
-  if (blockedReason) {
+  if (!matched.arrRejected && selectionMode !== 'direct') {
+    throw new Error('Only Arr-rejected releases can use Arr override selection.');
+  }
+
+  const blockedReason = manualSelectionWarningReasons(matched)[0];
+  const blockReasonKind = manualSelectionBlockReason(matched);
+  if (blockReasonKind !== null && blockedReason) {
     throw new Error(blockedReason);
   }
 
@@ -397,7 +445,11 @@ export async function findManualReleaseSelection(
     decision: {
       accepted: inventory.evaluated.filter((release) => release.autoSelectable).length,
       considered: inventory.mappedReleases,
-      reason: `User selected ${matched.candidate.title}: ${matched.candidate.reason}`,
+      reason: `${
+        requiredSelectionMode === 'override-arr-rejection'
+          ? 'User overrode Arr rejection and selected'
+          : 'User selected'
+      } ${matched.candidate.title}: ${matched.candidate.reason}`,
       selected: matched.candidate,
     },
   } satisfies ReturnType<typeof selectBestEvaluatedRelease>;
@@ -408,6 +460,7 @@ export async function findManualReleaseSelection(
         toManualReleaseResult(release, matched.candidate.guid, job.failedGuids),
       ),
     ),
+    manualSelectionMode: requiredSelectionMode,
     mappedReleases: inventory.mappedReleases,
     releasesFound: inventory.releasesFound,
     selectedGuid: matched.candidate.guid,
@@ -437,6 +490,7 @@ export function selectionLogContext(result: ReleaseSelectionResult): Record<stri
   return {
     considered: result.selection.decision.considered,
     accepted: result.selection.decision.accepted,
+    manualSelectionMode: result.manualSelectionMode,
     selectedTitle: result.selection.decision.selected?.title ?? null,
     selectedReleaser: result.selection.decision.selected
       ? extractReleaser(result.selection.decision.selected.title)

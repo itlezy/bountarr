@@ -1,4 +1,5 @@
 import { sanitizePreferences } from '$lib/shared/preferences';
+import { quoteTitle } from '$lib/shared/text-format';
 import type { AcquisitionJob, GrabResponse, MediaItem, Preferences } from '$lib/shared/types';
 import { createAreaLogger } from '$lib/server/logger';
 import { acquisitionMaxRetries, arrFetch } from '$lib/server/arr-client';
@@ -60,7 +61,7 @@ function ensureRootFolder(defaults: Record<string, unknown>, service: ArrService
 
 function ensureAddable(item: MediaItem): void {
   if (!item.canAdd || !item.requestPayload || item.sourceService === 'plex') {
-    throw new AcquisitionGrabError(400, `${item.title} cannot be added from this result`);
+    throw new AcquisitionGrabError(400, `${quoteTitle(item.title)} cannot be added from this result`);
   }
 }
 
@@ -115,7 +116,7 @@ function explicitSeriesTargetSeasonNumbers(
     return seasonNumbers;
   }
 
-  throw new AcquisitionGrabError(400, `Select at least one season before grabbing ${item.title}.`);
+  throw new AcquisitionGrabError(400, `Select at least one season before grabbing ${quoteTitle(item.title)}.`);
 }
 
 function requestedQualityProfileId(item: MediaItem, options?: GrabItemOptions): number | null {
@@ -386,7 +387,7 @@ async function trackedResponse(
       existing: true,
       item: existingItem,
       job: null,
-      message: `${item.title} is already tracked in ${spec.trackedName}`,
+      message: `${quoteTitle(item.title)} is already tracked in ${spec.trackedName}`,
       releaseDecision: null,
     };
   }
@@ -436,8 +437,8 @@ async function trackedResponse(
     item: responseItem,
     job: claimedJob.job,
     message: claimedJob.created
-      ? `${item.title} is already tracked in ${spec.trackedName}. Alternate-release acquisition started.`
-      : `${item.title} is already tracked in ${spec.trackedName}. Reusing the active alternate-release grab.`,
+      ? `${quoteTitle(item.title)} is already tracked in ${spec.trackedName}. Alternate-release acquisition started.`
+      : `${quoteTitle(item.title)} is already tracked in ${spec.trackedName}. Reusing the active alternate-release grab.`,
     releaseDecision: null,
   };
 }
@@ -642,7 +643,7 @@ async function grabTrackedItem(
       );
       throw new AcquisitionGrabError(
         500,
-        `${item.title} was added to ${spec.trackedName}, but acquisition tracking could not be started.`,
+        `${quoteTitle(item.title)} was added to ${spec.trackedName}, but acquisition tracking could not be started.`,
       );
     }
   }
@@ -652,8 +653,8 @@ async function grabTrackedItem(
     item: createdItem,
     job,
     message: createdId
-      ? `${item.title} was added to ${spec.trackedName}. Acquisition started.`
-      : `${item.title} was added to ${spec.trackedName}`,
+      ? `${quoteTitle(item.title)} was added to ${spec.trackedName}. Acquisition started.`
+      : `${quoteTitle(item.title)} was added to ${spec.trackedName}`,
     releaseDecision: null,
   };
 }

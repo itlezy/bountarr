@@ -108,7 +108,7 @@ test('movie grab submits through the grab dialog and moves to queue view', async
             isRequested: true,
             status: 'Queued in Radarr',
           },
-          message: 'The Matrix was added to Radarr.',
+          message: '"The Matrix" was added to Radarr.',
           releaseDecision: null,
           job: {
             id: 'job-movie-603',
@@ -176,7 +176,7 @@ test('movie grab submits through the grab dialog and moves to queue view', async
 
   await expect(page.getByRole('dialog', { name: 'Grab title' })).toHaveCount(0);
   const confirmation = page.getByRole('status');
-  await expect(confirmation).toContainText('The Matrix was added to Radarr.');
+  await expect(confirmation).toContainText('"The Matrix" was added to Radarr.');
   if (mobileProject(testInfo)) {
     const box = await confirmation.boundingBox();
     expect(box).not.toBeNull();
@@ -186,7 +186,7 @@ test('movie grab submits through the grab dialog and moves to queue view', async
   expect(api.grabBodies[0]?.seasonNumbers).toBeUndefined();
   await expect(page.getByRole('heading', { name: 'Grab Progress' })).toBeVisible();
   await expect(
-    page.getByText('Tracking The Matrix below so you can see what happens next.'),
+    page.getByText('Tracking "The Matrix" below so you can see what happens next.'),
   ).toBeVisible();
   await page.waitForTimeout(3_200);
   await expect(confirmation).toHaveCount(0);
@@ -207,7 +207,7 @@ test('movie grab confirmation ignores a rapid double submit', async ({ page }) =
             isRequested: true,
             status: 'Queued in Radarr',
           },
-          message: 'The Matrix was added to Radarr.',
+          message: '"The Matrix" was added to Radarr.',
           releaseDecision: null,
           job: {
             id: 'job-movie-603',
@@ -293,10 +293,10 @@ test('series grab defaults to season 1 and allows changing seasons', async ({ pa
     .toBe(1);
 
   await expect(page.getByRole('dialog', { name: 'Grab title' })).toHaveCount(0);
-  await expect(page.getByRole('status')).toContainText('Andor was added to Sonarr.');
+  await expect(page.getByRole('status')).toContainText('"Andor" was added to Sonarr.');
   expect(api.grabBodies[0]?.seasonNumbers).toEqual([1, 2]);
   await expect(
-    page.getByText('Tracking Andor below so you can see what happens next.'),
+    page.getByText('Tracking "Andor" below so you can see what happens next.'),
   ).toBeVisible();
 });
 
@@ -349,7 +349,7 @@ test('tracked series alternate grabs submit the tracked quality profile and sele
           isRequested: true,
           status: 'Already in Arr',
         },
-        message: 'Andor is already tracked in Sonarr. Alternate-release acquisition started.',
+        message: '"Andor" is already tracked in Sonarr. Alternate-release acquisition started.',
         releaseDecision: null,
         job: {
           id: 'job-series-83867',
@@ -414,7 +414,7 @@ test('tracked series alternate grabs submit the tracked quality profile and sele
   expect(api.grabBodies[0]?.qualityProfileId).toBe(2);
   expect(api.grabBodies[0]?.seasonNumbers).toEqual([2]);
   await expect(page.getByRole('status')).toContainText(
-    'Andor is already tracked in Sonarr. Alternate-release acquisition started.',
+    '"Andor" is already tracked in Sonarr. Alternate-release acquisition started.',
   );
   await expect(page.getByRole('heading', { name: 'Grab Progress' })).toBeVisible();
 });
@@ -586,7 +586,7 @@ test('arr-tracked search results still use the normal grab dialog with alternate
           isRequested: true,
           status: 'Already in Arr',
         },
-        message: 'The Matrix is already tracked in Radarr. Alternate-release acquisition started.',
+        message: '"The Matrix" is already tracked in Radarr. Alternate-release acquisition started.',
         releaseDecision: null,
         job: {
           id: 'job-movie-603-alt',
@@ -727,7 +727,7 @@ test('duplicate tracked movie submit still moves to queue and keeps alternate-re
           isRequested: true,
           status: 'Already in Arr',
         },
-        message: 'The Matrix is already tracked in Radarr. Alternate-release acquisition started.',
+        message: '"The Matrix" is already tracked in Radarr. Alternate-release acquisition started.',
         releaseDecision: null,
         job: duplicateJob,
       }),
@@ -755,7 +755,7 @@ test('duplicate tracked movie submit still moves to queue and keeps alternate-re
   await expect(page.getByRole('heading', { name: 'Grab Progress' })).toBeVisible();
   await expect(page.getByRole('status')).toContainText('Alternate-release acquisition started.');
   await expect(
-    page.getByText('Tracking The Matrix below so you can see what happens next.'),
+    page.getByText('Tracking "The Matrix" below so you can see what happens next.'),
   ).toBeVisible();
   await expect(
     page.getByTestId('acquisition-job-card').filter({ hasText: 'The Matrix' }).first(),
