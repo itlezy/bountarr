@@ -93,14 +93,14 @@ function queueItemId(
   downloadId: string | null,
   record: Record<string, unknown>,
 ): string {
-  if (queueId !== null) {
-    return `${service}:queue:${queueId}`;
-  }
-
   const fallbackId = queueFallbackIdentity(service, record);
 
   if (downloadId) {
     return `${service}:download:${downloadId}:${fallbackId}`;
+  }
+
+  if (queueId !== null) {
+    return `${service}:queue:${queueId}`;
   }
 
   return `${service}:queue:${fallbackId}`;

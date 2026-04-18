@@ -1301,6 +1301,59 @@ describe('app state', () => {
     expect(state.selectedQueueEntry?.id).toBe(externalEntry.id);
   });
 
+  it('keeps the selected queue entry when the same download later gains a queue id', async () => {
+    const managedEntry = buildManagedEntry(acquisitionJob);
+    const stableExternalId =
+      'radarr:download:download-shared:radarr-603-the-matrix-1999-1080p-web-dl-flux-noscope';
+    const externalEntry = buildExternalEntry({
+      id: stableExternalId,
+      downloadId: 'download-shared',
+      arrItemId: 603,
+      canCancel: false,
+      kind: 'movie',
+      title: 'The Matrix',
+      year: 1999,
+      poster: null,
+      sourceService: 'radarr',
+      status: 'Downloading',
+      progress: 64,
+      timeLeft: '9m',
+      estimatedCompletionTime: '2026-04-02T10:14:00.000Z',
+      size: 4_000_000_000,
+      sizeLeft: 1_200_000_000,
+      queueId: null,
+      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      episodeIds: null,
+      seasonNumbers: null,
+    });
+    const refreshedExternalEntry = buildExternalEntry({
+      ...externalEntry.item,
+      id: stableExternalId,
+      queueId: 10,
+      progress: 72,
+      sizeLeft: 800_000_000,
+    });
+    const fetchQueue = vi
+      .fn()
+      .mockResolvedValueOnce(buildQueue([managedEntry, externalEntry]))
+      .mockResolvedValueOnce(buildQueue([managedEntry, refreshedExternalEntry]));
+    const state = new AppState(
+      pageData,
+      createDependencies({
+        api: {
+          fetchQueue,
+        },
+      }),
+    );
+
+    await state.loadQueue();
+    state.selectQueueEntry(externalEntry.id);
+    await state.loadQueue();
+
+    expect(state.selectedQueueEntry?.id).toBe(stableExternalId);
+    expect(state.selectedQueueEntry?.kind).toBe('external');
+  });
+
   it('clears queue selection instead of jumping to another row when the selected entry disappears', async () => {
     const managedEntry = buildManagedEntry(acquisitionJob);
     const externalEntry = buildExternalEntry({

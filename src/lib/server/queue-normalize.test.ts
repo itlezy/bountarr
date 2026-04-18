@@ -28,7 +28,7 @@ describe('normalizeQueueItem', () => {
 
     expect(item).toMatchObject({
       downloadId: 'sonarr-download-shared',
-      id: 'sonarr:queue:22',
+      id: 'sonarr:download:sonarr-download-shared:sonarr-na-episode-source-title-noscope',
       kind: 'series',
       title: 'Andor',
       year: 2022,
@@ -91,6 +91,32 @@ describe('normalizeQueueItem', () => {
     expect(firstItem?.id).not.toBe(secondItem?.id);
     expect(firstItem?.id).toContain('sonarr:download:sonarr-download-shared:');
     expect(secondItem?.id).toContain('sonarr:download:sonarr-download-shared:');
+  });
+
+  it('keeps a stable id when Arr later adds a queue id to the same download row', () => {
+    const downloadOnlyItem = normalizeQueueItem('radarr', {
+      downloadId: 'radarr-download-7',
+      movieId: 793,
+      title: 'American.Rickshaw.1989.1080p.BluRay.x265',
+      status: 'downloading',
+      trackedDownloadStatus: 'ok',
+      trackedDownloadState: 'downloading',
+    });
+    const queuedItem = normalizeQueueItem('radarr', {
+      id: 359204595,
+      downloadId: 'radarr-download-7',
+      movieId: 793,
+      title: 'American.Rickshaw.1989.1080p.BluRay.x265',
+      status: 'downloading',
+      trackedDownloadStatus: 'ok',
+      trackedDownloadState: 'downloading',
+    });
+
+    expect(queuedItem?.queueId).toBe(359204595);
+    expect(downloadOnlyItem?.id).toBe(
+      'radarr:download:radarr-download-7:radarr-793-american-rickshaw-1989-1080p-bluray-x265-noscope',
+    );
+    expect(queuedItem?.id).toBe(downloadOnlyItem?.id);
   });
 
   it('builds a deterministic fallback id when the Arr queue row has no queue id or download id', () => {
