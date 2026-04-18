@@ -81,6 +81,35 @@ test('queue view renders acquisition jobs and active downloads', async ({ page }
   await expect(page.getByRole('button', { name: 'Cancel download' })).toHaveCount(1);
 });
 
+test('queue list surfaces release detail for ambiguous same-title external downloads', async ({ page }) => {
+  const firstItem = {
+    ...queueItemFixture,
+    id: 'radarr:queue:41',
+    queueId: 41,
+    title: 'The Matrix',
+    detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+  };
+  const secondItem = {
+    ...queueItemFixture,
+    id: 'radarr:queue:42',
+    queueId: 42,
+    title: 'The Matrix',
+    detail: 'The.Matrix.1999.1080p.BluRay-OLD',
+  };
+  const api = await mockAppApi(page, {
+    queue: buildQueueResponse([], [firstItem, secondItem]),
+  });
+
+  await openQueue(page, api);
+
+  await expect(
+    page.getByTestId('queue-entry-list-item').filter({ hasText: 'The.Matrix.1999.1080p.WEB-DL-FLUX' }),
+  ).toHaveCount(1);
+  await expect(
+    page.getByTestId('queue-entry-list-item').filter({ hasText: 'The.Matrix.1999.1080p.BluRay-OLD' }),
+  ).toHaveCount(1);
+});
+
 test('queue cards and manual release modal show the managed target scope', async ({ page }) => {
   const api = await mockAppApi(page, {
     queue: buildQueueResponse(),
@@ -236,7 +265,7 @@ test('queue item cancel refreshes queue and dashboard state', async ({ page }) =
     title: queueItemFixture.title,
   });
 
-  await expect(page.getByText('The Matrix download was cancelled.')).toBeVisible();
+  await expect(page.getByText('"The Matrix" download was cancelled.')).toBeVisible();
   await expect
     .poll(() => api.queueRequests.length, {
       message: 'queue should refresh after cancelling a queue item',
@@ -277,6 +306,55 @@ test('queue item cards do not expose title deletion for live external downloads'
   await expect(downloadCard.getByRole('button', { name: 'Cancel download' })).toBeVisible();
   await expect(downloadCard.getByRole('button', { name: /clear stale queue entry/i })).toHaveCount(0);
   await expect(downloadCard.getByRole('button', { name: /remove from library/i })).toHaveCount(0);
+});
+
+test('stale external queue rows expose only the clear action', async ({ page }) => {
+  const api = await mockAppApi(page, {
+    queue: {
+      updatedAt: '2026-04-18T11:05:28.375Z',
+      total: 1,
+      entries: [
+        {
+          kind: 'external',
+          id: 'radarr:queue:1996958567',
+          canCancel: false,
+          canRemove: true,
+          item: {
+            id: 'radarr:queue:1996958567',
+            downloadId: 'SABnzbd_nzo_4lejah9m',
+            arrItemId: 727,
+            canCancel: true,
+            kind: 'movie',
+            title: 'Dangerous Animals',
+            year: 2025,
+            poster: null,
+            sourceService: 'radarr',
+            status: 'Completed',
+            statusDetail:
+              'Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
+            trackedDownloadStatus: 'warning',
+            trackedDownloadState: 'importpending',
+            progress: 100,
+            timeLeft: '00:00:00',
+            estimatedCompletionTime: '2026-04-18T11:05:28Z',
+            size: 7_845_710_150,
+            sizeLeft: 0,
+            queueId: 1996958567,
+            detail: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+            episodeIds: null,
+            seasonNumbers: null,
+          },
+        },
+      ],
+    },
+  });
+
+  await openQueue(page, api);
+
+  const downloadCard = queueItemCard(page, 'Dangerous Animals');
+  await expect(downloadCard).toBeVisible();
+  await expect(downloadCard.getByRole('button', { name: 'Cancel download' })).toHaveCount(0);
+  await expect(downloadCard.getByRole('button', { name: 'Clear stale queue entry' })).toBeVisible();
 });
 
 test('queue view shows explicit ETA for downloads and matched grab jobs', async ({ page }) => {
@@ -415,7 +493,11 @@ test('queue and manual release long text wraps without breaking layout', async (
               ...release,
               title: longReleaseText,
               reason: longReason,
-              rejectionReasons: [longReason],
+              explanation: {
+                ...release.explanation,
+                summary: longReason,
+                arrReasons: [longReason],
+              },
             }
           : release,
       ),
@@ -516,6 +598,7 @@ test('manual release selection refreshes queue and release state', async ({ page
     body: {
       guid: manualReleaseFixture.guid,
       indexerId: manualReleaseFixture.indexerId,
+      selectionMode: 'direct',
     },
     jobId: acquisitionJobFixture.id,
   });
@@ -560,7 +643,7 @@ test('manual release selection errors stay inline and keep the dialog open', asy
   await expect(page.getByText(manualReleaseFixture.title)).toBeVisible();
 });
 
-test('manual release dialog disables releases that Arr already marked as not downloadable', async ({
+test('manual release dialog allows direct override for Arr-rejected releases', async ({
   page,
 }) => {
   const api = await mockAppApi(page, {
@@ -571,11 +654,28 @@ test('manual release dialog disables releases that Arr already marked as not dow
   await openQueue(page, api);
   const dialog = await openManualReleaseModal(page);
 
-  await expect(dialog.getByRole('button', { name: 'Select release' }).first()).toBeEnabled();
-  await expect(dialog.getByRole('button', { name: 'Not downloadable' })).toBeDisabled();
+  const rejectedCard = dialog.locator('article').filter({
+    hasText: manualReleaseRejectedFixture.title,
+  });
+  await expect(rejectedCard.getByRole('button', { name: 'Override Arr rejection' })).toBeEnabled();
+  await rejectedCard.getByRole('button', { name: 'Override Arr rejection' }).click();
+
+  await expect
+    .poll(() => api.selectManualReleaseBodies.length, {
+      message: 'Arr-rejected manual release override should submit one selection request',
+    })
+    .toBe(1);
+  expect(api.selectManualReleaseBodies[0]).toEqual({
+    body: {
+      guid: manualReleaseRejectedFixture.guid,
+      indexerId: manualReleaseRejectedFixture.indexerId,
+      selectionMode: 'override-arr-rejection',
+    },
+    jobId: acquisitionJobFixture.id,
+  });
 });
 
-test('manual release dialog shows title-mismatch warnings while still allowing manual override', async ({
+test('manual release dialog blocks title-mismatched releases separately from Arr overrides', async ({
   page,
 }) => {
   const api = await mockAppApi(page, {
@@ -586,12 +686,18 @@ test('manual release dialog shows title-mismatch warnings while still allowing m
         {
           ...manualReleaseFixture,
           title: 'Who.Am.I.1998.1080p.WEBRip.DD2.0.x264-NTb',
-          identityReason: 'Structured movie titles point to a different title: Who Am I',
+          canSelect: false,
+          selectionMode: null,
+          blockReason: 'title-mismatch',
           identityStatus: 'mismatch',
-          scopeReason: null,
           scopeStatus: 'not-applicable',
-          selectionBlockedReason: null,
           reason: 'Preferred releaser NTB would normally score highest.',
+          explanation: {
+            summary: 'Preferred releaser NTB would normally score highest.',
+            matchReasons: [],
+            warningReasons: ['Structured movie titles point to a different title: Who Am I'],
+            arrReasons: [],
+          },
           status: 'locally-rejected',
         },
       ],
@@ -602,11 +708,11 @@ test('manual release dialog shows title-mismatch warnings while still allowing m
   await openQueue(page, api);
   const dialog = await openManualReleaseModal(page);
 
-  await expect(dialog.getByText(/Title mismatch:/)).toBeVisible();
+  await expect(dialog.getByText('Why this is risky')).toBeVisible();
   await expect(
     dialog.getByText('Structured movie titles point to a different title: Who Am I'),
   ).toBeVisible();
-  await expect(dialog.getByRole('button', { name: 'Select release' })).toBeEnabled();
+  await expect(dialog.getByRole('button', { name: 'Title mismatch' })).toBeDisabled();
 });
 
 test('manual release dialog blocks releases that are outside the targeted series scope', async ({
@@ -621,10 +727,16 @@ test('manual release dialog blocks releases that are outside the targeted series
           ...manualReleaseFixture,
           title: 'Andor.S02.1080p.WEB-DL-FLUX',
           canSelect: false,
+          selectionMode: null,
+          blockReason: 'scope-mismatch',
           reason: 'Preferred releaser FLUX would normally score highest.',
-          scopeReason: 'Release scope targets different seasons.',
           scopeStatus: 'mismatch',
-          selectionBlockedReason: 'Release scope targets different seasons.',
+          explanation: {
+            summary: 'Preferred releaser FLUX would normally score highest.',
+            matchReasons: [],
+            warningReasons: ['Release scope targets different seasons.'],
+            arrReasons: [],
+          },
           status: 'locally-rejected',
         },
       ],
@@ -635,7 +747,7 @@ test('manual release dialog blocks releases that are outside the targeted series
   await openQueue(page, api);
   const dialog = await openManualReleaseModal(page);
 
-  await expect(dialog.getByText(/Scope mismatch:/)).toBeVisible();
+  await expect(dialog.getByText('Why this is risky')).toBeVisible();
   await expect(dialog.getByText('Release scope targets different seasons.')).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Out of scope' })).toBeDisabled();
 });

@@ -19,6 +19,22 @@ function compactEntryStatus(entry: QueueEntry): string {
   return queueItemSummary(entry.item);
 }
 
+function compactEntryContext(entry: QueueEntry): string | null {
+  if (entry.kind === 'managed') {
+    if (entry.liveQueueItems.length > 1) {
+      return `${entry.liveQueueItems.length} live queue rows`;
+    }
+
+    return entry.liveQueueItems[0]?.detail ?? entry.job.currentRelease;
+  }
+
+  const detailParts = entry.canRemove
+    ? [entry.item.statusDetail, entry.item.detail]
+    : [entry.item.detail, entry.item.statusDetail];
+  const context = detailParts.filter((value): value is string => Boolean(value && value.trim()));
+  return context.length > 0 ? context.join(' · ') : null;
+}
+
 function compactEntryProgress(entry: QueueEntry): number | null {
   return entry.kind === 'managed'
     ? (entry.liveSummary?.progress ?? entry.job.progress)
@@ -26,7 +42,11 @@ function compactEntryProgress(entry: QueueEntry): number | null {
 }
 
 function compactEntryTag(entry: QueueEntry): string {
-  return entry.kind === 'managed' ? 'Managed grab' : 'External download';
+  if (entry.kind === 'managed') {
+    return 'Managed grab';
+  }
+
+  return entry.canRemove ? 'Stale queue entry' : 'External download';
 }
 </script>
 
@@ -93,6 +113,9 @@ function compactEntryTag(entry: QueueEntry): string {
                     {/if}
                   </div>
                   <div class="mt-1 overflow-safe-text text-sm text-[var(--muted)]">{compactEntryStatus(entry)}</div>
+                  {#if compactEntryContext(entry)}
+                    <div class="mt-1 overflow-safe-text text-xs text-[var(--muted)]">{compactEntryContext(entry)}</div>
+                  {/if}
                 </div>
                 {#if compactEntryProgress(entry) !== null}
                   <div class="shrink-0 text-sm font-700">{Math.round(compactEntryProgress(entry) ?? 0)}%</div>
@@ -109,6 +132,10 @@ function compactEntryTag(entry: QueueEntry): string {
         {:else}
           <QueueItemCard entry={state.selectedQueueEntry} {state} />
         {/if}
+      {:else}
+        <div class="rounded-[16px] border border-dashed border-[var(--line)] bg-[var(--surface)] px-4 py-6 text-sm text-[var(--muted)]">
+          Select an item above to inspect its current queue details.
+        </div>
       {/if}
     </div>
   {:else if state.queue && state.queue.entries.length > 0}
