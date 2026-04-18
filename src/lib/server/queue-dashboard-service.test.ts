@@ -908,6 +908,7 @@ describe('queue dashboard service', () => {
           },
         },
       ]),
+      searchPlex: vi.fn().mockResolvedValue([]),
     }));
     vi.doMock('$lib/server/acquisition-service', () => ({
       ensureAcquisitionWorkers: vi.fn(),
@@ -1029,6 +1030,132 @@ describe('queue dashboard service', () => {
       arrItemId: 727,
       id: 'movie:727',
       title: 'Dangerous Animals',
+    });
+  });
+
+  it('merges Plex search matches onto dashboard cards when the library item is not recent', async () => {
+    const arrFetch = vi.fn().mockImplementation(async (_service: string, path: string) => {
+      if (path === '/api/v3/history') {
+        return {
+          records: [
+            {
+              movieId: 727,
+              sourceTitle: 'Dangerous.Animals.2025.UHD.BluRay.2160p.DD.5.1.DV.HDR10Plus.x265-BHDStudio',
+              movie: {
+                id: 727,
+                title: 'Dangerous Animals',
+                year: 2025,
+              },
+            },
+          ],
+        };
+      }
+
+      if (path === '/api/v3/queue') {
+        return { records: [] };
+      }
+
+      return { records: [] };
+    });
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/runtime', () => ({
+      getConfiguredServiceFlags: () => ({
+        configured: true,
+        plexConfigured: true,
+        radarrConfigured: true,
+        sonarrConfigured: false,
+      }),
+    }));
+    vi.doMock('$lib/server/lookup-service', () => ({
+      fetchExistingMovie: vi.fn().mockResolvedValue({
+        id: 'movie:727',
+        arrItemId: 727,
+        kind: 'movie',
+        title: 'Dangerous Animals',
+        year: 2025,
+        rating: 6.4,
+        poster: null,
+        overview: '',
+        status: 'Downloaded',
+        isExisting: true,
+        isRequested: true,
+        auditStatus: 'verified',
+        audioLanguages: ['eng'],
+        subtitleLanguages: [],
+        sourceService: 'radarr',
+        origin: 'arr',
+        inArr: true,
+        inPlex: false,
+        plexLibraries: [],
+        canAdd: false,
+        canDeleteFromArr: true,
+        detail: null,
+        requestPayload: {
+          title: 'Dangerous Animals',
+          year: 2025,
+          imdbId: 'tt32299316',
+          tmdbId: 1285965,
+        },
+      }),
+      fetchExistingSeries: vi.fn(),
+    }));
+    vi.doMock('$lib/server/plex-service', () => ({
+      getRecentPlexItems: vi.fn().mockResolvedValue([]),
+      searchPlex: vi.fn().mockResolvedValue([
+        {
+          id: 'plex:movie:727',
+          arrItemId: null,
+          kind: 'movie',
+          title: 'Dangerous Animals',
+          year: 2025,
+          rating: 6.4,
+          poster: null,
+          overview: '',
+          status: 'Already in Plex',
+          isExisting: false,
+          isRequested: false,
+          auditStatus: 'pending',
+          audioLanguages: [],
+          subtitleLanguages: [],
+          sourceService: 'plex',
+          origin: 'plex',
+          inArr: false,
+          inPlex: true,
+          plexLibraries: ['Movies'],
+          canAdd: false,
+          canDeleteFromArr: false,
+          detail: null,
+          requestPayload: {
+            title: 'Dangerous Animals',
+            year: 2025,
+            imdbId: 'tt32299316',
+            tmdbId: 1285965,
+          },
+        },
+      ]),
+    }));
+    vi.doMock('$lib/server/acquisition-service', () => ({
+      ensureAcquisitionWorkers: vi.fn(),
+      getQueueAcquisitionJobs: () => [],
+    }));
+
+    const module = await import('$lib/server/queue-dashboard-service');
+    const dashboard = await module.getDashboard({
+      cardsView: 'rounded',
+      preferredLanguage: 'English',
+      subtitleLanguage: 'English',
+      theme: 'system',
+    });
+
+    expect(dashboard.items[0]).toMatchObject({
+      title: 'Dangerous Animals',
+      inArr: true,
+      inPlex: true,
+      origin: 'merged',
+      plexLibraries: ['Movies'],
     });
   });
 });

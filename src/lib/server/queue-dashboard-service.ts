@@ -7,7 +7,7 @@ import { ensureAcquisitionWorkers, getQueueAcquisitionJobs } from '$lib/server/a
 import { itemMatchKeys } from '$lib/server/media-identity';
 import { fetchExistingMovie, fetchExistingSeries } from '$lib/server/lookup-service';
 import { mergeItems, normalizeItem } from '$lib/server/media-normalize';
-import { getRecentPlexItems } from '$lib/server/plex-service';
+import { getRecentPlexItems, searchPlex } from '$lib/server/plex-service';
 import { buildManagedLiveSummary } from '$lib/server/queue-live-summary';
 import {
   bestQueueIdentityCandidate,
@@ -285,19 +285,45 @@ async function mergeDashboardPlexItems(items: MediaItem[]): Promise<MediaItem[]>
   }
 
   const recentPlexItems = await getRecentPlexItems(Math.max(12, items.length));
-  if (recentPlexItems.length === 0) {
-    return items;
-  }
-
-  return items.map((item) => {
+  const findPlexMatch = (item: MediaItem, candidates: MediaItem[]): MediaItem | null => {
     const matchKeys = new Set(itemMatchKeys(item));
-    const plexMatch =
-      recentPlexItems.find(
+    return (
+      candidates.find(
         (plexItem) =>
           plexItem.kind === item.kind &&
           itemMatchKeys(plexItem).some((key) => matchKeys.has(key)),
-      ) ?? null;
+      ) ?? null
+    );
+  };
 
+  const mergedRecentItems = items.map((item) => {
+    const plexMatch = findPlexMatch(item, recentPlexItems);
+    return plexMatch ? mergeItems(item, plexMatch) : item;
+  });
+
+  const unresolvedItems = mergedRecentItems.filter((item) => !item.inPlex);
+  if (unresolvedItems.length === 0) {
+    return mergedRecentItems;
+  }
+
+  const searchQueries = [
+    ...new Map(
+      unresolvedItems.map((item) => [`${item.kind}:${item.title}`, { kind: item.kind, title: item.title }]),
+    ).values(),
+  ];
+  const searchedPlexItems = (
+    await Promise.all(searchQueries.map((query) => searchPlex(query.title, query.kind)))
+  ).flat();
+  if (searchedPlexItems.length === 0) {
+    return mergedRecentItems;
+  }
+
+  return mergedRecentItems.map((item) => {
+    if (item.inPlex) {
+      return item;
+    }
+
+    const plexMatch = findPlexMatch(item, searchedPlexItems);
     return plexMatch ? mergeItems(item, plexMatch) : item;
   });
 }
