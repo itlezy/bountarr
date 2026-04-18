@@ -284,12 +284,13 @@ function buildManagedEntry(
 
 function buildExternalEntry(item: QueueItem): ExternalQueueEntry {
   const stale = queueItemIsStaleExternal(item);
+  const actionable = item.queueId !== null || Boolean(item.downloadId);
   return {
     kind: 'external',
     id: item.id,
     item,
-    canCancel: item.canCancel && item.queueId !== null && !stale,
-    canRemove: item.queueId !== null && stale,
+    canCancel: actionable && !stale,
+    canRemove: actionable && stale,
   };
 }
 
@@ -1640,9 +1641,59 @@ describe('app state', () => {
 
     expect(dependencies.api.deleteArrItem).toHaveBeenCalledWith({
       deleteMode: 'queue-entry',
+      downloadId: null,
       id: 'radarr:queue:1',
       kind: 'movie',
       queueId: 1,
+      sourceService: 'radarr',
+      title: 'The Matrix',
+    });
+  });
+
+  it('deletes stale queue items using the download id when Arr did not expose a queue id', async () => {
+    const dependencies = createDependencies({
+      api: {
+        deleteArrItem: vi.fn().mockResolvedValue({
+          itemId: 'radarr:download:download-shared',
+          message: 'Stale queue entry removed.',
+        }),
+      },
+    });
+    const state = new AppState(pageData, dependencies);
+
+    await state.deleteQueueEntry(
+      buildExternalEntry({
+        id: 'radarr:download:download-shared',
+        downloadId: 'download-shared',
+        arrItemId: null,
+        canCancel: false,
+        kind: 'movie',
+        title: 'The Matrix',
+        year: 1999,
+        poster: null,
+        sourceService: 'radarr',
+        status: 'Completed',
+        statusDetail: 'Import failed, destination path already exists.',
+        trackedDownloadStatus: 'warning',
+        trackedDownloadState: 'importpending',
+        progress: 100,
+        timeLeft: '00:00:00',
+        estimatedCompletionTime: null,
+        size: 1_000,
+        sizeLeft: 0,
+        queueId: null,
+        detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+        episodeIds: null,
+        seasonNumbers: null,
+      }),
+    );
+
+    expect(dependencies.api.deleteArrItem).toHaveBeenCalledWith({
+      deleteMode: 'queue-entry',
+      downloadId: 'download-shared',
+      id: 'radarr:download:download-shared',
+      kind: 'movie',
+      queueId: null,
       sourceService: 'radarr',
       title: 'The Matrix',
     });
@@ -1688,6 +1739,7 @@ describe('app state', () => {
 
     expect(dependencies.api.deleteArrItem).toHaveBeenCalledWith({
       deleteMode: 'queue-entry',
+      downloadId: null,
       id: 'radarr:queue:1996958567',
       kind: 'movie',
       queueId: 1996958567,

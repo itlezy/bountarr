@@ -415,6 +415,81 @@ describe('queue dashboard service', () => {
     ]);
   });
 
+  it('keeps download-id-only external rows cancelable when they are still active', async () => {
+    const { composeQueueEntries } = await import('$lib/server/queue-dashboard-service');
+
+    const queueItem: QueueItem = {
+      id: 'radarr:download:download-shared',
+      downloadId: 'download-shared',
+      arrItemId: 603,
+      canCancel: false,
+      kind: 'movie',
+      title: 'The Matrix',
+      year: 1999,
+      poster: null,
+      sourceService: 'radarr',
+      status: 'Downloading',
+      progress: 50,
+      timeLeft: '10m',
+      estimatedCompletionTime: '2026-04-13T12:10:00.000Z',
+      size: 1_000_000_000,
+      sizeLeft: 500_000_000,
+      queueId: null,
+      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      episodeIds: null,
+      seasonNumbers: null,
+    };
+
+    expect(composeQueueEntries([], [queueItem])).toEqual([
+      {
+        kind: 'external',
+        id: queueItem.id,
+        item: queueItem,
+        canCancel: true,
+        canRemove: false,
+      },
+    ]);
+  });
+
+  it('keeps download-id-only stale external rows removable', async () => {
+    const { composeQueueEntries } = await import('$lib/server/queue-dashboard-service');
+
+    const queueItem: QueueItem = {
+      id: 'radarr:download:download-shared',
+      downloadId: 'download-shared',
+      arrItemId: 603,
+      canCancel: false,
+      kind: 'movie',
+      title: 'The Matrix',
+      year: 1999,
+      poster: null,
+      sourceService: 'radarr',
+      status: 'Completed',
+      statusDetail: 'Import failed, destination path already exists.',
+      trackedDownloadStatus: 'warning',
+      trackedDownloadState: 'importpending',
+      progress: 100,
+      timeLeft: '00:00:00',
+      estimatedCompletionTime: '2026-04-13T12:10:00.000Z',
+      size: 1_000_000_000,
+      sizeLeft: 0,
+      queueId: null,
+      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      episodeIds: null,
+      seasonNumbers: null,
+    };
+
+    expect(composeQueueEntries([], [queueItem])).toEqual([
+      {
+        kind: 'external',
+        id: queueItem.id,
+        item: queueItem,
+        canCancel: false,
+        canRemove: true,
+      },
+    ]);
+  });
+
   it('keeps generic Arr warning rows cancelable until they match a known terminal import warning', async () => {
     const { composeQueueEntries } = await import('$lib/server/queue-dashboard-service');
 

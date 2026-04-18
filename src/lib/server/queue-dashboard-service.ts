@@ -372,12 +372,13 @@ function isStaleExternalQueueItem(item: QueueItem): boolean {
 
 function buildExternalQueueEntry(item: QueueItem): ExternalQueueEntry {
   const stale = isStaleExternalQueueItem(item);
+  const actionable = item.queueId !== null || Boolean(item.downloadId);
   return {
     kind: 'external',
     id: queueItemEntryId(item),
     item,
-    canCancel: item.canCancel && item.queueId !== null && !stale,
-    canRemove: item.queueId !== null && stale,
+    canCancel: actionable && !stale,
+    canRemove: actionable && stale,
   };
 }
 

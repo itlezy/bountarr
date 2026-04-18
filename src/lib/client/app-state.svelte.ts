@@ -1090,12 +1090,13 @@ export class AppState {
       return;
     }
 
-    if (entry.item.queueId == null) {
+    if (entry.item.queueId == null && !entry.item.downloadId) {
       return;
     }
 
     await this.deleteArrItem({
       deleteMode: 'queue-entry',
+      downloadId: entry.item.downloadId ?? null,
       id: entry.id,
       kind: entry.item.kind,
       queueId: entry.item.queueId,

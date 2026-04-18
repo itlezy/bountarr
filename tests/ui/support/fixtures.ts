@@ -270,8 +270,10 @@ function buildQueueEntries(acquisitionJobs: AcquisitionJob[], items: QueueItem[]
     kind: 'external',
     id: queueEntryId(item),
     item,
-    canCancel: item.canCancel && item.queueId !== null && !queueItemIsStaleExternal(item),
-    canRemove: item.queueId !== null && queueItemIsStaleExternal(item),
+    canCancel:
+      (item.queueId !== null || Boolean(item.downloadId)) && !queueItemIsStaleExternal(item),
+    canRemove:
+      (item.queueId !== null || Boolean(item.downloadId)) && queueItemIsStaleExternal(item),
   }));
 
   return [...managedEntries, ...externalEntries];
