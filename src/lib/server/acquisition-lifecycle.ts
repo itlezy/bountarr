@@ -442,6 +442,7 @@ export class AcquisitionLifecycle {
     }
     const nextAttempt = current.attempt + 1;
     const terminal = validationFailureIsTerminal(waitResult) || nextAttempt > current.maxRetries;
+    const persistedAttempt = terminal ? current.attempt : nextAttempt;
 
     this.jobs.upsertAttempt(current.id, {
       attempt: current.attempt,
@@ -452,7 +453,7 @@ export class AcquisitionLifecycle {
     });
 
     const next = this.jobs.updateJob(current.id, {
-      attempt: nextAttempt,
+      attempt: persistedAttempt,
       autoRetrying: !terminal,
       completedAt: terminal ? new Date().toISOString() : null,
       liveDownloadId: null,

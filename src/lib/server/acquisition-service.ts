@@ -5,6 +5,7 @@ import type {
   AcquisitionStatus,
   GrabResponse,
   ManualReleaseListResponse,
+  ManualReleaseSelectionMode,
   MediaItemActionResponse,
   MediaItem,
   Preferences,
@@ -12,6 +13,7 @@ import type {
   QueueItem,
   QueueActionResponse,
 } from '$lib/shared/types';
+import { quoteTitle } from '$lib/shared/text-format';
 import { queueCache } from '$lib/server/app-cache';
 import type { GrabItemOptions } from '$lib/server/acquisition-domain';
 import { manualSelectionQueuedStatus } from '$lib/server/acquisition-domain';
@@ -180,7 +182,7 @@ function managedCancelMessage(
   deletedQueueEntries: number,
 ): string {
   if (deletedQueueEntries > 0) {
-    return `${job.title} download was cancelled and unmonitored.`;
+    return `${quoteTitle(job.title)} download was cancelled and unmonitored.`;
   }
 
   if (
@@ -188,10 +190,10 @@ function managedCancelMessage(
     job.status === 'searching' ||
     job.status === 'retrying'
   ) {
-    return `${job.title} grab was cancelled and unmonitored before Arr created a live queue entry.`;
+    return `${quoteTitle(job.title)} grab was cancelled and unmonitored before Arr created a live queue entry.`;
   }
 
-  return `${job.title} grab was cancelled and unmonitored, but no matching Arr queue rows were found. Refresh the queue if a live download is still running.`;
+  return `${quoteTitle(job.title)} grab was cancelled and unmonitored, but no matching Arr queue rows were found. Refresh the queue if a live download is still running.`;
 }
 
 async function findQueueEntryIdsForArrItem(
@@ -294,6 +296,7 @@ export async function selectManualRelease(
   jobId: string,
   guid: string,
   indexerId: number,
+  selectionMode: ManualReleaseSelectionMode,
 ): Promise<AcquisitionJobActionResponse> {
   ensureAcquisitionWorkers();
   const jobs = getAcquisitionJobRepository();
@@ -305,12 +308,19 @@ export async function selectManualRelease(
     throw new Error(manualReleaseConflictMessage(job));
   }
 
-  const selection = await findManualReleaseSelection(job, guid, indexerId);
+  const selection = await findManualReleaseSelection(
+    job,
+    guid,
+    indexerId,
+    selectionMode,
+  );
+  const resumedAttempt = job.status === 'failed' ? job.attempt + 1 : job.attempt;
   const replacingQueuedSelection =
     job.status === 'queued' &&
     job.queueStatus === manualSelectionQueuedStatus &&
     job.queuedManualSelection !== null;
   const resumed = jobs.updateJobIfStatus(job.id, ['failed', 'queued', 'retrying', 'searching'], {
+    attempt: resumedAttempt,
     autoRetrying: false,
     completedAt: null,
     reasonCode: null,
@@ -370,7 +380,7 @@ async function cancelExternalQueueItem(
 
   return {
     itemId: item.id,
-    message: `${item.title} download was cancelled.`,
+    message: `${quoteTitle(item.title)} download was cancelled.`,
   };
 }
 
@@ -404,7 +414,7 @@ export async function deleteArrItem(item: ArrDeleteTarget): Promise<MediaItemAct
     await deleteQueueEntries(item.sourceService, [item.queueId]);
     return {
       itemId: item.id,
-      message: `${item.title} stale queue entry was removed from ${serviceLabel}.`,
+      message: `${quoteTitle(item.title)} stale queue entry was removed from ${serviceLabel}.`,
     };
   }
 
@@ -437,7 +447,7 @@ export async function deleteArrItem(item: ArrDeleteTarget): Promise<MediaItemAct
 
     return {
       itemId: item.id,
-      message: `${item.title} was already missing from ${serviceLabel}, and the stale queue entry was cleared.`,
+      message: `${quoteTitle(item.title)} was already missing from ${serviceLabel}, and the stale queue entry was cleared.`,
     };
   }
 
@@ -445,6 +455,6 @@ export async function deleteArrItem(item: ArrDeleteTarget): Promise<MediaItemAct
 
   return {
     itemId: item.id,
-    message: `${item.title} was deleted from ${serviceLabel} and its files were removed.`,
+    message: `${quoteTitle(item.title)} was deleted from ${serviceLabel} and its files were removed.`,
   };
 }

@@ -169,7 +169,7 @@ describe('acquisition service', () => {
     const result = await module.cancelQueueEntry(queueEntry);
 
     expect(result.itemId).toBe('radarr:queue:7');
-    expect(result.message).toBe('The Matrix download was cancelled.');
+    expect(result.message).toBe('"The Matrix" download was cancelled.');
     expect(queueCache.has('queue')).toBe(false);
   });
 
@@ -224,7 +224,7 @@ describe('acquisition service', () => {
 
     expect(result).toEqual({
       itemId: 'radarr:queue:7',
-      message: 'The Matrix download was cancelled.',
+      message: '"The Matrix" download was cancelled.',
     });
     expect(arrFetch).toHaveBeenCalledTimes(1);
     expect(arrFetch).toHaveBeenCalledWith(
@@ -309,7 +309,7 @@ describe('acquisition service', () => {
     const module = await import('$lib/server/acquisition-service');
     const result = await module.cancelAcquisitionJob(job.id);
 
-    expect(result.message).toBe('The Matrix download was cancelled and unmonitored.');
+    expect(result.message).toBe('"The Matrix" download was cancelled and unmonitored.');
     expect(cancelJob).toHaveBeenCalledWith(job);
     expect(arrFetch).toHaveBeenCalledTimes(4);
     expect(arrFetch.mock.calls[0]?.[1]).toBe('/api/v3/queue/7');
@@ -396,7 +396,7 @@ describe('acquisition service', () => {
     const module = await import('$lib/server/acquisition-service');
     const result = await module.cancelAcquisitionJob(identityTrackedJob.id);
 
-    expect(result.message).toBe('The Matrix download was cancelled and unmonitored.');
+    expect(result.message).toBe('"The Matrix" download was cancelled and unmonitored.');
     expect(cancelJob).toHaveBeenCalledWith(identityTrackedJob);
     expect(arrFetch).toHaveBeenCalledTimes(3);
     expect(arrFetch.mock.calls[0]?.[1]).toBe('/api/v3/queue/8');
@@ -573,7 +573,7 @@ describe('acquisition service', () => {
     const module = await import('$lib/server/acquisition-service');
     const result = await module.cancelAcquisitionJob(seriesJob.id);
 
-    expect(result.message).toBe('Andor download was cancelled and unmonitored.');
+    expect(result.message).toBe('"Andor" download was cancelled and unmonitored.');
     expect(cancelJob).toHaveBeenCalledWith(seriesJob);
     expect(arrFetch).toHaveBeenCalledTimes(3);
     expect(arrFetch.mock.calls[0]?.[1]).toBe('/api/v3/queue/7');
@@ -673,7 +673,7 @@ describe('acquisition service', () => {
     const module = await import('$lib/server/acquisition-service');
     const result = await module.cancelAcquisitionJob(seriesJob.id);
 
-    expect(result.message).toBe('Andor download was cancelled and unmonitored.');
+    expect(result.message).toBe('"Andor" download was cancelled and unmonitored.');
     expect(cancelJob).toHaveBeenCalledWith(seriesJob);
     expect(arrFetch).toHaveBeenCalledTimes(3);
     expect(arrFetch.mock.calls[0]?.[1]).toBe('/api/v3/queue/9');
@@ -764,7 +764,7 @@ describe('acquisition service', () => {
     const result = await module.cancelAcquisitionJob(seriesJob.id);
 
     expect(result.message).toBe(
-      'Andor grab was cancelled and unmonitored, but no matching Arr queue rows were found. Refresh the queue if a live download is still running.',
+      '"Andor" grab was cancelled and unmonitored, but no matching Arr queue rows were found. Refresh the queue if a live download is still running.',
     );
     expect(cancelJob).toHaveBeenCalledWith(seriesJob);
     expect(arrFetch).toHaveBeenCalledTimes(2);
@@ -845,7 +845,7 @@ describe('acquisition service', () => {
     const result = await module.cancelAcquisitionJob(queuedSeriesJob.id);
 
     expect(result.message).toBe(
-      'Andor grab was cancelled and unmonitored before Arr created a live queue entry.',
+      '"Andor" grab was cancelled and unmonitored before Arr created a live queue entry.',
     );
     expect(cancelJob).toHaveBeenCalledWith(queuedSeriesJob);
     expect(arrFetch).toHaveBeenCalledTimes(2);
@@ -935,7 +935,7 @@ describe('acquisition service', () => {
     const result = await module.cancelAcquisitionJob(activeSeriesJob.id);
 
     expect(result.message).toBe(
-      'Andor grab was cancelled and unmonitored, but no matching Arr queue rows were found. Refresh the queue if a live download is still running.',
+      '"Andor" grab was cancelled and unmonitored, but no matching Arr queue rows were found. Refresh the queue if a live download is still running.',
     );
     expect(cancelJob).toHaveBeenCalledWith(activeSeriesJob);
     expect(arrFetch).toHaveBeenCalledTimes(2);
@@ -1040,7 +1040,7 @@ describe('acquisition service', () => {
 
     expect(result).toEqual({
       itemId: 'radarr:queue:7',
-      message: 'The Matrix stale queue entry was removed from Radarr.',
+      message: '"The Matrix" stale queue entry was removed from Radarr.',
     });
     expect(arrFetch).toHaveBeenCalledTimes(1);
     expect(arrFetch).toHaveBeenCalledWith(
@@ -1092,7 +1092,7 @@ describe('acquisition service', () => {
 
     const module = await import('$lib/server/acquisition-service');
 
-    await expect(module.selectManualRelease(job.id, 'guid-1', 11)).rejects.toThrow(
+    await expect(module.selectManualRelease(job.id, 'guid-1', 11, 'direct')).rejects.toThrow(
       'can no longer accept manual release selections',
     );
   });
@@ -1123,23 +1123,26 @@ describe('acquisition service', () => {
           guid: 'guid-2',
           indexerId: 12,
         },
+        selectionMode: 'direct' as const,
         selectedResult: {
           canSelect: false,
-          downloadAllowed: true,
+          selectionMode: null,
+          blockReason: 'already-selected',
           guid: 'guid-2',
-          identityReason: 'Release title matched The Matrix',
           identityStatus: 'exact-match',
           indexer: 'Indexer',
           indexerId: 12,
           languages: ['English'],
           protocol: 'torrent',
           reason: 'User selected The.Matrix.1999.1080p.WEB-DL-ALT',
-          rejectedByArr: false,
-          rejectionReasons: [],
-          scopeReason: null,
           scopeStatus: 'not-applicable',
+          explanation: {
+            summary: 'User selected The.Matrix.1999.1080p.WEB-DL-ALT',
+            matchReasons: ['Release title matched The Matrix'],
+            warningReasons: [],
+            arrReasons: [],
+          },
           score: 520,
-          selectionBlockedReason: null,
           size: 1_200,
           status: 'selected',
           title: 'The.Matrix.1999.1080p.WEB-DL-ALT',
@@ -1159,6 +1162,7 @@ describe('acquisition service', () => {
       releasesFound: 1,
       selectedGuid: 'guid-2',
       selectedRelease: persistedSelection.decision.selected,
+      manualSelectionMode: 'direct' as const,
       selection: {
         decision: persistedSelection.decision,
         payload: persistedSelection.payload,
@@ -1202,23 +1206,26 @@ describe('acquisition service', () => {
               guid: 'guid-selected',
               indexerId: 11,
             },
+            selectionMode: 'direct' as const,
             selectedResult: {
               canSelect: false,
-              downloadAllowed: true,
+              selectionMode: null,
+              blockReason: 'already-selected',
               guid: 'guid-selected',
-              identityReason: 'Release title matched The Matrix',
               identityStatus: 'exact-match',
               indexer: 'Indexer',
               indexerId: 11,
               languages: ['English'],
               protocol: 'torrent',
               reason: 'User selected The.Matrix.1999.1080p.WEB-DL-FLUX',
-              rejectedByArr: false,
-              rejectionReasons: [],
-              scopeReason: null,
               scopeStatus: 'not-applicable',
+              explanation: {
+                summary: 'User selected The.Matrix.1999.1080p.WEB-DL-FLUX',
+                matchReasons: ['Release title matched The Matrix'],
+                warningReasons: [],
+                arrReasons: [],
+              },
               score: 500,
-              selectionBlockedReason: null,
               size: 1_000,
               status: 'selected',
               title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
@@ -1249,12 +1256,13 @@ describe('acquisition service', () => {
 
     const module = await import('$lib/server/acquisition-service');
 
-    const result = await module.selectManualRelease(job.id, 'guid-2', 12);
+    const result = await module.selectManualRelease(job.id, 'guid-2', 12, 'direct');
 
     expect(findManualReleaseSelection).toHaveBeenCalledWith(
       expect.objectContaining({ id: job.id }),
       'guid-2',
       12,
+      'direct',
     );
     expect(persistManualSelection).toHaveBeenCalledWith(manualSelection);
     expect(updateJobIfStatus).toHaveBeenCalledWith(
@@ -1268,6 +1276,148 @@ describe('acquisition service', () => {
     );
     expect(enqueue).toHaveBeenCalledWith(job.id);
     expect(result.message).toBe('Updated manual release The.Matrix.1999.1080p.WEB-DL-ALT.');
+  });
+
+  it('passes Arr-rejection overrides through manual selection', async () => {
+    const enqueue = vi.fn();
+    const updatedJob = {
+      ...job,
+      queueStatus: 'Manual selection queued',
+      queuedManualSelection: null,
+      status: 'queued',
+      validationSummary: 'User overrode Arr rejection and selected The.Matrix.1999.2160p.WEB-DL-BLOCKED',
+    };
+    const updateJobIfStatus = vi.fn().mockReturnValue({
+      updated: true,
+      job: updatedJob,
+    });
+    const manualSelection = {
+      manualResults: [
+        {
+          canSelect: false,
+          selectionMode: null,
+          blockReason: 'already-selected',
+          guid: 'guid-override',
+          identityStatus: 'exact-match',
+          indexer: 'Indexer',
+          indexerId: 13,
+          languages: ['English'],
+          protocol: 'torrent',
+          reason: 'Would normally score highest, but Arr rejected it.',
+          scopeStatus: 'not-applicable',
+          explanation: {
+            summary: 'Would normally score highest, but Arr rejected it.',
+            matchReasons: ['Release title matched The Matrix'],
+            warningReasons: [],
+            arrReasons: ['Rejected by Arr custom format rules'],
+          },
+          score: 610,
+          size: 1_500,
+          status: 'selected' as const,
+          title: 'The.Matrix.1999.2160p.WEB-DL-BLOCKED',
+        },
+      ],
+      mappedReleases: 1,
+      manualSelectionMode: 'override-arr-rejection' as const,
+      releasesFound: 1,
+      selectedGuid: 'guid-override',
+      selectedRelease: {
+        guid: 'guid-override',
+        indexer: 'Indexer',
+        indexerId: 13,
+        languages: ['English'],
+        protocol: 'torrent',
+        reason: 'Would normally score highest, but Arr rejected it.',
+        score: 610,
+        size: 1_500,
+        title: 'The.Matrix.1999.2160p.WEB-DL-BLOCKED',
+      },
+      selection: {
+        decision: {
+          accepted: 0,
+          considered: 1,
+          reason: 'User overrode Arr rejection and selected The.Matrix.1999.2160p.WEB-DL-BLOCKED',
+          selected: {
+            guid: 'guid-override',
+            indexer: 'Indexer',
+            indexerId: 13,
+            languages: ['English'],
+            protocol: 'torrent',
+            reason: 'Would normally score highest, but Arr rejected it.',
+            score: 610,
+            size: 1_500,
+            title: 'The.Matrix.1999.2160p.WEB-DL-BLOCKED',
+          },
+        },
+        payload: {
+          guid: 'guid-override',
+          indexerId: 13,
+        },
+      },
+    };
+
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        enqueue,
+        ensureWorkers: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        cancelJob: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        getJob: vi.fn().mockReturnValue({
+          ...job,
+          status: 'failed',
+        }),
+        updateJobIfStatus,
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      getAcquisitionJobsResponse: vi.fn(),
+      listQueueAcquisitionJobs: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-validator-shared', () => ({
+      fetchQueueRecords: vi.fn().mockResolvedValue([]),
+      queueRecordArrItemId: vi.fn(),
+      queueRecordId: vi.fn().mockReturnValue(null),
+    }));
+    const findManualReleaseSelection = vi.fn().mockResolvedValue(manualSelection);
+    const persistManualSelection = vi.fn().mockReturnValue({
+      decision: manualSelection.selection.decision,
+      payload: manualSelection.selection.payload,
+      selectionMode: manualSelection.manualSelectionMode,
+      selectedResult: manualSelection.manualResults[0],
+    });
+    vi.doMock('$lib/server/acquisition-selection', () => ({
+      findManualReleaseSelection,
+      getManualReleaseResults: vi.fn(),
+      persistManualSelection,
+      queuedManualReleaseResults: vi.fn().mockReturnValue(null),
+    }));
+
+    const module = await import('$lib/server/acquisition-service');
+
+    await module.selectManualRelease(job.id, 'guid-override', 13, 'override-arr-rejection');
+
+    expect(findManualReleaseSelection).toHaveBeenCalledWith(
+      expect.objectContaining({ id: job.id }),
+      'guid-override',
+      13,
+      'override-arr-rejection',
+    );
+    expect(updateJobIfStatus).toHaveBeenCalledWith(
+      job.id,
+      ['failed', 'queued', 'retrying', 'searching'],
+      expect.objectContaining({
+        attempt: 2,
+        validationSummary:
+          'User overrode Arr rejection and selected The.Matrix.1999.2160p.WEB-DL-BLOCKED',
+      }),
+    );
   });
 
   it('rejects loading manual release results once a job is completed', async () => {

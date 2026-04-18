@@ -818,6 +818,7 @@ describe('AcquisitionRunner', () => {
 
     const failed = harness.jobs.getJob(job.id);
     expect(failed?.autoRetrying).toBe(false);
+    expect(failed?.attempt).toBe(1);
     expect(failed?.reasonCode).toBe('import-blocked');
     expect(failed?.queueStatus).toBe('Import blocked');
     expect(failed?.attempts[0]?.status).toBe('failed');
