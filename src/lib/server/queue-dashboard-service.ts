@@ -4,7 +4,7 @@ import { dashboardCache, queueCache } from '$lib/server/app-cache';
 import { isTerminalJobStatus, type ArrService } from '$lib/server/acquisition-domain';
 import { getAcquisitionJobRepository } from '$lib/server/acquisition-job-repository';
 import { ensureAcquisitionWorkers, getQueueAcquisitionJobs } from '$lib/server/acquisition-service';
-import { itemMatchKeys } from '$lib/server/media-identity';
+import { itemMatchKeys, itemSearchTitles } from '$lib/server/media-identity';
 import { fetchExistingMovie, fetchExistingSeries } from '$lib/server/lookup-service';
 import { mergeItems, normalizeItem } from '$lib/server/media-normalize';
 import { getRecentPlexItems, searchPlex } from '$lib/server/plex-service';
@@ -308,7 +308,12 @@ async function mergeDashboardPlexItems(items: MediaItem[]): Promise<MediaItem[]>
 
   const searchQueries = [
     ...new Map(
-      unresolvedItems.map((item) => [`${item.kind}:${item.title}`, { kind: item.kind, title: item.title }]),
+      unresolvedItems.flatMap((item) =>
+        itemSearchTitles(item)
+          .map((title) => title.trim())
+          .filter((title) => title.length >= 2)
+          .map((title) => [`${item.kind}:${title}`, { kind: item.kind, title }] as const),
+      ),
     ).values(),
   ];
   const searchedPlexItems = (
