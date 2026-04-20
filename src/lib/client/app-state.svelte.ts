@@ -323,6 +323,22 @@ function defaultSeasonNumbersForItem(item: MediaItem | null): number[] {
   return [firstPositiveSeason ?? seasonNumbers[0]];
 }
 
+function confirmQualityProfileIdForItem(
+  item: MediaItem | null,
+  config: ConfigStatus,
+): number | null {
+  if (!item) {
+    return null;
+  }
+
+  const itemQualityProfileId = asNumber(asRecord(item.requestPayload).qualityProfileId);
+  if (itemQualityProfileId !== null && itemQualityProfileId > 0) {
+    return itemQualityProfileId;
+  }
+
+  return defaultQualityProfileId(item, config);
+}
+
 export type PageData = {
   config: ConfigStatus;
   recentPlex: MediaItem[];
@@ -794,7 +810,7 @@ export class AppState {
     }
 
     this.confirmAddItem = grabItem;
-    this.confirmQualityProfileId = this.defaultQualityProfileId(grabItem);
+    this.confirmQualityProfileId = confirmQualityProfileIdForItem(grabItem, this.config);
     this.confirmPreferredLanguage = this.preferredLanguage;
     this.confirmSubtitleLanguage = this.subtitleLanguage;
     this.confirmSeasonNumbers = defaultSeasonNumbersForItem(grabItem);

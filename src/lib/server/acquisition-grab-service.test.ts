@@ -1,6 +1,35 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AcquisitionJob, MediaItem } from '$lib/shared/types';
 
+const movieItem: MediaItem = {
+  id: 'movie:603',
+  kind: 'movie',
+  title: 'The Matrix',
+  year: 1999,
+  rating: 8.7,
+  poster: null,
+  overview: 'Sci-fi',
+  status: 'Ready to add',
+  isExisting: false,
+  isRequested: false,
+  auditStatus: 'pending',
+  audioLanguages: [],
+  subtitleLanguages: [],
+  sourceService: 'radarr',
+  origin: 'arr',
+  inArr: false,
+  inPlex: false,
+  plexLibraries: [],
+  canAdd: true,
+  detail: null,
+  requestPayload: {
+    id: 603,
+    tmdbId: 603,
+    imdbId: 'tt0133093',
+    status: 'released',
+  },
+};
+
 const seriesItem: MediaItem = {
   id: 'series:80',
   kind: 'series',
@@ -66,6 +95,38 @@ const createdJob: AcquisitionJob = {
   attempts: [],
 };
 
+const createdMovieJob: AcquisitionJob = {
+  id: 'job-movie-1',
+  itemId: movieItem.id,
+  arrItemId: 603,
+  kind: 'movie',
+  title: movieItem.title,
+  sourceService: 'radarr',
+  status: 'queued',
+  attempt: 1,
+  maxRetries: 4,
+  currentRelease: null,
+  selectedReleaser: null,
+  preferredReleaser: null,
+  reasonCode: null,
+  failureReason: null,
+  validationSummary: null,
+  autoRetrying: false,
+  progress: null,
+  queueStatus: 'Queued',
+  qualityProfileId: 7,
+  preferences: {
+    preferredLanguage: 'English',
+    subtitleLanguage: 'Any',
+  },
+  targetSeasonNumbers: null,
+  targetEpisodeIds: null,
+  startedAt: '2026-04-02T10:05:00.000Z',
+  updatedAt: '2026-04-02T10:05:00.000Z',
+  completedAt: null,
+  attempts: [],
+};
+
 const seriesEpisodeRecords = [
   { id: 101, seasonNumber: 1 },
   { id: 102, seasonNumber: 2 },
@@ -79,6 +140,192 @@ afterEach(() => {
 });
 
 describe('acquisition grab service', () => {
+  it('adds unreleased movies as monitored with Radarr search disabled', async () => {
+    const arrFetch = vi.fn().mockImplementation(async (_service: string, path: string) => {
+      if (path === '/api/v3/movie') {
+        return {
+          id: 603,
+        };
+      }
+
+      throw new Error(`Unexpected arrFetch path: ${path}`);
+    });
+    const createOrReuseActiveJob = vi.fn().mockReturnValue({ created: true, job: createdMovieJob });
+    const fetchExistingMovie = vi.fn().mockResolvedValue({
+      ...movieItem,
+      arrItemId: 603,
+      canAdd: false,
+      inArr: true,
+      requestPayload: {
+        ...movieItem.requestPayload,
+        id: 603,
+        qualityProfileId: 7,
+        status: 'announced',
+      },
+      status: 'Monitored',
+    } satisfies MediaItem);
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      acquisitionMaxRetries: () => 4,
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/config-service', () => ({
+      fetchServiceDefaults: vi.fn().mockResolvedValue({
+        rootFolderPath: 'C:\\Movies',
+        qualityProfileId: 7,
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        recordJobCreated: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        enqueue: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        createOrReuseActiveJob,
+        findActiveJob: vi.fn().mockReturnValue(null),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      findPreferredReleaser: vi.fn().mockReturnValue(null),
+    }));
+    vi.doMock('$lib/server/lookup-service', () => ({
+      fetchExistingMovie,
+      fetchExistingSeries: vi.fn(),
+      fetchSeriesEpisodeRecords: vi.fn(),
+    }));
+
+    const module = await import('$lib/server/acquisition-grab-service');
+    await module.grabItem(
+      {
+        ...movieItem,
+        requestPayload: {
+          ...movieItem.requestPayload,
+          status: 'announced',
+        },
+      },
+      {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'Any',
+      },
+    );
+
+    expect(arrFetch).toHaveBeenCalledWith(
+      'radarr',
+      '/api/v3/movie',
+      expect.objectContaining({
+        body: expect.any(String),
+        method: 'POST',
+      }),
+    );
+
+    const [, , init] = arrFetch.mock.calls[0] as [string, string, RequestInit];
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      monitored: true,
+      minimumAvailability: 'released',
+      qualityProfileId: 7,
+      rootFolderPath: 'C:\\Movies',
+      addOptions: {
+        searchForMovie: false,
+      },
+      status: 'announced',
+    });
+    expect(createOrReuseActiveJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        arrItemId: 603,
+        itemId: movieItem.id,
+        kind: 'movie',
+        qualityProfileId: 7,
+        sourceService: 'radarr',
+        targetEpisodeIds: null,
+        targetSeasonNumbers: null,
+      }),
+    );
+  });
+
+  it('keeps released movies unmonitored when adding them to Radarr', async () => {
+    const arrFetch = vi.fn().mockImplementation(async (_service: string, path: string) => {
+      if (path === '/api/v3/movie') {
+        return {
+          id: 603,
+        };
+      }
+
+      throw new Error(`Unexpected arrFetch path: ${path}`);
+    });
+    const createOrReuseActiveJob = vi.fn().mockReturnValue({ created: true, job: createdMovieJob });
+    const fetchExistingMovie = vi.fn().mockResolvedValue({
+      ...movieItem,
+      arrItemId: 603,
+      canAdd: false,
+      inArr: true,
+      requestPayload: {
+        ...movieItem.requestPayload,
+        id: 603,
+        qualityProfileId: 7,
+      },
+      status: 'Already in Arr',
+    } satisfies MediaItem);
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      acquisitionMaxRetries: () => 4,
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/config-service', () => ({
+      fetchServiceDefaults: vi.fn().mockResolvedValue({
+        rootFolderPath: 'C:\\Movies',
+        qualityProfileId: 7,
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-lifecycle', () => ({
+      getAcquisitionLifecycle: () => ({
+        recordJobCreated: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-runner', () => ({
+      getAcquisitionRunner: () => ({
+        enqueue: vi.fn(),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-job-repository', () => ({
+      getAcquisitionJobRepository: () => ({
+        createOrReuseActiveJob,
+        findActiveJob: vi.fn().mockReturnValue(null),
+      }),
+    }));
+    vi.doMock('$lib/server/acquisition-query', () => ({
+      findPreferredReleaser: vi.fn().mockReturnValue(null),
+    }));
+    vi.doMock('$lib/server/lookup-service', () => ({
+      fetchExistingMovie,
+      fetchExistingSeries: vi.fn(),
+      fetchSeriesEpisodeRecords: vi.fn(),
+    }));
+
+    const module = await import('$lib/server/acquisition-grab-service');
+    await module.grabItem(movieItem, {
+      preferredLanguage: 'English',
+      subtitleLanguage: 'Any',
+    });
+
+    const [, , init] = arrFetch.mock.calls[0] as [string, string, RequestInit];
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      monitored: false,
+      minimumAvailability: 'released',
+      qualityProfileId: 7,
+      rootFolderPath: 'C:\\Movies',
+      addOptions: {
+        searchForMovie: false,
+      },
+      status: 'released',
+    });
+  });
+
   it('monitors only the selected seasons for new series grabs', async () => {
     const arrFetch = vi.fn().mockImplementation(async (_service: string, path: string) => {
       if (path === '/api/v3/series') {
@@ -265,18 +512,26 @@ describe('acquisition grab service', () => {
     }));
 
     const module = await import('$lib/server/acquisition-grab-service');
-    const first = module.grabItem(seriesItem, {
-      preferredLanguage: 'English',
-      subtitleLanguage: 'Any',
-    }, {
-      seasonNumbers: selectedSeasonNumbers,
-    });
-    const second = module.grabItem(seriesItem, {
-      preferredLanguage: 'English',
-      subtitleLanguage: 'Any',
-    }, {
-      seasonNumbers: selectedSeasonNumbers,
-    });
+    const first = module.grabItem(
+      seriesItem,
+      {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'Any',
+      },
+      {
+        seasonNumbers: selectedSeasonNumbers,
+      },
+    );
+    const second = module.grabItem(
+      seriesItem,
+      {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'Any',
+      },
+      {
+        seasonNumbers: selectedSeasonNumbers,
+      },
+    );
 
     await Promise.resolve();
     expect(arrFetch).toHaveBeenCalledTimes(1);
@@ -380,18 +635,26 @@ describe('acquisition grab service', () => {
     }));
 
     const module = await import('$lib/server/acquisition-grab-service');
-    const first = await module.grabItem(seriesItem, {
-      preferredLanguage: 'English',
-      subtitleLanguage: 'Any',
-    }, {
-      seasonNumbers: selectedSeasonNumbers,
-    });
-    const second = await module.grabItem(seriesItem, {
-      preferredLanguage: 'English',
-      subtitleLanguage: 'Any',
-    }, {
-      seasonNumbers: selectedSeasonNumbers,
-    });
+    const first = await module.grabItem(
+      seriesItem,
+      {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'Any',
+      },
+      {
+        seasonNumbers: selectedSeasonNumbers,
+      },
+    );
+    const second = await module.grabItem(
+      seriesItem,
+      {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'Any',
+      },
+      {
+        seasonNumbers: selectedSeasonNumbers,
+      },
+    );
 
     expect(first.existing).toBe(false);
     expect(second.existing).toBe(true);
@@ -461,12 +724,16 @@ describe('acquisition grab service', () => {
     }));
 
     const module = await import('$lib/server/acquisition-grab-service');
-    const result = await module.grabItem(seriesItem, {
-      preferredLanguage: 'English',
-      subtitleLanguage: 'Any',
-    }, {
-      seasonNumbers: selectedSeasonNumbers,
-    });
+    const result = await module.grabItem(
+      seriesItem,
+      {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'Any',
+      },
+      {
+        seasonNumbers: selectedSeasonNumbers,
+      },
+    );
 
     expect(fetchExistingSeries).toHaveBeenCalledTimes(2);
     expect(createOrReuseActiveJob).toHaveBeenCalledTimes(1);
@@ -530,12 +797,16 @@ describe('acquisition grab service', () => {
     }));
 
     const module = await import('$lib/server/acquisition-grab-service');
-    const result = await module.grabItem(trackedSeriesItem, {
-      preferredLanguage: 'English',
-      subtitleLanguage: 'Any',
-    }, {
-      seasonNumbers: [2],
-    });
+    const result = await module.grabItem(
+      trackedSeriesItem,
+      {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'Any',
+      },
+      {
+        seasonNumbers: [2],
+      },
+    );
 
     expect(arrFetch).not.toHaveBeenCalled();
     expect(fetchExistingSeries).toHaveBeenCalledWith(
@@ -594,29 +865,31 @@ describe('acquisition grab service', () => {
         sourceService: 'sonarr',
       } satisfies MediaItem);
     const createOrReuseActiveJob = vi.fn().mockReturnValue({ created: true, job: createdJob });
-    const arrFetch = vi.fn().mockImplementation(async (_service: string, path: string, init?: RequestInit) => {
-      if (!init && path === '/api/v3/series/80') {
-        return {
-          id: 80,
-          monitored: false,
-          qualityProfileId: 11,
-          seasons: [
-            { seasonNumber: 0, monitored: false },
-            { seasonNumber: 1, monitored: false },
-            { seasonNumber: 2, monitored: true },
-          ],
-        };
-      }
+    const arrFetch = vi
+      .fn()
+      .mockImplementation(async (_service: string, path: string, init?: RequestInit) => {
+        if (!init && path === '/api/v3/series/80') {
+          return {
+            id: 80,
+            monitored: false,
+            qualityProfileId: 11,
+            seasons: [
+              { seasonNumber: 0, monitored: false },
+              { seasonNumber: 1, monitored: false },
+              { seasonNumber: 2, monitored: true },
+            ],
+          };
+        }
 
-      if (init?.method === 'PUT' && path === '/api/v3/series/80') {
-        return {
-          id: 80,
-          qualityProfileId: 22,
-        };
-      }
+        if (init?.method === 'PUT' && path === '/api/v3/series/80') {
+          return {
+            id: 80,
+            qualityProfileId: 22,
+          };
+        }
 
-      throw new Error(`Unexpected arrFetch path: ${path}`);
-    });
+        throw new Error(`Unexpected arrFetch path: ${path}`);
+      });
 
     vi.doMock('$lib/server/arr-client', () => ({
       acquisitionMaxRetries: () => 4,
@@ -672,7 +945,9 @@ describe('acquisition grab service', () => {
         method: 'PUT',
       }),
     );
-    expect(JSON.parse(String((arrFetch.mock.calls[1] as [string, string, RequestInit])[2].body))).toMatchObject({
+    expect(
+      JSON.parse(String((arrFetch.mock.calls[1] as [string, string, RequestInit])[2].body)),
+    ).toMatchObject({
       qualityProfileId: 22,
     });
     expect(fetchExistingSeries).toHaveBeenCalledTimes(1);
@@ -793,22 +1068,24 @@ describe('acquisition grab service', () => {
       },
       sourceService: 'sonarr',
     } satisfies MediaItem);
-    const arrFetch = vi.fn().mockImplementation(async (_service: string, path: string, init?: RequestInit) => {
-      if (!init && path === '/api/v3/series/80') {
-        return {
-          id: 80,
-          monitored: false,
-          qualityProfileId: 11,
-          seasons: [{ seasonNumber: 2, monitored: false }],
-        };
-      }
+    const arrFetch = vi
+      .fn()
+      .mockImplementation(async (_service: string, path: string, init?: RequestInit) => {
+        if (!init && path === '/api/v3/series/80') {
+          return {
+            id: 80,
+            monitored: false,
+            qualityProfileId: 11,
+            seasons: [{ seasonNumber: 2, monitored: false }],
+          };
+        }
 
-      if (init?.method === 'PUT' && path === '/api/v3/series/80') {
-        throw new Error('Unable to update tracked quality profile');
-      }
+        if (init?.method === 'PUT' && path === '/api/v3/series/80') {
+          throw new Error('Unable to update tracked quality profile');
+        }
 
-      throw new Error(`Unexpected arrFetch path: ${path}`);
-    });
+        throw new Error(`Unexpected arrFetch path: ${path}`);
+      });
 
     vi.doMock('$lib/server/arr-client', () => ({
       acquisitionMaxRetries: () => 4,
@@ -885,27 +1162,29 @@ describe('acquisition grab service', () => {
       },
       sourceService: 'sonarr',
     } satisfies MediaItem);
-    const arrFetch = vi.fn().mockImplementation(async (_service: string, path: string, init?: RequestInit) => {
-      if (!init && path === '/api/v3/series/80') {
-        return {
-          id: 80,
-          monitored: false,
-          qualityProfileId: 11,
-          seasons: [{ seasonNumber: 2, monitored: false }],
-        };
-      }
+    const arrFetch = vi
+      .fn()
+      .mockImplementation(async (_service: string, path: string, init?: RequestInit) => {
+        if (!init && path === '/api/v3/series/80') {
+          return {
+            id: 80,
+            monitored: false,
+            qualityProfileId: 11,
+            seasons: [{ seasonNumber: 2, monitored: false }],
+          };
+        }
 
-      if (init?.method === 'PUT' && path === '/api/v3/series/80') {
-        return {
-          id: 80,
-          monitored: false,
-          qualityProfileId: 22,
-          seasons: [{ seasonNumber: 2, monitored: false }],
-        };
-      }
+        if (init?.method === 'PUT' && path === '/api/v3/series/80') {
+          return {
+            id: 80,
+            monitored: false,
+            qualityProfileId: 22,
+            seasons: [{ seasonNumber: 2, monitored: false }],
+          };
+        }
 
-      throw new Error(`Unexpected arrFetch path: ${path}`);
-    });
+        throw new Error(`Unexpected arrFetch path: ${path}`);
+      });
 
     vi.doMock('$lib/server/arr-client', () => ({
       acquisitionMaxRetries: () => 4,

@@ -1,30 +1,31 @@
+import {
+  AcquisitionGrabError,
+  type ArrService,
+  cloneJob,
+  type GrabItemOptions,
+  type PersistedAcquisitionJob,
+} from '$lib/server/acquisition-domain';
+import {
+  type CreateAcquisitionJobInput,
+  getAcquisitionJobRepository,
+} from '$lib/server/acquisition-job-repository';
+import { getAcquisitionLifecycle } from '$lib/server/acquisition-lifecycle';
+import { findPreferredReleaser } from '$lib/server/acquisition-query';
+import { getAcquisitionRunner } from '$lib/server/acquisition-runner';
+import { acquisitionMaxRetries, arrFetch } from '$lib/server/arr-client';
+import { fetchServiceDefaults } from '$lib/server/config-service';
+import { createAreaLogger } from '$lib/server/logger';
+import { fetchExistingMovie, fetchExistingSeries } from '$lib/server/lookup-service';
+import { normalizeItem } from '$lib/server/media-normalize';
+import { asArray, asNumber, asPositiveNumber, asRecord, asString } from '$lib/server/raw';
+import {
+  describeSeriesScope,
+  normalizeNumberArray,
+  scopeFromSeriesJob,
+} from '$lib/server/series-scope';
 import { sanitizePreferences } from '$lib/shared/preferences';
 import { quoteTitle } from '$lib/shared/text-format';
 import type { AcquisitionJob, GrabResponse, MediaItem, Preferences } from '$lib/shared/types';
-import { createAreaLogger } from '$lib/server/logger';
-import { acquisitionMaxRetries, arrFetch } from '$lib/server/arr-client';
-import {
-  AcquisitionGrabError,
-  cloneJob,
-  type PersistedAcquisitionJob,
-  type ArrService,
-  type GrabItemOptions,
-} from '$lib/server/acquisition-domain';
-import { fetchServiceDefaults } from '$lib/server/config-service';
-import { getAcquisitionLifecycle } from '$lib/server/acquisition-lifecycle';
-import { getAcquisitionRunner } from '$lib/server/acquisition-runner';
-import {
-  getAcquisitionJobRepository,
-  type CreateAcquisitionJobInput,
-} from '$lib/server/acquisition-job-repository';
-import { findPreferredReleaser } from '$lib/server/acquisition-query';
-import {
-  fetchExistingMovie,
-  fetchExistingSeries,
-} from '$lib/server/lookup-service';
-import { normalizeItem } from '$lib/server/media-normalize';
-import { describeSeriesScope, normalizeNumberArray, scopeFromSeriesJob } from '$lib/server/series-scope';
-import { asArray, asNumber, asPositiveNumber, asRecord, asString } from '$lib/server/raw';
 
 const logger = createAreaLogger('acquisition');
 // Collapse concurrent grabs for the same Arr item identity so a double-submit cannot create
@@ -61,7 +62,10 @@ function ensureRootFolder(defaults: Record<string, unknown>, service: ArrService
 
 function ensureAddable(item: MediaItem): void {
   if (!item.canAdd || !item.requestPayload || item.sourceService === 'plex') {
-    throw new AcquisitionGrabError(400, `${quoteTitle(item.title)} cannot be added from this result`);
+    throw new AcquisitionGrabError(
+      400,
+      `${quoteTitle(item.title)} cannot be added from this result`,
+    );
   }
 }
 
@@ -100,23 +104,24 @@ function grabIdentity(
     item.id;
   const seasonScope =
     item.kind === 'series'
-      ? normalizeNumberArray(options?.seasonNumbers)?.join(',') ?? 'missing-scope'
+      ? (normalizeNumberArray(options?.seasonNumbers)?.join(',') ?? 'missing-scope')
       : 'movie';
-  const qualityProfileKey = requestedQualityProfileId(item, options)?.toString() ?? 'default-quality';
+  const qualityProfileKey =
+    requestedQualityProfileId(item, options)?.toString() ?? 'default-quality';
 
   return `${item.sourceService}:${item.kind}:${identity}:${preferencesIdentity(preferences)}:${qualityProfileKey}:${seasonScope}`;
 }
 
-function explicitSeriesTargetSeasonNumbers(
-  item: MediaItem,
-  options?: GrabItemOptions,
-): number[] {
+function explicitSeriesTargetSeasonNumbers(item: MediaItem, options?: GrabItemOptions): number[] {
   const seasonNumbers = normalizeNumberArray(options?.seasonNumbers);
   if (seasonNumbers) {
     return seasonNumbers;
   }
 
-  throw new AcquisitionGrabError(400, `Select at least one season before grabbing ${quoteTitle(item.title)}.`);
+  throw new AcquisitionGrabError(
+    400,
+    `Select at least one season before grabbing ${quoteTitle(item.title)}.`,
+  );
 }
 
 function requestedQualityProfileId(item: MediaItem, options?: GrabItemOptions): number | null {
@@ -135,7 +140,7 @@ async function buildRequestedJobInput(
   options?: GrabItemOptions,
 ): Promise<CreateAcquisitionJobInput> {
   let targetSeasonNumbers: number[] | null = null;
-  let targetEpisodeIds: number[] | null = null;
+  const targetEpisodeIds: number[] | null = null;
   if (item.kind === 'series') {
     targetSeasonNumbers = explicitSeriesTargetSeasonNumbers(item, options);
   }
@@ -250,7 +255,7 @@ function buildMoviePayload(
 
   return {
     ...raw,
-    monitored: false,
+    monitored: !isReleasedMovie(raw),
     minimumAvailability: asString(raw.minimumAvailability) ?? 'released',
     rootFolderPath: asString(raw.rootFolderPath) ?? asString(defaults.rootFolderPath),
     qualityProfileId:
@@ -261,6 +266,10 @@ function buildMoviePayload(
       searchForMovie: false,
     },
   };
+}
+
+function isReleasedMovie(raw: Record<string, unknown>): boolean {
+  return asString(raw.status)?.trim().toLowerCase() === 'released';
 }
 
 async function updateTrackedQualityProfile(
@@ -288,10 +297,7 @@ async function updateTrackedQualityProfile(
   return true;
 }
 
-function withTrackedQualityProfile(
-  item: MediaItem,
-  qualityProfileId: number | null,
-): MediaItem {
+function withTrackedQualityProfile(item: MediaItem, qualityProfileId: number | null): MediaItem {
   if (qualityProfileId === null || !item.requestPayload) {
     return item;
   }
@@ -412,11 +418,11 @@ async function trackedResponse(
   try {
     const qualityProfileUpdated =
       (requestedJob.qualityProfileId ?? null) !== currentQualityProfileId &&
-      await updateTrackedQualityProfile(
+      (await updateTrackedQualityProfile(
         spec.service,
         existingArrItemId,
         requestedJob.qualityProfileId ?? null,
-      );
+      ));
     responseItem = qualityProfileUpdated
       ? withTrackedQualityProfile(existingItem, requestedJob.qualityProfileId ?? null)
       : existingItem;
@@ -608,7 +614,13 @@ async function grabTrackedItem(
     job = createdId
       ? (
           await createOrReuseJob(
-            await buildRequestedJobInput(createdItem, createdId, spec.service, preferences, options),
+            await buildRequestedJobInput(
+              createdItem,
+              createdId,
+              spec.service,
+              preferences,
+              options,
+            ),
           )
         ).job
       : null;

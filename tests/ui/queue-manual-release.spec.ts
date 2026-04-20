@@ -81,6 +81,27 @@ test('queue view renders acquisition jobs and active downloads', async ({ page }
   await expect(page.getByRole('button', { name: 'Cancel download' })).toHaveCount(1);
 });
 
+test('queue selector tiles use pressed state to show which details card is active', async ({ page }) => {
+  const api = await mockAppApi(page, {
+    queue: buildQueueResponse(),
+  });
+
+  await openQueue(page, api);
+
+  const managedTile = queueEntryListItem(page, acquisitionJobFixture.title);
+  const externalTile = queueEntryListItem(page, queueItemFixture.title);
+
+  await expect(managedTile).toHaveAttribute('aria-pressed', 'true');
+  await expect(externalTile).toHaveAttribute('aria-pressed', 'false');
+  await expect(managedJobCard(page, acquisitionJobFixture.title)).toBeVisible();
+
+  await externalTile.click();
+
+  await expect(managedTile).toHaveAttribute('aria-pressed', 'false');
+  await expect(externalTile).toHaveAttribute('aria-pressed', 'true');
+  await expect(queueItemCard(page, queueItemFixture.title)).toBeVisible();
+});
+
 test('queue list surfaces release detail for ambiguous same-title external downloads', async ({ page }) => {
   const firstItem = {
     ...queueItemFixture,

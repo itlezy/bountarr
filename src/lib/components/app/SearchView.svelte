@@ -29,8 +29,9 @@ let { state }: { state: AppState } = $props();
         />
         {#if state.query.trim().length > 0}
           <button
-            class="control-shell absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center text-xs font-700"
+            class="control-shell app-icon-button absolute right-2 top-1/2 h-9 w-9 -translate-y-1/2"
             type="button"
+            data-testid="search-clear-button"
             aria-label="Clear search"
             onclick={() => {
               state.query = '';
@@ -38,7 +39,20 @@ let { state }: { state: AppState } = $props();
               state.searchError = null;
             }}
           >
-            X
+            <svg
+              class="app-icon-button__glyph"
+              viewBox="0 0 16 16"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <path
+                d="M4 4L12 12M12 4L4 12"
+                fill="none"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-width="1.8"
+              />
+            </svg>
           </button>
         {/if}
       </div>

@@ -89,14 +89,15 @@ function compactEntryTag(entry: QueueEntry): string {
         <div class="mt-3 grid gap-2">
           {#each state.queue.entries as entry}
             <button
-              class={`w-full rounded-[14px] border px-3 py-3 text-left transition ${
+              class={`queue-entry-list-item w-full rounded-[14px] border px-3 py-3 text-left transition ${
                 state.selectedQueueEntry?.id === entry.id
-                  ? 'border-sky-400 bg-sky-50 shadow-[0_0_0_1px_rgba(56,189,248,0.25)] dark:border-sky-700 dark:bg-sky-950/30'
+                  ? 'queue-entry-list-item-selected border-sky-400 bg-sky-50 shadow-[0_0_0_1px_rgba(56,189,248,0.25)] dark:border-sky-700 dark:bg-sky-950/30'
                   : 'border-[var(--line)] bg-[var(--surface-strong)]'
               }`}
               data-testid="queue-entry-list-item"
               type="button"
               aria-pressed={state.selectedQueueEntry?.id === entry.id}
+              data-selected={state.selectedQueueEntry?.id === entry.id}
               onclick={() => state.selectQueueEntry(entry.id)}
             >
               <div class="flex items-start justify-between gap-3">
@@ -118,7 +119,9 @@ function compactEntryTag(entry: QueueEntry): string {
                   {/if}
                 </div>
                 {#if compactEntryProgress(entry) !== null}
-                  <div class="shrink-0 text-sm font-700">{Math.round(compactEntryProgress(entry) ?? 0)}%</div>
+                  <div class="queue-entry-list-item__metric shrink-0 text-sm font-700">
+                    {Math.round(compactEntryProgress(entry) ?? 0)}%
+                  </div>
                 {/if}
               </div>
             </button>

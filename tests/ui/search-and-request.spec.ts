@@ -91,6 +91,23 @@ test('selected filter options keep the active styling marker', async ({ page }) 
   await expect(activeSort.locator('.filter-option__marker')).toBeVisible();
 });
 
+test('clear search control uses a desktop-safe hit area and clears the query', async ({ page }) => {
+  const api = await mockAppApi(page);
+  await openSearch(page, api, 'Matrix', 'The Matrix');
+
+  const clearButton = page.getByTestId('search-clear-button');
+  await expect(clearButton).toBeVisible();
+  const clearButtonBox = await clearButton.boundingBox();
+  expect(clearButtonBox).not.toBeNull();
+  expect(Math.round(clearButtonBox?.width ?? 0)).toBeGreaterThanOrEqual(36);
+  expect(Math.round(clearButtonBox?.height ?? 0)).toBeGreaterThanOrEqual(36);
+
+  await clearButton.click();
+
+  await expect(page.getByPlaceholder('Search movies or shows')).toHaveValue('');
+  await expect(page.getByText('Type at least two characters to search.')).toBeVisible();
+});
+
 test('movie grab submits through the grab dialog and moves to queue view', async ({
   page,
 }, testInfo) => {
@@ -162,6 +179,12 @@ test('movie grab submits through the grab dialog and moves to queue view', async
 
   const dialog = page.getByRole('dialog', { name: 'Grab title' });
   await expect(dialog).toBeVisible();
+  const closeButton = dialog.getByTestId('overlay-close-button');
+  await expect(closeButton).toBeVisible();
+  const closeButtonBox = await closeButton.boundingBox();
+  expect(closeButtonBox).not.toBeNull();
+  expect(Math.round(closeButtonBox?.width ?? 0)).toBeGreaterThanOrEqual(36);
+  expect(Math.round(closeButtonBox?.height ?? 0)).toBeGreaterThanOrEqual(36);
   await dialog.getByRole('button', { name: 'Grab', exact: true }).click();
 
   await expect(dialog.getByRole('button', { name: 'Grabbing...' })).toBeDisabled();

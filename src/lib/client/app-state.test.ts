@@ -408,6 +408,25 @@ describe('app state', () => {
     expect(state.confirmCanSubmit).toBe(true);
   });
 
+  it('uses the tracked item quality profile for alternate-release series grabs', () => {
+    const state = new AppState(pageData, createDependencies());
+    const trackedSeriesItem = {
+      ...seriesItem,
+      inArr: true,
+      canAdd: false,
+      requestPayload: {
+        ...seriesItem.requestPayload,
+        qualityProfileId: 2,
+      },
+      sourceService: 'sonarr',
+    } satisfies MediaItem;
+
+    state.openAddConfirm(trackedSeriesItem);
+
+    expect(state.confirmAddItem).not.toBeNull();
+    expect(state.confirmQualityProfileId).toBe(2);
+  });
+
   it('clears selected seasons when the add confirmation resets', () => {
     const state = new AppState(pageData, createDependencies());
 

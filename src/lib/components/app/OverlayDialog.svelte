@@ -45,13 +45,27 @@ let {
         {/if}
       </div>
       <button
-        class="control-shell flex h-9 w-9 shrink-0 items-center justify-center text-sm font-700 disabled:cursor-not-allowed disabled:opacity-50"
+        class="control-shell app-icon-button app-icon-button--close shrink-0 disabled:cursor-not-allowed disabled:opacity-50"
         type="button"
+        data-testid="overlay-close-button"
         aria-label={closeLabel}
         disabled={closeDisabled}
         onclick={() => onClose()}
       >
-        X
+        <svg
+          class="app-icon-button__glyph"
+          viewBox="0 0 16 16"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path
+            d="M4 4L12 12M12 4L4 12"
+            fill="none"
+            stroke="currentColor"
+            stroke-linecap="round"
+            stroke-width="1.8"
+          />
+        </svg>
       </button>
     </header>
 
