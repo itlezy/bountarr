@@ -1,8 +1,9 @@
 import { error, json } from '@sveltejs/kit';
+import { readJsonRecord } from '$lib/server/api-request';
 import { selectManualRelease } from '$lib/server/acquisition-service';
 import { asNumber, asString } from '$lib/server/raw';
 import { createAreaLogger, getErrorMessage, toErrorLogContext } from '$lib/server/logger';
-import type { ManualReleaseSelectRequest, ManualReleaseSelectionMode } from '$lib/shared/types';
+import type { ManualReleaseSelectionMode } from '$lib/shared/types';
 
 const logger = createAreaLogger('api.acquisition.select');
 
@@ -20,7 +21,7 @@ export const POST = async ({
   params: { jobId: string };
   request: Request;
 }) => {
-  const payload = (await request.json()) as Partial<ManualReleaseSelectRequest>;
+  const payload = await readJsonRecord(request);
   const guid = asString(payload.guid);
   const indexerId = asNumber(payload.indexerId);
   const selectionMode =
@@ -40,12 +41,7 @@ export const POST = async ({
   });
 
   try {
-    const result = await selectManualRelease(
-      params.jobId,
-      guid,
-      indexerId,
-      selectionMode,
-    );
+    const result = await selectManualRelease(params.jobId, guid, indexerId, selectionMode);
     logger.info('Acquisition manual-select request completed', {
       guid,
       indexerId,

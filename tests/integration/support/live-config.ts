@@ -101,7 +101,8 @@ export function loadLiveIntegrationConfig(): LiveIntegrationConfig {
       ),
     },
     radarrLogPath:
-      readEnvValue('RADARR_LOG_PATH', envFileValues) ?? 'C:\\var\\tarr\\RADARR_DATA_ENG\\logs\\radarr.txt',
+      readEnvValue('RADARR_LOG_PATH', envFileValues) ??
+      'C:\\var\\tarr\\RADARR_DATA_ENG\\logs\\radarr.txt',
     radarrApiKey: requiredEnvValue('RADARR_API_KEY', envFileValues),
     radarrUrl: requiredEnvValue('RADARR_URL', envFileValues).replace(/\/+$/, ''),
     sabLogPath:
@@ -111,17 +112,11 @@ export function loadLiveIntegrationConfig(): LiveIntegrationConfig {
     sonarrUrl: readEnvValue('SONARR_URL', envFileValues)?.replace(/\/+$/, '') ?? null,
     untrackedMovie: {
       title: readEnvValue('BOUNTARR_LIVE_MOVIE_TITLE', envFileValues) ?? 'Dredd',
-      year: Number.parseInt(
-        readEnvValue('BOUNTARR_LIVE_MOVIE_YEAR', envFileValues) ?? '2012',
-        10,
-      ),
+      year: Number.parseInt(readEnvValue('BOUNTARR_LIVE_MOVIE_YEAR', envFileValues) ?? '2012', 10),
     },
     untrackedSeries: {
       title: readEnvValue('BOUNTARR_LIVE_SERIES_TITLE', envFileValues) ?? 'Andor',
-      year: Number.parseInt(
-        readEnvValue('BOUNTARR_LIVE_SERIES_YEAR', envFileValues) ?? '2022',
-        10,
-      ),
+      year: Number.parseInt(readEnvValue('BOUNTARR_LIVE_SERIES_YEAR', envFileValues) ?? '2022', 10),
     },
   };
 }

@@ -744,7 +744,9 @@ describe('AcquisitionRunner', () => {
     const runner = new AcquisitionRunner(harness.jobs, harness.lifecycle, {
       findReleaseSelection: vi
         .fn()
-        .mockResolvedValue(createSelectionResult('guid-timeout', 'Timeout.Title.2026.1080p.WEB-DL-FLUX')),
+        .mockResolvedValue(
+          createSelectionResult('guid-timeout', 'Timeout.Title.2026.1080p.WEB-DL-FLUX'),
+        ),
       probeAttempt: vi.fn(),
       submitSelectedRelease: vi.fn().mockResolvedValue(undefined),
       waitForAttemptOutcome: vi.fn().mockImplementation(async (_job, _startedAt, onProgress) => {
@@ -773,6 +775,41 @@ describe('AcquisitionRunner', () => {
     const failed = harness.jobs.getJob(job.id);
     expect(failed?.progress).toBe(67);
     expect(failed?.queueStatus).toBe('Downloading');
+  });
+
+  it('keeps a claimed live queue identity when later progress updates omit it', () => {
+    const harness = createHarness();
+    const job = harness.jobs.createJob({
+      arrItemId: 895,
+      itemId: 'movie:895',
+      kind: 'movie',
+      maxRetries: 1,
+      preferredReleaser: 'flux',
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      sourceService: 'radarr',
+      title: 'Identity Progress',
+    });
+
+    harness.jobs.updateJob(job.id, {
+      currentRelease: 'Identity.Progress.2026.1080p.WEB-DL-FLUX',
+      status: 'grabbing',
+    });
+    harness.lifecycle.updateValidationProgress(job.id, 12, 'Downloading', {
+      liveDownloadId: 'radarr-download-12',
+      liveQueueId: 12,
+    });
+    harness.lifecycle.updateValidationProgress(job.id, 18, 'Downloading');
+
+    expect(harness.jobs.getJob(job.id)).toMatchObject({
+      liveDownloadId: 'radarr-download-12',
+      liveQueueId: 12,
+      progress: 18,
+      queueStatus: 'Downloading',
+      status: 'validating',
+    });
   });
 
   it('stops immediately without retrying when Arr blocks import after download completion', async () => {
@@ -805,8 +842,7 @@ describe('AcquisitionRunner', () => {
         progress: 100,
         queueStatus: 'Import blocked',
         reasonCode: 'import-blocked',
-        summary:
-          'Arr refused to import the release: Not an upgrade for existing movie file.',
+        summary: 'Arr refused to import the release: Not an upgrade for existing movie file.',
       }),
     });
 

@@ -275,8 +275,7 @@ async function mergeDashboardPlexItems(items: MediaItem[]): Promise<MediaItem[]>
     return (
       candidates.find(
         (plexItem) =>
-          plexItem.kind === item.kind &&
-          itemMatchKeys(plexItem).some((key) => matchKeys.has(key)),
+          plexItem.kind === item.kind && itemMatchKeys(plexItem).some((key) => matchKeys.has(key)),
       ) ?? null
     );
   };
@@ -398,10 +397,7 @@ function queueEntryUpdatedAt(entry: QueueEntry): number {
   return -1;
 }
 
-function liveQueueItemsForManagedJob(
-  job: AcquisitionJob,
-  items: QueueItem[],
-): QueueItem[] {
+function liveQueueItemsForManagedJob(job: AcquisitionJob, items: QueueItem[]): QueueItem[] {
   if (isTerminalJobStatus(job.status)) {
     return [];
   }
@@ -413,9 +409,7 @@ function liveQueueItemsForManagedJob(
 
   const identityMatches = items.filter((item) => queueItemMatchesManagedIdentity(job, item));
   const remainingItems =
-    identityMatches.length === 0
-      ? items
-      : items.filter((item) => !identityMatches.includes(item));
+    identityMatches.length === 0 ? items : items.filter((item) => !identityMatches.includes(item));
   const scopeMatches = remainingItems.filter((item) => queueItemMatchesManagedTarget(job, item));
   return [...identityMatches, ...scopeMatches];
 }

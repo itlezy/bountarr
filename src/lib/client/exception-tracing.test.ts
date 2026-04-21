@@ -1,8 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  installUiExceptionTracing,
-  reportUiException,
-} from '$lib/client/exception-tracing';
+import { installUiExceptionTracing, reportUiException } from '$lib/client/exception-tracing';
 
 afterEach(() => {
   vi.restoreAllMocks();

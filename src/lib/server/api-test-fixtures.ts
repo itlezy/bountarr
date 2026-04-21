@@ -250,7 +250,8 @@ function buildManagedLiveSummary(items: QueueItem[]): ManagedQueueLiveSummary | 
     progress:
       items.reduce((sum, item) => sum + (item.progress ?? 0), 0) /
       Math.max(1, items.filter((item) => item.progress !== null).length),
-    status: items.length === 1 ? items[0]?.status ?? null : `${items.length} live downloads active`,
+    status:
+      items.length === 1 ? (items[0]?.status ?? null) : `${items.length} live downloads active`,
     timeLeft: items.find((item) => item.timeLeft)?.timeLeft ?? null,
     estimatedCompletionTime:
       items.find((item) => item.estimatedCompletionTime)?.estimatedCompletionTime ?? null,

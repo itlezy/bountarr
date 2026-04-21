@@ -13,7 +13,7 @@ import {
   queueItemMatchesManagedTarget,
 } from '$lib/server/queue-matching';
 import { normalizeQueueItem } from '$lib/server/queue-normalize';
-import { asNumber, asRecord, asString } from '$lib/server/raw';
+import { asNumber, asRecord } from '$lib/server/raw';
 import { fetchEpisodeFile, fetchSeriesEpisodeRecords } from '$lib/server/lookup-service';
 import type { PersistedAcquisitionJob } from '$lib/server/acquisition-domain';
 import { defaultPreferences } from '$lib/shared/preferences';
@@ -41,13 +41,11 @@ function targetEpisodesForJob(
     .filter(
       (episode): episode is SeriesEpisodeRecord =>
         episode.episodeId !== null &&
-        (
-          targetSeasonNumbers
-            ? targetSeasonNumbers.has(episode.seasonNumber ?? Number.NaN)
-            : targetEpisodeIds
-              ? targetEpisodeIds.has(episode.episodeId)
-              : true
-        ),
+        (targetSeasonNumbers
+          ? targetSeasonNumbers.has(episode.seasonNumber ?? Number.NaN)
+          : targetEpisodeIds
+            ? targetEpisodeIds.has(episode.episodeId)
+            : true),
     );
 }
 
@@ -88,13 +86,14 @@ export async function validateSeriesAttempt(
   const relevantHistory = historySince(historyRecords, attemptStart, job.currentRelease);
   const historyEpisodeFileIds = new Set(
     relevantHistory
-      .map((record) => asNumber(record.episodeFileId) ?? asNumber(asRecord(record.data).episodeFileId))
+      .map(
+        (record) => asNumber(record.episodeFileId) ?? asNumber(asRecord(record.data).episodeFileId),
+      )
       .filter((value): value is number => value !== null && value > 0),
   );
   const targetEpisodes = targetEpisodesForJob(job, episodeRecords);
   const importedTargetEpisodes = targetEpisodes.filter(
-    (episode) =>
-      episode.episodeFileId !== null && historyEpisodeFileIds.has(episode.episodeFileId),
+    (episode) => episode.episodeFileId !== null && historyEpisodeFileIds.has(episode.episodeFileId),
   );
   const progress = pendingProgress(job, queueItems);
   const blockingImport =

@@ -149,7 +149,10 @@ const expectedAcquisitionIndexes = {
   },
   acquisition_events_job_idx: {
     table: 'acquisition_events',
-    columns: [{ name: 'job_id', desc: false }, { name: 'created_at', desc: true }],
+    columns: [
+      { name: 'job_id', desc: false },
+      { name: 'created_at', desc: true },
+    ],
     unique: false,
     whereClause: null,
   },
@@ -166,7 +169,10 @@ const expectedAcquisitionIndexes = {
   },
   acquisition_jobs_status_idx: {
     table: 'acquisition_jobs',
-    columns: [{ name: 'status', desc: false }, { name: 'updated_at', desc: true }],
+    columns: [
+      { name: 'status', desc: false },
+      { name: 'updated_at', desc: true },
+    ],
     unique: false,
     whereClause: null,
   },
@@ -202,9 +208,7 @@ function tableColumns(database: DatabaseSync, tableName: string): string[] {
   ).flatMap((row) => (typeof row.name === 'string' ? [row.name] : []));
 }
 
-function explicitIndexes(
-  database: DatabaseSync,
-): Record<string, ExplicitIndexDefinition> {
+function explicitIndexes(database: DatabaseSync): Record<string, ExplicitIndexDefinition> {
   const definitions: Record<string, ExplicitIndexDefinition> = {};
 
   for (const tableName of Object.keys(expectedAcquisitionTableColumns)) {

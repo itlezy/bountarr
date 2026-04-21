@@ -81,7 +81,9 @@ test('queue view renders acquisition jobs and active downloads', async ({ page }
   await expect(page.getByRole('button', { name: 'Cancel download' })).toHaveCount(1);
 });
 
-test('queue selector tiles use pressed state to show which details card is active', async ({ page }) => {
+test('queue selector tiles use pressed state to show which details card is active', async ({
+  page,
+}) => {
   const api = await mockAppApi(page, {
     queue: buildQueueResponse(),
   });
@@ -102,7 +104,9 @@ test('queue selector tiles use pressed state to show which details card is activ
   await expect(queueItemCard(page, queueItemFixture.title)).toBeVisible();
 });
 
-test('queue list surfaces release detail for ambiguous same-title external downloads', async ({ page }) => {
+test('queue list surfaces release detail for ambiguous same-title external downloads', async ({
+  page,
+}) => {
   const firstItem = {
     ...queueItemFixture,
     id: 'radarr:queue:41',
@@ -124,10 +128,14 @@ test('queue list surfaces release detail for ambiguous same-title external downl
   await openQueue(page, api);
 
   await expect(
-    page.getByTestId('queue-entry-list-item').filter({ hasText: 'The.Matrix.1999.1080p.WEB-DL-FLUX' }),
+    page
+      .getByTestId('queue-entry-list-item')
+      .filter({ hasText: 'The.Matrix.1999.1080p.WEB-DL-FLUX' }),
   ).toHaveCount(1);
   await expect(
-    page.getByTestId('queue-entry-list-item').filter({ hasText: 'The.Matrix.1999.1080p.BluRay-OLD' }),
+    page
+      .getByTestId('queue-entry-list-item')
+      .filter({ hasText: 'The.Matrix.1999.1080p.BluRay-OLD' }),
   ).toHaveCount(1);
 });
 
@@ -150,16 +158,19 @@ test('queue cards and manual release modal show the managed target scope', async
 
 test('completed managed jobs do not expose manual release actions', async ({ page }) => {
   const api = await mockAppApi(page, {
-    queue: buildQueueResponse([
-      {
-        ...acquisitionJobFixture,
-        completedAt: '2026-04-13T12:04:00.000Z',
-        currentRelease: 'Andor.S01.1080p.WEB-DL-FLUX',
-        reasonCode: 'validated',
-        status: 'completed',
-        validationSummary: 'Ready to watch.',
-      },
-    ], []),
+    queue: buildQueueResponse(
+      [
+        {
+          ...acquisitionJobFixture,
+          completedAt: '2026-04-13T12:04:00.000Z',
+          currentRelease: 'Andor.S01.1080p.WEB-DL-FLUX',
+          reasonCode: 'validated',
+          status: 'completed',
+          validationSummary: 'Ready to watch.',
+        },
+      ],
+      [],
+    ),
   });
 
   await openQueue(page, api);
@@ -169,16 +180,21 @@ test('completed managed jobs do not expose manual release actions', async ({ pag
   await expect(card.getByRole('button', { name: /manual release options/i })).toHaveCount(0);
 });
 
-test('queued manual selections still expose manual release actions for replacement', async ({ page }) => {
+test('queued manual selections still expose manual release actions for replacement', async ({
+  page,
+}) => {
   const api = await mockAppApi(page, {
-    queue: buildQueueResponse([
-      {
-        ...acquisitionJobFixture,
-        queueStatus: 'Manual selection queued',
-        status: 'queued',
-        validationSummary: 'User selected Andor.S01.1080p.WEB-DL-FLUX',
-      },
-    ], []),
+    queue: buildQueueResponse(
+      [
+        {
+          ...acquisitionJobFixture,
+          queueStatus: 'Manual selection queued',
+          status: 'queued',
+          validationSummary: 'User selected Andor.S01.1080p.WEB-DL-FLUX',
+        },
+      ],
+      [],
+    ),
     manualReleaseResponse: () => buildSelectedManualReleaseList(),
   });
 
@@ -201,14 +217,17 @@ test('reopening manual release options refreshes queued selection state', async 
   };
   let releaseCall = 0;
   const api = await mockAppApi(page, {
-    queue: buildQueueResponse([
-      {
-        ...acquisitionJobFixture,
-        queueStatus: 'Manual selection queued',
-        status: 'queued',
-        validationSummary: 'User selected Andor.S01.1080p.WEB-DL-FLUX',
-      },
-    ], []),
+    queue: buildQueueResponse(
+      [
+        {
+          ...acquisitionJobFixture,
+          queueStatus: 'Manual selection queued',
+          status: 'queued',
+          validationSummary: 'User selected Andor.S01.1080p.WEB-DL-FLUX',
+        },
+      ],
+      [],
+    ),
     manualReleaseResponse: () => {
       releaseCall += 1;
       if (releaseCall === 1) {
@@ -235,7 +254,9 @@ test('reopening manual release options refreshes queued selection state', async 
 
   let dialog = await openManualReleaseModal(page);
   await expect(dialog.getByText(manualReleaseFixture.title, { exact: true })).toBeVisible();
-  await expect(dialog.getByText('One manual-search release was selected.', { exact: true })).toBeVisible();
+  await expect(
+    dialog.getByText('One manual-search release was selected.', { exact: true }),
+  ).toBeVisible();
   await dialog.getByRole('button', { name: 'Close manual release options' }).click();
   await expect(page.getByRole('dialog', { name: 'Manual release options' })).toHaveCount(0);
 
@@ -247,7 +268,9 @@ test('reopening manual release options refreshes queued selection state', async 
     })
     .toBe(2);
   await expect(dialog.getByText(replacementRelease.title, { exact: true })).toBeVisible();
-  await expect(dialog.getByText('Replacement manual release is queued.', { exact: true })).toBeVisible();
+  await expect(
+    dialog.getByText('Replacement manual release is queued.', { exact: true }),
+  ).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Selected' })).toBeDisabled();
 });
 
@@ -367,7 +390,9 @@ test('download-id-only active queue cancels using the download identity', async 
     .toBeGreaterThan(1);
 });
 
-test('stale queue clear targets the selected row when siblings share one download id', async ({ page }) => {
+test('stale queue clear targets the selected row when siblings share one download id', async ({
+  page,
+}) => {
   const sharedDownloadId = 'download-shared';
   const firstEntry = {
     kind: 'external' as const,
@@ -506,7 +531,11 @@ test('managed queue cancel conflicts stay inline on the job card', async ({ page
   const api = await mockAppApi(page, {
     queue: buildQueueResponse([acquisitionJobFixture], []),
     queueCancelResponse: () =>
-      mockTextError('This queue entry is no longer current. Refresh the queue and try again.', 409, 150),
+      mockTextError(
+        'This queue entry is no longer current. Refresh the queue and try again.',
+        409,
+        150,
+      ),
   });
 
   await openQueue(page, api);
@@ -521,7 +550,9 @@ test('managed queue cancel conflicts stay inline on the job card', async ({ page
   await expect(page.getByRole('heading', { name: 'Grab Progress' })).toBeVisible();
 });
 
-test('queue item cards do not expose title deletion for live external downloads', async ({ page }) => {
+test('queue item cards do not expose title deletion for live external downloads', async ({
+  page,
+}) => {
   const api = await mockAppApi(page, {
     queue: buildQueueResponse(),
   });
@@ -532,7 +563,9 @@ test('queue item cards do not expose title deletion for live external downloads'
   const downloadCard = queueItemCard(page, queueItemFixture.title);
   await expect(downloadCard).toBeVisible();
   await expect(downloadCard.getByRole('button', { name: 'Cancel download' })).toBeVisible();
-  await expect(downloadCard.getByRole('button', { name: /clear stale queue entry/i })).toHaveCount(0);
+  await expect(downloadCard.getByRole('button', { name: /clear stale queue entry/i })).toHaveCount(
+    0,
+  );
   await expect(downloadCard.getByRole('button', { name: /remove from library/i })).toHaveCount(0);
 });
 
@@ -558,8 +591,7 @@ test('stale external queue rows expose only the clear action', async ({ page }) 
             poster: null,
             sourceService: 'radarr',
             status: 'Completed',
-            statusDetail:
-              'Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
+            statusDetail: 'Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
             trackedDownloadStatus: 'warning',
             trackedDownloadState: 'importpending',
             progress: 100,
@@ -602,8 +634,7 @@ test('stale external queue clears refresh queue and dashboard state', async ({ p
       poster: null,
       sourceService: 'radarr' as const,
       status: 'Completed',
-      statusDetail:
-        'Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
+      statusDetail: 'Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
       trackedDownloadStatus: 'warning',
       trackedDownloadState: 'importpending',
       progress: 100,
@@ -749,8 +780,7 @@ test('stale queue clear errors stay inline on the queue card', async ({ page }) 
             poster: null,
             sourceService: 'radarr',
             status: 'Completed',
-            statusDetail:
-              'Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
+            statusDetail: 'Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
             trackedDownloadStatus: 'warning',
             trackedDownloadState: 'importpending',
             progress: 100,
@@ -819,7 +849,9 @@ test('managed remove from library refreshes queue and dashboard state', async ({
     title: acquisitionJobFixture.title,
   });
 
-  await expect(page.getByText('"Andor" was deleted from Sonarr and its files were removed.')).toBeVisible();
+  await expect(
+    page.getByText('"Andor" was deleted from Sonarr and its files were removed.'),
+  ).toBeVisible();
   await expect
     .poll(() => api.queueRequests.length, {
       message: 'queue should refresh after removing a managed title from the library',
@@ -830,8 +862,7 @@ test('managed remove from library refreshes queue and dashboard state', async ({
 test('managed remove failures stay inline on the job card', async ({ page }) => {
   const api = await mockAppApi(page, {
     queue: buildQueueResponse([acquisitionJobFixture], []),
-    mediaDeleteResponse: () =>
-      mockTextError('Unable to delete the selected Arr item.', 500, 150),
+    mediaDeleteResponse: () => mockTextError('Unable to delete the selected Arr item.', 500, 150),
   });
 
   await openQueue(page, api);
@@ -845,7 +876,9 @@ test('managed remove failures stay inline on the job card', async ({ page }) => 
   await expect(page.getByRole('heading', { name: 'Grab Progress' })).toBeVisible();
 });
 
-test('dismissing stale queue clear confirmation does not send a delete request', async ({ page }) => {
+test('dismissing stale queue clear confirmation does not send a delete request', async ({
+  page,
+}) => {
   const api = await mockAppApi(page, {
     queue: {
       updatedAt: '2026-04-18T11:05:28.375Z',
@@ -867,8 +900,7 @@ test('dismissing stale queue clear confirmation does not send a delete request',
             poster: null,
             sourceService: 'radarr',
             status: 'Completed',
-            statusDetail:
-              'Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
+            statusDetail: 'Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
             trackedDownloadStatus: 'warning',
             trackedDownloadState: 'importpending',
             progress: 100,
@@ -1201,9 +1233,7 @@ test('manual release selection errors stay inline and keep the dialog open', asy
   await expect(page.getByText(manualReleaseFixture.title)).toBeVisible();
 });
 
-test('manual release dialog allows direct override for Arr-rejected releases', async ({
-  page,
-}) => {
+test('manual release dialog allows direct override for Arr-rejected releases', async ({ page }) => {
   const api = await mockAppApi(page, {
     queue: buildQueueResponse(),
     manualReleaseResponse: () => manualReleaseListFixture,

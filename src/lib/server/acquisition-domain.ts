@@ -48,9 +48,7 @@ export function isAcquisitionGrabError(error: unknown): error is AcquisitionGrab
   const status = (error as { status?: unknown }).status;
   return (
     error instanceof AcquisitionGrabError ||
-    (error.name === 'AcquisitionGrabError' &&
-      typeof status === 'number' &&
-      Number.isFinite(status))
+    (error.name === 'AcquisitionGrabError' && typeof status === 'number' && Number.isFinite(status))
   );
 }
 
@@ -90,7 +88,9 @@ export function canTransitionJobStatus(
   currentStatus: AcquisitionJob['status'],
   nextStatus: AcquisitionJob['status'],
 ): boolean {
-  return currentStatus === nextStatus || allowedStatusTransitions[currentStatus].includes(nextStatus);
+  return (
+    currentStatus === nextStatus || allowedStatusTransitions[currentStatus].includes(nextStatus)
+  );
 }
 
 export function jobStatusLabel(status: AcquisitionJob['status']): string {

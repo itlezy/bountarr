@@ -12,7 +12,9 @@ export function managedQueueHasUnusableLiveRow(
     return true;
   }
 
-  return liveQueueItems.length === 0 && Boolean(job.liveDownloadId) && (job.liveQueueId ?? null) === null;
+  return (
+    liveQueueItems.length === 0 && Boolean(job.liveDownloadId) && (job.liveQueueId ?? null) === null
+  );
 }
 
 export function managedQueueEntryCapabilities(

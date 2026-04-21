@@ -44,7 +44,9 @@ function selectionFailureReasonCode(
 }
 
 function selectionFailureQueueStatus(releaseSelection: ReleaseSelectionResult): string {
-  return releaseSelection.mappedReleases === 0 ? 'No releases found' : 'No acceptable release found';
+  return releaseSelection.mappedReleases === 0
+    ? 'No releases found'
+    : 'No acceptable release found';
 }
 
 function validationFailureIsTerminal(waitResult: WaitForAttemptOutcomeResult): boolean {
@@ -102,7 +104,9 @@ export class AcquisitionLifecycle {
     const current = this.getCurrentJob(job.id);
     if (
       !current ||
-      (current.status !== 'queued' && current.status !== 'retrying' && current.status !== 'searching')
+      (current.status !== 'queued' &&
+        current.status !== 'retrying' &&
+        current.status !== 'searching')
     ) {
       return null;
     }
@@ -192,10 +196,7 @@ export class AcquisitionLifecycle {
     }
 
     const current = this.getCurrentJob(job.id);
-    if (
-      !current ||
-      current.status !== 'searching'
-    ) {
+    if (!current || current.status !== 'searching') {
       return null;
     }
 
@@ -254,10 +255,7 @@ export class AcquisitionLifecycle {
     const current = this.getCurrentJob(job.id);
     if (
       !current ||
-      !(
-        current.status === 'queued' &&
-        current.queueStatus === manualSelectionQueuedStatus
-      )
+      !(current.status === 'queued' && current.queueStatus === manualSelectionQueuedStatus)
     ) {
       return null;
     }
@@ -373,10 +371,10 @@ export class AcquisitionLifecycle {
     }
 
     return this.jobs.updateJob(jobId, {
-      liveDownloadId: liveQueue?.liveDownloadId,
-      liveQueueId: liveQueue?.liveQueueId,
-      progress,
-      queueStatus,
+      liveDownloadId: liveQueue?.liveDownloadId ?? current.liveDownloadId,
+      liveQueueId: liveQueue?.liveQueueId ?? current.liveQueueId,
+      progress: progress ?? current.progress,
+      queueStatus: queueStatus ?? current.queueStatus,
       status: 'validating',
     });
   }

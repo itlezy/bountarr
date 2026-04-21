@@ -31,11 +31,7 @@ export const GET = async ({ params }: { params: { jobId: string } }) => {
     });
 
     throw error(
-      message.includes('was not found')
-        ? 404
-        : isManualReleaseConflict(message)
-          ? 409
-          : 500,
+      message.includes('was not found') ? 404 : isManualReleaseConflict(message) ? 409 : 500,
       message,
     );
   }

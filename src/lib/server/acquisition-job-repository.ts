@@ -133,11 +133,13 @@ function normalizeNumberArray(value: number[] | null | undefined): number[] | nu
     return null;
   }
 
-  const normalized = [...new Set(
-    value
-      .filter((entry) => Number.isFinite(entry) && entry >= 0)
-      .map((entry) => Math.trunc(entry)),
-  )].sort((left, right) => left - right);
+  const normalized = [
+    ...new Set(
+      value
+        .filter((entry) => Number.isFinite(entry) && entry >= 0)
+        .map((entry) => Math.trunc(entry)),
+    ),
+  ].sort((left, right) => left - right);
 
   return normalized.length > 0 ? normalized : null;
 }
@@ -179,8 +181,7 @@ function parseManualSelectionJson(
       typeof parsed.decision.accepted !== 'number' ||
       typeof parsed.decision.selected !== 'object' ||
       parsed.decision.selected === null ||
-      (parsed.selectionMode !== 'direct' &&
-        parsed.selectionMode !== 'override-arr-rejection') ||
+      (parsed.selectionMode !== 'direct' && parsed.selectionMode !== 'override-arr-rejection') ||
       typeof parsed.selectedResult !== 'object' ||
       parsed.selectedResult === null ||
       typeof parsed.decision.selected.guid !== 'string' ||
@@ -421,9 +422,10 @@ export class AcquisitionJobRepository {
     return this.createOrReuseActiveJob(input).job;
   }
 
-  createOrReuseActiveJob(
-    input: CreateAcquisitionJobInput,
-  ): { created: boolean; job: PersistedAcquisitionJob } {
+  createOrReuseActiveJob(input: CreateAcquisitionJobInput): {
+    created: boolean;
+    job: PersistedAcquisitionJob;
+  } {
     const startedAt = new Date().toISOString();
     const job: PersistedAcquisitionJob = {
       id: crypto.randomUUID(),
@@ -544,7 +546,9 @@ export class AcquisitionJobRepository {
 
     const nextStatus = patch.status ?? current.status;
     if (!canTransitionJobStatus(current.status, nextStatus)) {
-      throw new Error(`Invalid acquisition job status transition: ${current.status} -> ${nextStatus}`);
+      throw new Error(
+        `Invalid acquisition job status transition: ${current.status} -> ${nextStatus}`,
+      );
     }
 
     if (patch.attempt !== undefined && patch.attempt < current.attempt) {
@@ -713,7 +717,9 @@ export class AcquisitionJobRepository {
           ? input.manualSelectionMode
           : (existing?.manual_selection_mode ?? null),
       submitted_guid:
-        input.submittedGuid !== undefined ? input.submittedGuid : (existing?.submitted_guid ?? null),
+        input.submittedGuid !== undefined
+          ? input.submittedGuid
+          : (existing?.submitted_guid ?? null),
       submitted_indexer_id:
         input.submittedIndexerId !== undefined
           ? input.submittedIndexerId

@@ -112,7 +112,9 @@ function summarizeLiveEta(items: QueueItem[]): {
   };
 }
 
-export function buildManagedLiveSummary(liveQueueItems: QueueItem[]): ManagedQueueLiveSummary | null {
+export function buildManagedLiveSummary(
+  liveQueueItems: QueueItem[],
+): ManagedQueueLiveSummary | null {
   if (liveQueueItems.length === 0) {
     return null;
   }

@@ -114,6 +114,8 @@ describe('queueItemNextStep', () => {
         episodeIds: null,
         seasonNumbers: null,
       }),
-    ).toBe('Import pending: Not an upgrade for existing movie file. Existing quality: Bluray-2160p.');
+    ).toBe(
+      'Import pending: Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
+    );
   });
 });

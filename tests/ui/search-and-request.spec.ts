@@ -609,7 +609,8 @@ test('arr-tracked search results still use the normal grab dialog with alternate
           isRequested: true,
           status: 'Already in Arr',
         },
-        message: '"The Matrix" is already tracked in Radarr. Alternate-release acquisition started.',
+        message:
+          '"The Matrix" is already tracked in Radarr. Alternate-release acquisition started.',
         releaseDecision: null,
         job: {
           id: 'job-movie-603-alt',
@@ -750,7 +751,8 @@ test('duplicate tracked movie submit still moves to queue and keeps alternate-re
           isRequested: true,
           status: 'Already in Arr',
         },
-        message: '"The Matrix" is already tracked in Radarr. Alternate-release acquisition started.',
+        message:
+          '"The Matrix" is already tracked in Radarr. Alternate-release acquisition started.',
         releaseDecision: null,
         job: duplicateJob,
       }),

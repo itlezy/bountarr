@@ -4,7 +4,12 @@ import type { QueueItem } from '$lib/shared/types';
 export function externalQueueEntryCapabilities(
   item: Pick<
     QueueItem,
-    'downloadId' | 'queueId' | 'status' | 'statusDetail' | 'trackedDownloadState' | 'trackedDownloadStatus'
+    | 'downloadId'
+    | 'queueId'
+    | 'status'
+    | 'statusDetail'
+    | 'trackedDownloadState'
+    | 'trackedDownloadStatus'
   >,
 ): { canCancel: boolean; canRemove: boolean } {
   const actionable = item.queueId !== null || Boolean(item.downloadId);

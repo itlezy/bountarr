@@ -186,10 +186,7 @@ export interface ReleaseDecisionCandidate {
 export type ReleaseIdentityStatus = 'exact-match' | 'weak-match' | 'mismatch';
 export type ReleaseScopeStatus = 'not-applicable' | 'exact' | 'partial' | 'mismatch' | 'unknown';
 export type ManualReleaseSelectionMode = 'direct' | 'override-arr-rejection';
-export type ManualReleaseBlockReason =
-  | 'title-mismatch'
-  | 'scope-mismatch'
-  | 'already-selected';
+export type ManualReleaseBlockReason = 'title-mismatch' | 'scope-mismatch' | 'already-selected';
 
 export type ManualReleaseStatus =
   | 'selected'

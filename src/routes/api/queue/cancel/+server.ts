@@ -1,6 +1,7 @@
 import { error, json } from '@sveltejs/kit';
+import { readJsonRecord } from '$lib/server/api-request';
 import { cancelQueueEntry } from '$lib/server/acquisition-service';
-import { asArray, asNumber, asRecord, asString } from '$lib/server/raw';
+import { asNumber, asString } from '$lib/server/raw';
 import { createAreaLogger, getErrorMessage, toErrorLogContext } from '$lib/server/logger';
 import type { QueueCancelRequest } from '$lib/shared/types';
 
@@ -19,7 +20,7 @@ function queueCancelTargetService(target: QueueCancelRequest): 'radarr' | 'sonar
 }
 
 export const POST = async ({ request }: { request: Request }) => {
-  const payload = asRecord(await request.json());
+  const payload = await readJsonRecord(request);
   const kind = asString(payload.kind);
 
   const queueId =
@@ -53,7 +54,7 @@ export const POST = async ({ request }: { request: Request }) => {
 
     if (
       !id ||
-      (queueId === null || queueId === undefined) && !downloadId ||
+      ((queueId === null || queueId === undefined) && !downloadId) ||
       !sourceService ||
       !title
     ) {
@@ -93,14 +94,13 @@ export const POST = async ({ request }: { request: Request }) => {
     return json(result);
   } catch (requestError) {
     const message = getErrorMessage(requestError, 'Unable to cancel the selected download.');
-    const status =
-      message.includes('was not found')
-        ? 404
-        : message.includes('no longer current') ||
-            message.includes('no longer actively downloading') ||
-            message.includes('cannot be cancelled')
-          ? 409
-          : 500;
+    const status = message.includes('was not found')
+      ? 404
+      : message.includes('no longer current') ||
+          message.includes('no longer actively downloading') ||
+          message.includes('cannot be cancelled')
+        ? 409
+        : 500;
     logger.error('Queue cancel request failed', {
       itemId: queueCancelTargetId(target),
       kind: target.kind,

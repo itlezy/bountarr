@@ -47,6 +47,42 @@ describe('queue matching', () => {
     expect(queueItemMatchesManagedTarget(target, siblingItem)).toBe(false);
   });
 
+  it('does not fall back to movie release text once live queue identity is known', () => {
+    const target = {
+      arrItemId: 603,
+      currentRelease: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      kind: 'movie' as const,
+      liveDownloadId: 'radarr-download-2',
+      liveQueueId: 22,
+      sourceService: 'radarr' as const,
+      targetEpisodeIds: null,
+      targetSeasonNumbers: null,
+    };
+    const sameReleaseDifferentDownload: QueueItem = {
+      id: 'radarr:queue:23',
+      downloadId: 'radarr-download-3',
+      arrItemId: 603,
+      canCancel: true,
+      kind: 'movie',
+      title: 'The Matrix',
+      year: 1999,
+      poster: null,
+      sourceService: 'radarr',
+      status: 'Downloading',
+      progress: 42,
+      timeLeft: '12m',
+      estimatedCompletionTime: '2026-04-13T12:12:00.000Z',
+      size: 3_400_000_000,
+      sizeLeft: 1_972_000_000,
+      queueId: 23,
+      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      episodeIds: null,
+      seasonNumbers: null,
+    };
+
+    expect(queueItemMatchesManagedTarget(target, sameReleaseDifferentDownload)).toBe(false);
+  });
+
   it('does not match sibling movie rows before identity is known unless the release text matches', () => {
     const target = {
       arrItemId: 603,
@@ -301,5 +337,41 @@ describe('queue matching', () => {
     };
 
     expect(queueItemMatchesManagedTarget(target, staleSiblingItem)).toBe(false);
+  });
+
+  it('does not fall back to scope-less series release text once live queue identity is known', () => {
+    const target = {
+      arrItemId: 83867,
+      currentRelease: 'Andor.S01.1080p.WEB-DL-FLUX',
+      kind: 'series' as const,
+      liveDownloadId: 'sonarr-download-shared',
+      liveQueueId: 15,
+      sourceService: 'sonarr' as const,
+      targetEpisodeIds: [101, 102],
+      targetSeasonNumbers: [1],
+    };
+    const sameReleaseDifferentDownload: QueueItem = {
+      id: 'sonarr:queue:19',
+      downloadId: 'sonarr-download-other',
+      arrItemId: 83867,
+      canCancel: true,
+      kind: 'series',
+      title: 'Andor',
+      year: 2022,
+      poster: null,
+      sourceService: 'sonarr',
+      status: 'Downloading',
+      progress: 38,
+      timeLeft: '22m',
+      estimatedCompletionTime: '2026-04-13T12:22:00.000Z',
+      size: 3_400_000_000,
+      sizeLeft: 2_108_000_000,
+      queueId: 19,
+      detail: 'Andor.S01.1080p.WEB-DL-FLUX',
+      episodeIds: null,
+      seasonNumbers: null,
+    };
+
+    expect(queueItemMatchesManagedTarget(target, sameReleaseDifferentDownload)).toBe(false);
   });
 });

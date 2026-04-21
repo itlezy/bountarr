@@ -10,7 +10,51 @@ import {
   runtimeHealthFixture,
 } from '$lib/server/api-test-fixtures';
 import { AcquisitionGrabError } from '$lib/server/acquisition-domain';
-import { createGetEvent, createPostEvent, loadRouteModule, readJson } from '$lib/server/api-test';
+import {
+  createGetEvent,
+  createPostEvent,
+  createRawPostEvent,
+  loadRouteModule,
+  readJson,
+} from '$lib/server/api-test';
+
+type PostRoute = {
+  POST: (event: { request: Request } & Record<string, unknown>) => Promise<Response>;
+};
+
+type JsonPostRouteCase = {
+  eventExtras?: Record<string, unknown>;
+  label: string;
+  routePath: string;
+  setup: () => {
+    mocks: Record<string, () => Record<string, unknown>>;
+    serviceCalls: Array<ReturnType<typeof vi.fn>>;
+  };
+  url: string;
+};
+
+async function expectJsonPostRouteRejectsInvalidBodies(testCase: JsonPostRouteCase): Promise<void> {
+  const { mocks, serviceCalls } = testCase.setup();
+  const route = await loadRouteModule<PostRoute>(testCase.routePath, mocks);
+
+  for (const body of ['{bad-json', '[]']) {
+    await expect(
+      route.POST({
+        ...createRawPostEvent(testCase.url, body),
+        ...(testCase.eventExtras ?? {}),
+      }),
+    ).rejects.toMatchObject({
+      body: {
+        message: 'Request body must be a valid JSON object.',
+      },
+      status: 400,
+    });
+  }
+
+  for (const serviceCall of serviceCalls) {
+    expect(serviceCall).not.toHaveBeenCalled();
+  }
+}
 
 afterEach(() => {
   vi.resetAllMocks();
@@ -226,6 +270,113 @@ describe('API routes', () => {
     });
   });
 
+  it('rejects invalid JSON object bodies on all JSON POST routes before calling services', async () => {
+    const routeCases: JsonPostRouteCase[] = [
+      {
+        label: 'dashboard refresh',
+        routePath: '../../routes/api/dashboard/refresh/+server',
+        setup: () => {
+          const getDashboard = vi.fn();
+          return {
+            mocks: {
+              '$lib/server/queue-dashboard-service': () => ({ getDashboard }),
+            },
+            serviceCalls: [getDashboard],
+          };
+        },
+        url: 'http://local.test/api/dashboard/refresh',
+      },
+      {
+        label: 'grab',
+        routePath: '../../routes/api/grab/+server',
+        setup: () => {
+          const grabItem = vi.fn();
+          return {
+            mocks: {
+              '$lib/server/acquisition-service': () => ({ grabItem }),
+            },
+            serviceCalls: [grabItem],
+          };
+        },
+        url: 'http://local.test/api/grab',
+      },
+      {
+        label: 'grab resolve',
+        routePath: '../../routes/api/grab/resolve/+server',
+        setup: () => {
+          const resolveGrabCandidateFromPlexItem = vi.fn();
+          return {
+            mocks: {
+              '$lib/server/lookup-service': () => ({ resolveGrabCandidateFromPlexItem }),
+            },
+            serviceCalls: [resolveGrabCandidateFromPlexItem],
+          };
+        },
+        url: 'http://local.test/api/grab/resolve',
+      },
+      {
+        label: 'manual release select',
+        routePath: '../../routes/api/acquisition/[jobId]/select/+server',
+        eventExtras: { params: { jobId: 'job-1' } },
+        setup: () => {
+          const selectManualRelease = vi.fn();
+          return {
+            mocks: {
+              '$lib/server/acquisition-service': () => ({ selectManualRelease }),
+            },
+            serviceCalls: [selectManualRelease],
+          };
+        },
+        url: 'http://local.test/api/acquisition/job-1/select',
+      },
+      {
+        label: 'queue cancel',
+        routePath: '../../routes/api/queue/cancel/+server',
+        setup: () => {
+          const cancelQueueEntry = vi.fn();
+          return {
+            mocks: {
+              '$lib/server/acquisition-service': () => ({ cancelQueueEntry }),
+            },
+            serviceCalls: [cancelQueueEntry],
+          };
+        },
+        url: 'http://local.test/api/queue/cancel',
+      },
+      {
+        label: 'media delete',
+        routePath: '../../routes/api/media/delete/+server',
+        setup: () => {
+          const deleteArrItem = vi.fn();
+          return {
+            mocks: {
+              '$lib/server/acquisition-service': () => ({ deleteArrItem }),
+            },
+            serviceCalls: [deleteArrItem],
+          };
+        },
+        url: 'http://local.test/api/media/delete',
+      },
+      {
+        label: 'client errors',
+        routePath: '../../routes/api/client-errors/+server',
+        eventExtras: {
+          getClientAddress: () => '127.0.0.1',
+          url: new URL('http://local.test/api/client-errors'),
+        },
+        setup: () => ({
+          mocks: {},
+          serviceCalls: [],
+        }),
+        url: 'http://local.test/api/client-errors',
+      },
+    ];
+
+    for (const routeCase of routeCases) {
+      await expectJsonPostRouteRejectsInvalidBodies(routeCase);
+    }
+  });
+
   it('returns conflict when cancelling a stale external queue row', async () => {
     const cancelQueueEntry = vi
       .fn()
@@ -308,7 +459,9 @@ describe('API routes', () => {
   it('returns conflict when cancelling a terminal managed queue job', async () => {
     const cancelQueueEntry = vi
       .fn()
-      .mockRejectedValue(new Error('This queue entry is no longer current. Refresh the queue and try again.'));
+      .mockRejectedValue(
+        new Error('This queue entry is no longer current. Refresh the queue and try again.'),
+      );
     const route = await loadRouteModule<{
       POST: (event: { request: Request }) => Promise<Response>;
     }>('../../routes/api/queue/cancel/+server', {
@@ -370,7 +523,9 @@ describe('API routes', () => {
   it('returns conflict for manual release lists on terminal jobs', async () => {
     const getManualReleaseResults = vi
       .fn()
-      .mockRejectedValue(new Error('Acquisition job job-1 can no longer accept manual release selections.'));
+      .mockRejectedValue(
+        new Error('Acquisition job job-1 can no longer accept manual release selections.'),
+      );
     const route = await loadRouteModule<{
       GET: (event: { params: { jobId: string } }) => Promise<Response>;
     }>('../../routes/api/acquisition/[jobId]/releases/+server', {
@@ -756,7 +911,9 @@ describe('API routes', () => {
   it('returns conflict when clearing an active queue row through media delete', async () => {
     const deleteArrItem = vi
       .fn()
-      .mockRejectedValue(new Error('This queue entry is still active. Cancel the download instead.'));
+      .mockRejectedValue(
+        new Error('This queue entry is still active. Cancel the download instead.'),
+      );
     const route = await loadRouteModule<{
       POST: (event: { request: Request }) => Promise<Response>;
     }>('../../routes/api/media/delete/+server', {

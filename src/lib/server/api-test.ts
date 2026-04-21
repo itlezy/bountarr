@@ -50,6 +50,18 @@ export function createPostEvent(url: string, body: unknown) {
   };
 }
 
+export function createRawPostEvent(url: string, body: string, contentType = 'application/json') {
+  return {
+    request: new Request(url, {
+      body,
+      headers: {
+        'Content-Type': contentType,
+      },
+      method: 'POST',
+    }),
+  };
+}
+
 export async function readJson<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }

@@ -77,6 +77,22 @@ function asDeleteTarget(item: MediaItem): DeleteTarget {
   };
 }
 
+function requireGrabJob(response: GrabResponse, context: string): NonNullable<GrabResponse['job']> {
+  if (!response.job) {
+    throw new Error(`Expected ${context} to have an acquisition job.`);
+  }
+
+  return response.job;
+}
+
+function requireArrItemId(item: MediaItem): number {
+  if (item.arrItemId == null) {
+    throw new Error(`Expected ${item.title} to have a Radarr item id.`);
+  }
+
+  return item.arrItemId;
+}
+
 function matchingQueueItem(
   queue: QueueResponse,
   arrItemId: number | null | undefined,
@@ -370,12 +386,14 @@ describe.sequential('live stack integration', () => {
 
     expect(request.job).not.toBeNull();
     expect(request.item.arrItemId).not.toBeNull();
+    const job = requireGrabJob(request, 'cancel-path grab');
+    const arrItemId = requireArrItemId(request.item);
 
     cleanupTargets.push(asDeleteTarget(request.item));
     await waitForAcquisitionVisibility(config, request);
 
     const cancelResponse = await postJson<{ job: { status: string }; message: string }>(
-      `${config.baseUrl}/api/acquisition/${encodeURIComponent(request.job!.id)}/cancel`,
+      `${config.baseUrl}/api/acquisition/${encodeURIComponent(job.id)}/cancel`,
       {},
     );
 
@@ -389,7 +407,7 @@ describe.sequential('live stack integration', () => {
     }, 45_000);
 
     await pollUntil(async () => {
-      const movie = await getMovieById(config, request.item.arrItemId!);
+      const movie = await getMovieById(config, arrItemId);
       return movie?.monitored === false ? movie : null;
     }, 45_000);
   }, 120_000);
@@ -430,29 +448,31 @@ describe.sequential('live stack integration', () => {
     expect(request.job).not.toBeNull();
     expect(request.item.arrItemId).not.toBeNull();
     expect(request.message).toContain('already tracked');
+    const expectedJob = requireGrabJob(request, 'tracked movie re-grab');
+    const arrItemId = requireArrItemId(request.item);
 
     await waitForAcquisitionVisibility(config, request);
     const job = await waitForSingleActiveJob(config, request);
     const queue = await pollUntil(async () => {
       const result = await getJson<QueueResponse>(`${config.baseUrl}/api/queue`);
-      const matchingEntries = matchingTrackedMovieQueueEntries(result, request.item.arrItemId!);
+      const matchingEntries = matchingTrackedMovieQueueEntries(result, arrItemId);
       return matchingEntries.managed.length === 1 && matchingEntries.external.length === 0
         ? result
         : null;
     }, 45_000);
-    const matchingEntries = matchingTrackedMovieQueueEntries(queue, request.item.arrItemId!);
+    const matchingEntries = matchingTrackedMovieQueueEntries(queue, arrItemId);
     const matchingLiveRows =
       matchingEntries.managed[0]?.liveQueueItems.filter(
         (liveQueueItem) =>
           liveQueueItem.sourceService === 'radarr' &&
           liveQueueItem.kind === 'movie' &&
-          liveQueueItem.arrItemId === request.item.arrItemId,
+          liveQueueItem.arrItemId === arrItemId,
       ) ?? [];
 
-    expect(job.id).toBe(request.job?.id);
+    expect(job.id).toBe(expectedJob.id);
     expect(matchingEntries.managed).toHaveLength(1);
     expect(matchingEntries.external).toHaveLength(0);
-    expect(matchingEntries.managed[0]?.job.id).toBe(request.job?.id);
+    expect(matchingEntries.managed[0]?.job.id).toBe(expectedJob.id);
     expect(matchingLiveRows.length).toBeLessThanOrEqual(1);
   }, 120_000);
 
@@ -523,10 +543,11 @@ describe.sequential('live stack integration', () => {
     });
 
     expect(request.job).not.toBeNull();
+    const jobId = requireGrabJob(request, 'restart idempotency grab').id;
     cleanupTargets.push(asDeleteTarget(request.item));
 
     const claimedAttempt = await pollUntil(async () => {
-      const attempts = listAttemptSubmissions(request.job!.id);
+      const attempts = listAttemptSubmissions(jobId);
       const currentAttempt = attempts.find((attempt) => attempt.attempt === 1) ?? null;
       if (!currentAttempt?.submittedGuid || !currentAttempt.submissionClaimedAt) {
         return null;
@@ -541,7 +562,7 @@ describe.sequential('live stack integration', () => {
     expect(claimedAttempt.submittedGuid).toBeTruthy();
     expect(claimedAttempt.submissionClaimedAt).toBeTruthy();
     await pollUntil(async () => {
-      const submittedEvents = listAcquisitionEvents(request.job!.id).filter(
+      const submittedEvents = listAcquisitionEvents(jobId).filter(
         (event) => event.kind === 'grab.submitted',
       );
       return submittedEvents.length === 1 ? submittedEvents : null;
@@ -555,14 +576,14 @@ describe.sequential('live stack integration', () => {
     app = await startLiveApp(config);
     await verifyPreflight(config);
 
-    const attemptsAfterRestart = listAttemptSubmissions(request.job!.id);
+    const attemptsAfterRestart = listAttemptSubmissions(jobId);
     const claimedAttempts = attemptsAfterRestart.filter(
       (attempt) => attempt.submittedGuid !== null,
     );
-    const submittedEvents = listAcquisitionEvents(request.job!.id).filter(
+    const submittedEvents = listAcquisitionEvents(jobId).filter(
       (event) => event.kind === 'grab.submitted',
     );
-    const skippedEvents = listAcquisitionEvents(request.job!.id).filter(
+    const skippedEvents = listAcquisitionEvents(jobId).filter(
       (event) => event.kind === 'grab.submit_skipped',
     );
 
@@ -596,11 +617,10 @@ describe.sequential('live stack integration', () => {
     });
 
     expect(request.job).not.toBeNull();
+    const jobId = requireGrabJob(request, 'downstream handoff grab').id;
     cleanupTargets.push(asDeleteTarget(request.item));
 
-    const selectedReleaseTitle = await waitForSubmittedReleaseTitle(request.job!.id).catch(
-      () => null,
-    );
+    const selectedReleaseTitle = await waitForSubmittedReleaseTitle(jobId).catch(() => null);
     if (!selectedReleaseTitle) {
       return;
     }
@@ -658,7 +678,9 @@ describe.sequential('live stack integration', () => {
 
     expect(first.job).not.toBeNull();
     expect(second.job).not.toBeNull();
-    expect(first.job?.id).toBe(second.job?.id);
+    const firstJobId = requireGrabJob(first, 'first concurrent live grab').id;
+    const secondJobId = requireGrabJob(second, 'second concurrent live grab').id;
+    expect(firstJobId).toBe(secondJobId);
     expect(first.item.arrItemId).toBe(second.item.arrItemId);
     cleanupTargets.push(asDeleteTarget(first.item));
 
@@ -666,10 +688,10 @@ describe.sequential('live stack integration', () => {
     await waitForAcquisitionVisibility(config, first);
     await pollUntil(async () => {
       const acquisitionJob = await waitForSingleActiveJob(config, first, 5_000).catch(() => null);
-      const submissionClaims = listAttemptSubmissions(first.job!.id).filter(
+      const submissionClaims = listAttemptSubmissions(firstJobId).filter(
         (attempt) => attempt.submittedGuid !== null,
       );
-      const submissionEvents = listAcquisitionEvents(first.job!.id).filter(
+      const submissionEvents = listAcquisitionEvents(firstJobId).filter(
         (event) => event.kind === 'grab.submitted',
       );
 
@@ -678,10 +700,10 @@ describe.sequential('live stack integration', () => {
         : null;
     }, 15_000);
 
-    const submissionClaims = listAttemptSubmissions(first.job!.id).filter(
+    const submissionClaims = listAttemptSubmissions(firstJobId).filter(
       (attempt) => attempt.submittedGuid !== null,
     );
-    const submittedEvents = listAcquisitionEvents(first.job!.id).filter(
+    const submittedEvents = listAcquisitionEvents(firstJobId).filter(
       (event) => event.kind === 'grab.submitted',
     );
 
@@ -727,11 +749,10 @@ describe.sequential('live stack integration', () => {
     });
 
     expect(request.job).not.toBeNull();
+    const jobId = requireGrabJob(request, 'cancel-after-submit grab').id;
     cleanupTargets.push(asDeleteTarget(request.item));
 
-    const selectedReleaseTitle = await waitForSubmittedReleaseTitle(request.job!.id).catch(
-      () => null,
-    );
+    const selectedReleaseTitle = await waitForSubmittedReleaseTitle(jobId).catch(() => null);
     if (!selectedReleaseTitle) {
       return;
     }
@@ -746,20 +767,20 @@ describe.sequential('live stack integration', () => {
     }, 45_000);
 
     const cancelResponse = await postJson<{ job: { status: string }; message: string }>(
-      `${config.baseUrl}/api/acquisition/${encodeURIComponent(request.job!.id)}/cancel`,
+      `${config.baseUrl}/api/acquisition/${encodeURIComponent(jobId)}/cancel`,
       {},
     );
     expect(cancelResponse.job.status).toBe('cancelled');
 
     await pollUntil(async () => {
-      const cancelledEvents = listAcquisitionEvents(request.job!.id).filter(
+      const cancelledEvents = listAcquisitionEvents(jobId).filter(
         (event) => event.kind === 'job.cancelled',
       );
       return cancelledEvents.length === 1 ? cancelledEvents : null;
     }, 45_000);
 
     await pollUntil(async () => {
-      const submittedEvents = listAcquisitionEvents(request.job!.id).filter(
+      const submittedEvents = listAcquisitionEvents(jobId).filter(
         (event) => event.kind === 'grab.submitted',
       );
       const radarrAdds = countRadarrSabQueueAdds(

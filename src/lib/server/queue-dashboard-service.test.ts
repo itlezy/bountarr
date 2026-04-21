@@ -267,8 +267,7 @@ describe('queue dashboard service', () => {
       selectedReleaser: 'kbox',
       preferredReleaser: null,
       reasonCode: 'import-blocked',
-      failureReason:
-        'Arr refused to import the release: Not an upgrade for existing movie file.',
+      failureReason: 'Arr refused to import the release: Not an upgrade for existing movie file.',
       validationSummary:
         'Arr refused to import the release: Not an upgrade for existing movie file.',
       autoRetrying: false,
@@ -296,8 +295,7 @@ describe('queue dashboard service', () => {
       poster: null,
       sourceService: 'radarr',
       status: 'Completed',
-      statusDetail:
-        'Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
+      statusDetail: 'Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
       trackedDownloadStatus: 'warning',
       trackedDownloadState: 'importpending',
       progress: 100,
@@ -1282,7 +1280,10 @@ describe('queue dashboard service', () => {
       episodeIds: [102],
     };
 
-    const entries = composeQueueEntries([acquisitionJob], [matchingQueueItem, staleSiblingQueueItem]);
+    const entries = composeQueueEntries(
+      [acquisitionJob],
+      [matchingQueueItem, staleSiblingQueueItem],
+    );
 
     expect(entries).toHaveLength(2);
     expect(entries[0]).toMatchObject({
@@ -1559,7 +1560,8 @@ describe('queue dashboard service', () => {
           records: [
             {
               movieId: 727,
-              sourceTitle: 'Dangerous.Animals.2025.UHD.BluRay.2160p.DD.5.1.DV.HDR10Plus.x265-BHDStudio',
+              sourceTitle:
+                'Dangerous.Animals.2025.UHD.BluRay.2160p.DD.5.1.DV.HDR10Plus.x265-BHDStudio',
               movie: {
                 id: 727,
                 title: 'Dangerous Animals',
@@ -1660,7 +1662,8 @@ describe('queue dashboard service', () => {
           records: [
             {
               movieId: 727,
-              sourceTitle: 'Dangerous.Animals.2025.UHD.BluRay.2160p.DD.5.1.DV.HDR10Plus.x265-BHDStudio',
+              sourceTitle:
+                'Dangerous.Animals.2025.UHD.BluRay.2160p.DD.5.1.DV.HDR10Plus.x265-BHDStudio',
               movie: {
                 id: 727,
                 title: 'Dangerous Animals',

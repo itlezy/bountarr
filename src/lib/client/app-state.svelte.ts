@@ -520,7 +520,9 @@ export class AppState {
     }
 
     if (this.selectedQueueEntryId) {
-      const selectedEntry = this.queue.entries.find((entry) => entry.id === this.selectedQueueEntryId);
+      const selectedEntry = this.queue.entries.find(
+        (entry) => entry.id === this.selectedQueueEntryId,
+      );
       if (selectedEntry) {
         return selectedEntry;
       }
@@ -1095,16 +1097,19 @@ export class AppState {
     }
 
     if (entry.kind === 'managed') {
-      await this.deleteArrItem({
-        deleteMode: 'library',
-        arrItemId: entry.job.arrItemId,
-        id: entry.id,
-        kind: entry.job.kind,
-        sourceService: entry.job.sourceService,
-        title: entry.job.title,
-      }, {
-        queueEntryId: entry.id,
-      });
+      await this.deleteArrItem(
+        {
+          deleteMode: 'library',
+          arrItemId: entry.job.arrItemId,
+          id: entry.id,
+          kind: entry.job.kind,
+          sourceService: entry.job.sourceService,
+          title: entry.job.title,
+        },
+        {
+          queueEntryId: entry.id,
+        },
+      );
       return;
     }
 
@@ -1116,17 +1121,20 @@ export class AppState {
       return;
     }
 
-    await this.deleteArrItem({
-      deleteMode: 'queue-entry',
-      downloadId: entry.item.downloadId ?? null,
-      id: entry.id,
-      kind: entry.item.kind,
-      queueId: entry.item.queueId,
-      sourceService: entry.item.sourceService,
-      title: entry.item.title,
-    }, {
-      queueEntryId: entry.id,
-    });
+    await this.deleteArrItem(
+      {
+        deleteMode: 'queue-entry',
+        downloadId: entry.item.downloadId ?? null,
+        id: entry.id,
+        kind: entry.item.kind,
+        queueId: entry.item.queueId,
+        sourceService: entry.item.sourceService,
+        title: entry.item.title,
+      },
+      {
+        queueEntryId: entry.id,
+      },
+    );
   }
 
   submitGrab(item: MediaItem, qualityProfileId?: number | null): Promise<void>;

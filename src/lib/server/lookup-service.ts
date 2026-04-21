@@ -131,7 +131,9 @@ export async function fetchEpisodeFile(
   }
 }
 
-export async function fetchSeriesEpisodeRecords(seriesId: number): Promise<Record<string, unknown>[]> {
+export async function fetchSeriesEpisodeRecords(
+  seriesId: number,
+): Promise<Record<string, unknown>[]> {
   try {
     return (await arrFetch<unknown[]>('sonarr', '/api/v3/episode', undefined, { seriesId })).map(
       asRecord,
@@ -145,7 +147,8 @@ async function discoverSeriesEpisodeFileId(seriesId: number): Promise<number | n
   const episodes = (await fetchSeriesEpisodeRecords(seriesId))
     .filter((episode) => (asNumber(episode.episodeFileId) ?? 0) > 0)
     .sort((left, right) => {
-      const seasonDifference = (asNumber(right.seasonNumber) ?? 0) - (asNumber(left.seasonNumber) ?? 0);
+      const seasonDifference =
+        (asNumber(right.seasonNumber) ?? 0) - (asNumber(left.seasonNumber) ?? 0);
       if (seasonDifference !== 0) {
         return seasonDifference;
       }
@@ -378,9 +381,7 @@ export async function resolveGrabCandidateFromPlexItem(
   }
 
   const candidates = (
-    await Promise.all(
-      terms.map((term) => lookupArrItems(term, item.kind, normalizedPreferences)),
-    )
+    await Promise.all(terms.map((term) => lookupArrItems(term, item.kind, normalizedPreferences)))
   ).flat();
   const resolved =
     candidates.find((candidate) => matchesByIdentity(candidate, item)) ??

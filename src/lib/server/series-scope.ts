@@ -11,12 +11,14 @@ export type SeriesScope = {
 type SeriesScopeMatchStatus = 'exact' | 'partial' | 'mismatch' | 'unknown';
 
 function uniqueSortedNumbers(values: Array<number | null | undefined>): number[] | null {
-  const normalized = [...new Set(
-    values
-      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
-      .map((value) => Math.trunc(value))
-      .filter((value) => value >= 0),
-  )].sort((left, right) => left - right);
+  const normalized = [
+    ...new Set(
+      values
+        .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+        .map((value) => Math.trunc(value))
+        .filter((value) => value >= 0),
+    ),
+  ].sort((left, right) => left - right);
 
   return normalized.length > 0 ? normalized : null;
 }
@@ -26,9 +28,7 @@ function sameNumbers(left: number[] | null, right: number[] | null): boolean {
     return left === right;
   }
 
-  return (
-    left.length === right.length && left.every((value, index) => value === right[index])
-  );
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function overlaps(left: number[] | null, right: number[] | null): boolean {
@@ -132,11 +132,7 @@ export function extractSeriesScope(rawValue: unknown): SeriesScope {
     ...asArray(raw.seasonNumbers).map(asNumber),
     ...asArray(raw.seasons).flatMap((season) => {
       const seasonRecord = asRecord(season);
-      return [
-        asNumber(season),
-        asNumber(seasonRecord.seasonNumber),
-        asNumber(seasonRecord.value),
-      ];
+      return [asNumber(season), asNumber(seasonRecord.seasonNumber), asNumber(seasonRecord.value)];
     }),
     ...episodeRecords.map((episode) => asNumber(episode.seasonNumber)),
     ...(inferredSeasonNumbers ?? []),
@@ -274,15 +270,12 @@ export function seriesScopeBelongsToTarget(
 
   if (target.seasonNumbers) {
     return Boolean(
-      candidate.seasonNumbers &&
-      isSubset(candidate.seasonNumbers, target.seasonNumbers),
+      candidate.seasonNumbers && isSubset(candidate.seasonNumbers, target.seasonNumbers),
     );
   }
 
   return Boolean(
-    target.episodeIds &&
-    candidate.episodeIds &&
-    isSubset(candidate.episodeIds, target.episodeIds),
+    target.episodeIds && candidate.episodeIds && isSubset(candidate.episodeIds, target.episodeIds),
   );
 }
 

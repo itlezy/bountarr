@@ -34,11 +34,17 @@ export async function waitForAttemptOutcome(
 ): Promise<WaitForAttemptOutcomeResult> {
   const deadline = Date.now() + acquisitionAttemptTimeoutMinutes() * 60_000;
   const validateAttempt = validatorForJob(job);
+  let currentJob = job;
 
   while (Date.now() < deadline) {
-    const validation = await validateAttempt(job, attemptStartedAt);
+    const validation = await validateAttempt(currentJob, attemptStartedAt);
 
-    if (validation.progress !== null || validation.queueStatus) {
+    if (
+      validation.progress !== null ||
+      validation.queueStatus ||
+      validation.liveDownloadId !== null ||
+      validation.liveQueueId !== null
+    ) {
       onProgress?.({
         progress: validation.progress,
         queueStatus: validation.queueStatus,
@@ -46,6 +52,14 @@ export async function waitForAttemptOutcome(
         liveQueueId: validation.liveQueueId,
       });
     }
+
+    currentJob = {
+      ...currentJob,
+      liveDownloadId: validation.liveDownloadId ?? currentJob.liveDownloadId,
+      liveQueueId: validation.liveQueueId ?? currentJob.liveQueueId,
+      progress: validation.progress ?? currentJob.progress,
+      queueStatus: validation.queueStatus ?? currentJob.queueStatus,
+    };
 
     if (validation.outcome === 'success') {
       return {
@@ -75,8 +89,10 @@ export async function waitForAttemptOutcome(
   return {
     outcome: 'timeout',
     preferredReleaser: null,
-    progress: job.progress,
-    queueStatus: job.queueStatus,
+    progress: currentJob.progress,
+    queueStatus: currentJob.queueStatus,
+    liveDownloadId: currentJob.liveDownloadId,
+    liveQueueId: currentJob.liveQueueId,
     reasonCode: 'import-timeout',
     summary: `Timed out after ${acquisitionAttemptTimeoutMinutes()} minutes waiting for import`,
   };

@@ -7,7 +7,7 @@ export const handleError: HandleClientError = ({ error, event, message, status }
   reportUiException({
     kind: 'sveltekit-handle-error',
     message,
-    stack: error instanceof Error ? error.stack ?? null : null,
+    stack: error instanceof Error ? (error.stack ?? null) : null,
     source: event.url.toString(),
     line: null,
     column: null,

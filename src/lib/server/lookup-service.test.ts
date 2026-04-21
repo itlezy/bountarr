@@ -1055,7 +1055,11 @@ describe('lookupItems', () => {
           _init: unknown,
           query?: Record<string, string | number>,
         ) => {
-          if (service === 'radarr' && path === '/api/v3/movie/lookup' && query?.term === 'American Pie') {
+          if (
+            service === 'radarr' &&
+            path === '/api/v3/movie/lookup' &&
+            query?.term === 'American Pie'
+          ) {
             return [
               {
                 title: 'American Pie',

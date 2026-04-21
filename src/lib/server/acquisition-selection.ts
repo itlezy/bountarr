@@ -3,7 +3,7 @@ import {
   selectBestEvaluatedRelease,
   type EvaluatedRelease,
 } from '$lib/server/release-score';
-import { arrFetch } from '$lib/server/arr-client';
+import { arrFetch, isArrFetchError } from '$lib/server/arr-client';
 import {
   manualSelectionQueuedStatus,
   type PersistedAcquisitionJob,
@@ -11,6 +11,7 @@ import {
 } from '$lib/server/acquisition-domain';
 import { extractReleaser } from '$lib/server/media-identity';
 import { asNumber, asRecord } from '$lib/server/raw';
+import { createAreaLogger, toErrorLogContext } from '$lib/server/logger';
 import { defaultPreferences } from '$lib/shared/preferences';
 import type {
   ManualReleaseBlockReason,
@@ -20,6 +21,8 @@ import type {
   MediaKind,
   ReleaseDecisionCandidate,
 } from '$lib/shared/types';
+
+const logger = createAreaLogger('acquisition.selection');
 
 function selectMappedReleases(
   kind: MediaKind,
@@ -45,9 +48,7 @@ export type ReleaseSelectionResult = {
   selection: ReturnType<typeof selectBestEvaluatedRelease>;
 };
 
-export function persistManualSelection(
-  result: ReleaseSelectionResult,
-): PersistedManualSelection {
+export function persistManualSelection(result: ReleaseSelectionResult): PersistedManualSelection {
   if (!result.selection.payload || !result.selection.decision.selected) {
     throw new Error('A selected manual release is required before persisting it.');
   }
@@ -111,10 +112,7 @@ export function restoreManualSelection(
 export function queuedManualReleaseResults(
   job: Pick<PersistedAcquisitionJob, 'id' | 'queueStatus' | 'queuedManualSelection'>,
 ): ManualReleaseListResponse | null {
-  if (
-    job.queueStatus !== manualSelectionQueuedStatus ||
-    !job.queuedManualSelection
-  ) {
+  if (job.queueStatus !== manualSelectionQueuedStatus || !job.queuedManualSelection) {
     return null;
   }
 
@@ -134,9 +132,7 @@ function manualReleaseResultsFromInventory(
   selectedGuid: string | null,
 ): ManualReleaseResult[] {
   return orderManualReleaseResults(
-    inventory.evaluated.map((release) =>
-      toManualReleaseResult(release, selectedGuid, failedGuids),
-    ),
+    inventory.evaluated.map((release) => toManualReleaseResult(release, selectedGuid, failedGuids)),
   );
 }
 
@@ -285,7 +281,9 @@ function toManualReleaseResult(
   failedGuids: string[],
 ): ManualReleaseResult {
   const blockReason =
-    release.candidate.guid === selectedGuid ? 'already-selected' : manualSelectionBlockReason(release);
+    release.candidate.guid === selectedGuid
+      ? 'already-selected'
+      : manualSelectionBlockReason(release);
   const canSelect = blockReason === null;
 
   return {
@@ -381,14 +379,31 @@ export async function getManualReleaseResults(
         summary: job.queuedManualSelection.decision.reason,
         updatedAt: new Date().toISOString(),
       };
-    } catch {
-      return queuedManualReleaseResults(job) ?? {
+    } catch (refreshError) {
+      if (!isArrFetchError(refreshError)) {
+        logger.error('Queued manual release refresh failed unexpectedly', {
+          jobId: job.id,
+          service: job.sourceService,
+          ...toErrorLogContext(refreshError),
+        });
+        throw refreshError;
+      }
+
+      logger.warn('Queued manual release refresh failed; returning persisted selection', {
         jobId: job.id,
-        releases: [],
-        selectedGuid: null,
-        summary: 'Saved manual selection is waiting to be submitted.',
-        updatedAt: new Date().toISOString(),
-      };
+        service: job.sourceService,
+        ...toErrorLogContext(refreshError),
+      });
+
+      return (
+        queuedManualReleaseResults(job) ?? {
+          jobId: job.id,
+          releases: [],
+          selectedGuid: null,
+          summary: 'Saved manual selection is waiting to be submitted.',
+          updatedAt: new Date().toISOString(),
+        }
+      );
     }
   }
 
@@ -425,9 +440,7 @@ export async function findManualReleaseSelection(
       ) ??
       matched.rejectionReasons[0] ??
       'Arr marked the selected release as not downloadable.';
-    throw new Error(
-      rejectionReason,
-    );
+    throw new Error(rejectionReason);
   }
 
   if (!matched.arrRejected && selectionMode !== 'direct') {

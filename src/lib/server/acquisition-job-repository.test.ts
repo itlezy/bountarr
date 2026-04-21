@@ -531,9 +531,9 @@ describe('AcquisitionJobRepository', () => {
       );
 
     const jobs = new AcquisitionJobRepository(database);
-    const columns = database
-      .prepare('PRAGMA table_info(acquisition_jobs)')
-      .all() as Array<{ name: string }>;
+    const columns = database.prepare('PRAGMA table_info(acquisition_jobs)').all() as Array<{
+      name: string;
+    }>;
     const job = jobs.createJob({
       arrItemId: 505,
       itemId: 'movie:505',

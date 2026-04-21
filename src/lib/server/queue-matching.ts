@@ -84,9 +84,7 @@ export function queueItemMatchesManagedIdentity(
   }
 
   return Boolean(
-    target.liveDownloadId &&
-      item.downloadId &&
-      item.downloadId === target.liveDownloadId,
+    target.liveDownloadId && item.downloadId && item.downloadId === target.liveDownloadId,
   );
 }
 
@@ -100,6 +98,10 @@ export function queueItemMatchesManagedTarget(
 
   if (queueItemMatchesManagedIdentity(target, item)) {
     return true;
+  }
+
+  if (hasManagedQueueIdentity(target)) {
+    return false;
   }
 
   if (target.kind === 'movie') {

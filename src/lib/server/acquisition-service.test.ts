@@ -90,7 +90,9 @@ describe('acquisition service', () => {
           },
         },
       ]),
-      queueRecordArrItemId: vi.fn().mockImplementation((_service: string, record: { movieId: number }) => record.movieId),
+      queueRecordArrItemId: vi
+        .fn()
+        .mockImplementation((_service: string, record: { movieId: number }) => record.movieId),
       queueRecordId: vi.fn().mockImplementation((record: { id: number }) => record.id),
     }));
     vi.doMock('$lib/server/acquisition-selection', () => ({
@@ -730,13 +732,18 @@ describe('acquisition service', () => {
       itemId: 'radarr:queue:10',
       message: '"The Matrix" download was cancelled.',
     });
-    expect(arrFetch).toHaveBeenCalledWith('radarr', '/api/v3/queue/10', {
-      method: 'DELETE',
-    }, {
-      blocklist: false,
-      removeFromClient: true,
-      skipRedownload: false,
-    });
+    expect(arrFetch).toHaveBeenCalledWith(
+      'radarr',
+      '/api/v3/queue/10',
+      {
+        method: 'DELETE',
+      },
+      {
+        blocklist: false,
+        removeFromClient: true,
+        skipRedownload: false,
+      },
+    );
   });
 
   it('cancels managed jobs across every matching Arr queue row', async () => {
@@ -796,7 +803,9 @@ describe('acquisition service', () => {
           },
         },
       ]),
-      queueRecordArrItemId: vi.fn().mockImplementation((_service: string, record: { movieId: number }) => record.movieId),
+      queueRecordArrItemId: vi
+        .fn()
+        .mockImplementation((_service: string, record: { movieId: number }) => record.movieId),
       queueRecordId: vi.fn().mockImplementation((record: { id: number }) => record.id),
     }));
     vi.doMock('$lib/server/acquisition-selection', () => ({
@@ -883,7 +892,9 @@ describe('acquisition service', () => {
           },
         },
       ]),
-      queueRecordArrItemId: vi.fn().mockImplementation((_service: string, record: { movieId: number }) => record.movieId),
+      queueRecordArrItemId: vi
+        .fn()
+        .mockImplementation((_service: string, record: { movieId: number }) => record.movieId),
       queueRecordId: vi.fn().mockImplementation((record: { id: number }) => record.id),
     }));
     vi.doMock('$lib/server/acquisition-selection', () => ({
@@ -946,7 +957,9 @@ describe('acquisition service', () => {
           },
         },
       ]),
-      queueRecordArrItemId: vi.fn().mockImplementation((_service: string, record: { movieId: number }) => record.movieId),
+      queueRecordArrItemId: vi
+        .fn()
+        .mockImplementation((_service: string, record: { movieId: number }) => record.movieId),
       queueRecordId: vi.fn().mockReturnValue(null),
     }));
     vi.doMock('$lib/server/acquisition-selection', () => ({
@@ -1015,7 +1028,9 @@ describe('acquisition service', () => {
           },
         },
       ]),
-      queueRecordArrItemId: vi.fn().mockImplementation((_service: string, record: { movieId: number }) => record.movieId),
+      queueRecordArrItemId: vi
+        .fn()
+        .mockImplementation((_service: string, record: { movieId: number }) => record.movieId),
       queueRecordId: vi.fn().mockImplementation((record: { id: number }) => record.id),
     }));
     vi.doMock('$lib/server/acquisition-selection', () => ({
@@ -2393,7 +2408,8 @@ describe('acquisition service', () => {
       queueStatus: 'Manual selection queued',
       queuedManualSelection: null,
       status: 'queued',
-      validationSummary: 'User overrode Arr rejection and selected The.Matrix.1999.2160p.WEB-DL-BLOCKED',
+      validationSummary:
+        'User overrode Arr rejection and selected The.Matrix.1999.2160p.WEB-DL-BLOCKED',
     };
     const updateJobIfStatus = vi.fn().mockReturnValue({
       updated: true,

@@ -26,7 +26,10 @@ import type { ValidationProbe } from '$lib/server/acquisition-validator-shared';
 
 type AcquisitionRunnerDependencies = {
   findReleaseSelection: (job: PersistedAcquisitionJob) => Promise<ReleaseSelectionResult>;
-  probeAttempt: (job: PersistedAcquisitionJob, attemptStartedAt: string) => Promise<ValidationProbe>;
+  probeAttempt: (
+    job: PersistedAcquisitionJob,
+    attemptStartedAt: string,
+  ) => Promise<ValidationProbe>;
   submitSelectedRelease: (
     job: PersistedAcquisitionJob,
     selection: ReleaseSelectionResult['selection'],
@@ -78,9 +81,7 @@ export class AcquisitionRunner {
       queueStatus: probe.queueStatus,
       liveDownloadId: probe.liveDownloadId,
       liveQueueId: probe.liveQueueId,
-      reasonCode:
-        probe.reasonCode ??
-        (probe.outcome === 'success' ? 'validated' : 'missing-audio'),
+      reasonCode: probe.reasonCode ?? (probe.outcome === 'success' ? 'validated' : 'missing-audio'),
       summary:
         probe.summary ??
         (probe.outcome === 'success'
@@ -149,10 +150,10 @@ export class AcquisitionRunner {
       return;
     }
 
-      while (job && !isTerminalJobStatus(job.status)) {
-        const manualSelection =
-          job.status === 'queued' &&
-          job.queueStatus === manualSelectionQueuedStatus &&
+    while (job && !isTerminalJobStatus(job.status)) {
+      const manualSelection =
+        job.status === 'queued' &&
+        job.queueStatus === manualSelectionQueuedStatus &&
         job.queuedManualSelection
           ? restoreManualSelection(job.queuedManualSelection)
           : null;
@@ -170,10 +171,7 @@ export class AcquisitionRunner {
         let releaseSelection: ReleaseSelectionResult;
         if (manualSelection) {
           const refreshedQueuedJob = this.jobs.getJob(job.id);
-          if (
-            !refreshedQueuedJob ||
-            isTerminalJobStatus(refreshedQueuedJob.status)
-          ) {
+          if (!refreshedQueuedJob || isTerminalJobStatus(refreshedQueuedJob.status)) {
             return;
           }
           if (
@@ -209,8 +207,8 @@ export class AcquisitionRunner {
           }
 
           if (
-            (refreshedAfterSearch.status === 'queued' &&
-              refreshedAfterSearch.queueStatus === manualSelectionQueuedStatus)
+            refreshedAfterSearch.status === 'queued' &&
+            refreshedAfterSearch.queueStatus === manualSelectionQueuedStatus
           ) {
             job = refreshedAfterSearch;
             continue;

@@ -1,4 +1,5 @@
 import { error, json } from '@sveltejs/kit';
+import { readJsonRecord } from '$lib/server/api-request';
 import { createAreaLogger } from '$lib/server/logger';
 
 const logger = createAreaLogger('api.client-errors');
@@ -26,7 +27,7 @@ function asStringOrNull(value: unknown): string | null {
 }
 
 export const POST = async ({ getClientAddress, request, url }) => {
-  const payload = (await request.json()) as ClientErrorPayload;
+  const payload = (await readJsonRecord(request)) as ClientErrorPayload;
   const message = asStringOrNull(payload.message);
   if (!message) {
     throw error(400, 'A client error message is required.');

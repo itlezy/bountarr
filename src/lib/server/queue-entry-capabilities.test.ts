@@ -6,12 +6,22 @@ function buildExternalItem(
   overrides: Partial<
     Pick<
       QueueItem,
-      'downloadId' | 'queueId' | 'status' | 'statusDetail' | 'trackedDownloadState' | 'trackedDownloadStatus'
+      | 'downloadId'
+      | 'queueId'
+      | 'status'
+      | 'statusDetail'
+      | 'trackedDownloadState'
+      | 'trackedDownloadStatus'
     >
   > = {},
 ): Pick<
   QueueItem,
-  'downloadId' | 'queueId' | 'status' | 'statusDetail' | 'trackedDownloadState' | 'trackedDownloadStatus'
+  | 'downloadId'
+  | 'queueId'
+  | 'status'
+  | 'statusDetail'
+  | 'trackedDownloadState'
+  | 'trackedDownloadStatus'
 > {
   return {
     downloadId: null,

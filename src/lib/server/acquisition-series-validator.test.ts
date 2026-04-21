@@ -44,9 +44,9 @@ describe('validateSeriesAttempt', () => {
     const fetchEpisodeFile = vi.fn();
 
     vi.doMock('$lib/server/acquisition-validator-shared', async () => {
-      const actual = await vi.importActual<typeof import('$lib/server/acquisition-validator-shared')>(
-        '$lib/server/acquisition-validator-shared',
-      );
+      const actual = await vi.importActual<
+        typeof import('$lib/server/acquisition-validator-shared')
+      >('$lib/server/acquisition-validator-shared');
 
       return {
         ...actual,
@@ -115,7 +115,9 @@ describe('validateSeriesAttempt', () => {
             },
           },
         ]),
-        historySince: vi.fn().mockImplementation((records: Array<Record<string, unknown>>) => records),
+        historySince: vi
+          .fn()
+          .mockImplementation((records: Array<Record<string, unknown>>) => records),
       };
     });
     vi.doMock('$lib/server/lookup-service', () => ({
@@ -128,10 +130,7 @@ describe('validateSeriesAttempt', () => {
     }));
 
     const module = await import('$lib/server/acquisition-series-validator');
-    const result = await module.validateSeriesAttempt(
-      seriesJob,
-      '2026-04-13T12:00:00.000Z',
-    );
+    const result = await module.validateSeriesAttempt(seriesJob, '2026-04-13T12:00:00.000Z');
 
     expect(result).toEqual({
       liveDownloadId: null,
@@ -147,25 +146,23 @@ describe('validateSeriesAttempt', () => {
   });
 
   it('validates only the targeted imported episodes for a series job', async () => {
-    const fetchEpisodeFile = vi
-      .fn()
-      .mockImplementation(async (episodeFileId: number) => {
-        if (episodeFileId === 5001 || episodeFileId === 5002) {
-          return {
-            mediaInfo: {
-              audioLanguages: ['English'],
-              subtitles: ['English'],
-            },
-          };
-        }
-
+    const fetchEpisodeFile = vi.fn().mockImplementation(async (episodeFileId: number) => {
+      if (episodeFileId === 5001 || episodeFileId === 5002) {
         return {
           mediaInfo: {
-            audioLanguages: ['French'],
-            subtitles: [],
+            audioLanguages: ['English'],
+            subtitles: ['English'],
           },
         };
-      });
+      }
+
+      return {
+        mediaInfo: {
+          audioLanguages: ['French'],
+          subtitles: [],
+        },
+      };
+    });
 
     vi.doMock('$lib/server/acquisition-validator-shared', () => ({
       fetchHistoryRecords: vi.fn().mockResolvedValue([
@@ -186,7 +183,9 @@ describe('validateSeriesAttempt', () => {
         },
       ]),
       fetchQueueRecords: vi.fn().mockResolvedValue([]),
-      historySince: vi.fn().mockImplementation((records: Array<Record<string, unknown>>) => records),
+      historySince: vi
+        .fn()
+        .mockImplementation((records: Array<Record<string, unknown>>) => records),
     }));
     vi.doMock('$lib/server/lookup-service', () => ({
       fetchEpisodeFile,
@@ -198,10 +197,7 @@ describe('validateSeriesAttempt', () => {
     }));
 
     const module = await import('$lib/server/acquisition-series-validator');
-    const result = await module.validateSeriesAttempt(
-      seriesJob,
-      '2026-04-13T12:00:00.000Z',
-    );
+    const result = await module.validateSeriesAttempt(seriesJob, '2026-04-13T12:00:00.000Z');
 
     expect(result).toEqual({
       liveDownloadId: null,
@@ -220,9 +216,9 @@ describe('validateSeriesAttempt', () => {
 
   it('ignores unrelated same-series queue rows when reporting targeted validation progress', async () => {
     vi.doMock('$lib/server/acquisition-validator-shared', async () => {
-      const actual = await vi.importActual<typeof import('$lib/server/acquisition-validator-shared')>(
-        '$lib/server/acquisition-validator-shared',
-      );
+      const actual = await vi.importActual<
+        typeof import('$lib/server/acquisition-validator-shared')
+      >('$lib/server/acquisition-validator-shared');
 
       return {
         ...actual,
@@ -261,7 +257,9 @@ describe('validateSeriesAttempt', () => {
             title: 'Andor.S02E01.1080p.WEB-DL-FLUX',
           },
         ]),
-        historySince: vi.fn().mockImplementation((records: Array<Record<string, unknown>>) => records),
+        historySince: vi
+          .fn()
+          .mockImplementation((records: Array<Record<string, unknown>>) => records),
       };
     });
     vi.doMock('$lib/server/lookup-service', () => ({
@@ -274,10 +272,7 @@ describe('validateSeriesAttempt', () => {
     }));
 
     const module = await import('$lib/server/acquisition-series-validator');
-    const result = await module.validateSeriesAttempt(
-      seriesJob,
-      '2026-04-13T12:00:00.000Z',
-    );
+    const result = await module.validateSeriesAttempt(seriesJob, '2026-04-13T12:00:00.000Z');
 
     expect(result).toEqual({
       liveDownloadId: null,
@@ -293,9 +288,9 @@ describe('validateSeriesAttempt', () => {
 
   it('ignores stale same-scope Sonarr sibling rows before the live identity is known', async () => {
     vi.doMock('$lib/server/acquisition-validator-shared', async () => {
-      const actual = await vi.importActual<typeof import('$lib/server/acquisition-validator-shared')>(
-        '$lib/server/acquisition-validator-shared',
-      );
+      const actual = await vi.importActual<
+        typeof import('$lib/server/acquisition-validator-shared')
+      >('$lib/server/acquisition-validator-shared');
 
       return {
         ...actual,
@@ -320,7 +315,9 @@ describe('validateSeriesAttempt', () => {
             title: 'Andor.S01E01.1080p.WEB-DL-OLD',
           },
         ]),
-        historySince: vi.fn().mockImplementation((records: Array<Record<string, unknown>>) => records),
+        historySince: vi
+          .fn()
+          .mockImplementation((records: Array<Record<string, unknown>>) => records),
       };
     });
     vi.doMock('$lib/server/lookup-service', () => ({
@@ -332,10 +329,7 @@ describe('validateSeriesAttempt', () => {
     }));
 
     const module = await import('$lib/server/acquisition-series-validator');
-    const result = await module.validateSeriesAttempt(
-      seriesJob,
-      '2026-04-13T12:00:00.000Z',
-    );
+    const result = await module.validateSeriesAttempt(seriesJob, '2026-04-13T12:00:00.000Z');
 
     expect(result).toEqual({
       liveDownloadId: null,
@@ -371,7 +365,9 @@ describe('validateSeriesAttempt', () => {
         },
       ]),
       fetchQueueRecords: vi.fn().mockResolvedValue([]),
-      historySince: vi.fn().mockImplementation((records: Array<Record<string, unknown>>) => records),
+      historySince: vi
+        .fn()
+        .mockImplementation((records: Array<Record<string, unknown>>) => records),
     }));
     vi.doMock('$lib/server/lookup-service', () => ({
       fetchEpisodeFile,
@@ -384,10 +380,7 @@ describe('validateSeriesAttempt', () => {
     }));
 
     const module = await import('$lib/server/acquisition-series-validator');
-    const result = await module.validateSeriesAttempt(
-      seriesJob,
-      '2026-04-13T12:00:00.000Z',
-    );
+    const result = await module.validateSeriesAttempt(seriesJob, '2026-04-13T12:00:00.000Z');
 
     expect(result).toEqual({
       liveDownloadId: null,
@@ -404,9 +397,9 @@ describe('validateSeriesAttempt', () => {
 
   it('fails when every matching Sonarr queue row is import-blocked before the remaining targets import', async () => {
     vi.doMock('$lib/server/acquisition-validator-shared', async () => {
-      const actual = await vi.importActual<typeof import('$lib/server/acquisition-validator-shared')>(
-        '$lib/server/acquisition-validator-shared',
-      );
+      const actual = await vi.importActual<
+        typeof import('$lib/server/acquisition-validator-shared')
+      >('$lib/server/acquisition-validator-shared');
 
       return {
         ...actual,
@@ -453,10 +446,7 @@ describe('validateSeriesAttempt', () => {
     }));
 
     const module = await import('$lib/server/acquisition-series-validator');
-    const result = await module.validateSeriesAttempt(
-      seriesJob,
-      '2026-04-13T12:00:00.000Z',
-    );
+    const result = await module.validateSeriesAttempt(seriesJob, '2026-04-13T12:00:00.000Z');
 
     expect(result).toEqual({
       liveDownloadId: null,
@@ -473,9 +463,9 @@ describe('validateSeriesAttempt', () => {
 
   it('keeps waiting when only one of several matching Sonarr queue rows is blocked', async () => {
     vi.doMock('$lib/server/acquisition-validator-shared', async () => {
-      const actual = await vi.importActual<typeof import('$lib/server/acquisition-validator-shared')>(
-        '$lib/server/acquisition-validator-shared',
-      );
+      const actual = await vi.importActual<
+        typeof import('$lib/server/acquisition-validator-shared')
+      >('$lib/server/acquisition-validator-shared');
 
       return {
         ...actual,
@@ -543,10 +533,7 @@ describe('validateSeriesAttempt', () => {
     }));
 
     const module = await import('$lib/server/acquisition-series-validator');
-    const result = await module.validateSeriesAttempt(
-      seriesJob,
-      '2026-04-13T12:00:00.000Z',
-    );
+    const result = await module.validateSeriesAttempt(seriesJob, '2026-04-13T12:00:00.000Z');
 
     expect(result).toEqual({
       liveDownloadId: 'sonarr-download-blocked',
@@ -562,9 +549,9 @@ describe('validateSeriesAttempt', () => {
 
   it('ignores wrong same-scope Sonarr sibling rows after the live identity is known', async () => {
     vi.doMock('$lib/server/acquisition-validator-shared', async () => {
-      const actual = await vi.importActual<typeof import('$lib/server/acquisition-validator-shared')>(
-        '$lib/server/acquisition-validator-shared',
-      );
+      const actual = await vi.importActual<
+        typeof import('$lib/server/acquisition-validator-shared')
+      >('$lib/server/acquisition-validator-shared');
 
       return {
         ...actual,

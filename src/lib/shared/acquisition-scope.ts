@@ -1,7 +1,11 @@
 import type { AcquisitionJob } from '$lib/shared/types';
 
 function normalizeNumbers(values: number[] | null | undefined): number[] {
-  return [...new Set((values ?? []).filter((value) => Number.isFinite(value)).map((value) => Math.trunc(value)))]
+  return [
+    ...new Set(
+      (values ?? []).filter((value) => Number.isFinite(value)).map((value) => Math.trunc(value)),
+    ),
+  ]
     .filter((value) => value >= 0)
     .sort((left, right) => left - right);
 }

@@ -205,7 +205,9 @@ function titleTokens(value: string): string[] {
 }
 
 function uniqueStrings(values: Array<string | null>): string[] {
-  return [...new Set(values.filter((value): value is string => value !== null && value.length > 0))];
+  return [
+    ...new Set(values.filter((value): value is string => value !== null && value.length > 0)),
+  ];
 }
 
 function parseStructuredTitles(value: unknown): string[] {
@@ -244,7 +246,7 @@ function maybeYearToken(token: string): boolean {
 function extractReleaseTitleSegment(title: string): string {
   const rawTokens = title
     .normalize('NFKD')
-    .replace(/[\[\]()]/g, ' ')
+    .replace(/[[\]()]/g, ' ')
     .split(/[\s._-]+/)
     .map((token) => token.trim())
     .filter((token) => token.length > 0);

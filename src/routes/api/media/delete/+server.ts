@@ -1,28 +1,31 @@
 import { error, json } from '@sveltejs/kit';
+import { readJsonRecord } from '$lib/server/api-request';
 import { deleteArrItem } from '$lib/server/acquisition-service';
 import { createAreaLogger, getErrorMessage, toErrorLogContext } from '$lib/server/logger';
 import { asNumber, asString } from '$lib/server/raw';
-import type { ArrDeleteTarget, MediaItem } from '$lib/shared/types';
+import type { ArrDeleteTarget, MediaKind } from '$lib/shared/types';
 
 const logger = createAreaLogger('api.media.delete');
 
+function asMediaKind(value: unknown): MediaKind | null {
+  return value === 'movie' || value === 'series' ? value : null;
+}
+
+function asDeleteSourceService(value: unknown): ArrDeleteTarget['sourceService'] | null {
+  return value === 'radarr' || value === 'sonarr' ? value : null;
+}
+
 export const POST = async ({ request }: { request: Request }) => {
-  const payload = (await request.json()) as {
-    deleteMode?: 'library' | 'queue-entry';
-    arrItemId?: number | null;
-    downloadId?: string | null;
-    id?: string;
-    kind?: MediaItem['kind'];
-    queueId?: number | null;
-    sourceService?: MediaItem['sourceService'];
-    title?: string;
-  };
+  const payload = await readJsonRecord(request);
 
   const baseItem = {
-    deleteMode: payload.deleteMode,
+    deleteMode:
+      payload.deleteMode === 'library' || payload.deleteMode === 'queue-entry'
+        ? payload.deleteMode
+        : null,
     id: asString(payload.id),
-    kind: payload.kind,
-    sourceService: payload.sourceService,
+    kind: asMediaKind(payload.kind),
+    sourceService: asDeleteSourceService(payload.sourceService),
     title: asString(payload.title),
   };
 
@@ -93,14 +96,13 @@ export const POST = async ({ request }: { request: Request }) => {
     return json(result);
   } catch (requestError) {
     const message = getErrorMessage(requestError, 'Unable to delete the selected Arr item.');
-    const status =
-      message.includes('was not found')
-        ? 404
-        : message.includes('no longer current') ||
-            message.includes('still active') ||
-            message.includes('did not expose a queue id')
-          ? 409
-          : 500;
+    const status = message.includes('was not found')
+      ? 404
+      : message.includes('no longer current') ||
+          message.includes('still active') ||
+          message.includes('did not expose a queue id')
+        ? 409
+        : 500;
     logger.error('Media delete request failed', {
       deleteMode: deletableItem.deleteMode,
       itemId: deletableItem.id,

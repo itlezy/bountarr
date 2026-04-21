@@ -14,7 +14,7 @@ import { findPreferredReleaser } from '$lib/server/acquisition-query';
 import { getAcquisitionRunner } from '$lib/server/acquisition-runner';
 import { acquisitionMaxRetries, arrFetch } from '$lib/server/arr-client';
 import { fetchServiceDefaults } from '$lib/server/config-service';
-import { createAreaLogger } from '$lib/server/logger';
+import { createAreaLogger, toErrorLogContext } from '$lib/server/logger';
 import { fetchExistingMovie, fetchExistingSeries } from '$lib/server/lookup-service';
 import { normalizeItem } from '$lib/server/media-normalize';
 import { asArray, asNumber, asPositiveNumber, asRecord, asString } from '$lib/server/raw';
@@ -651,6 +651,7 @@ async function grabTrackedItem(
           arrItemId: createdId,
           itemTitle: item.title,
           service: spec.service,
+          ...toErrorLogContext(recoveryError),
         },
       );
       throw new AcquisitionGrabError(

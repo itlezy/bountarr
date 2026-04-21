@@ -251,18 +251,17 @@ function buildManagedLiveSummary(items: QueueItem[]): ManagedQueueLiveSummary | 
     progress:
       items.reduce((sum, item) => sum + (item.progress ?? 0), 0) /
       Math.max(1, items.filter((item) => item.progress !== null).length),
-    status: items.length === 1 ? items[0]?.status ?? null : `${items.length} live downloads active`,
+    status:
+      items.length === 1 ? (items[0]?.status ?? null) : `${items.length} live downloads active`,
     timeLeft: items.find((item) => item.timeLeft)?.timeLeft ?? null,
     estimatedCompletionTime:
       items.find((item) => item.estimatedCompletionTime)?.estimatedCompletionTime ?? null,
-    size:
-      items.every((item) => item.size !== null)
-        ? items.reduce((sum, item) => sum + (item.size ?? 0), 0)
-        : null,
-    sizeLeft:
-      items.every((item) => item.sizeLeft !== null)
-        ? items.reduce((sum, item) => sum + (item.sizeLeft ?? 0), 0)
-        : null,
+    size: items.every((item) => item.size !== null)
+      ? items.reduce((sum, item) => sum + (item.size ?? 0), 0)
+      : null,
+    sizeLeft: items.every((item) => item.sizeLeft !== null)
+      ? items.reduce((sum, item) => sum + (item.sizeLeft ?? 0), 0)
+      : null,
     byteMetricsPartial:
       items.some((item) => item.size === null) || items.some((item) => item.sizeLeft === null),
   };
@@ -1262,7 +1261,9 @@ describe('app state', () => {
       pageData,
       createDependencies({
         api: {
-          fetchQueue: vi.fn().mockResolvedValue(buildQueue([buildManagedEntry(guidedJob), externalEntry])),
+          fetchQueue: vi
+            .fn()
+            .mockResolvedValue(buildQueue([buildManagedEntry(guidedJob), externalEntry])),
         },
       }),
     );
@@ -1466,7 +1467,9 @@ describe('app state', () => {
   it('stores queue cancel failures separately from manual release errors', async () => {
     const dependencies = createDependencies({
       api: {
-        cancelQueueEntry: vi.fn().mockRejectedValue(new Error('Unable to cancel the selected download.')),
+        cancelQueueEntry: vi
+          .fn()
+          .mockRejectedValue(new Error('Unable to cancel the selected download.')),
       },
     });
     const state = new AppState(pageData, dependencies);
@@ -1492,8 +1495,7 @@ describe('app state', () => {
       poster: null,
       sourceService: 'radarr',
       status: 'Completed',
-      statusDetail:
-        'Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
+      statusDetail: 'Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
       progress: 100,
       timeLeft: '00:00:00',
       estimatedCompletionTime: null,
@@ -1738,8 +1740,7 @@ describe('app state', () => {
         poster: null,
         sourceService: 'radarr',
         status: 'Completed',
-        statusDetail:
-          'Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
+        statusDetail: 'Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
         trackedDownloadStatus: 'warning',
         trackedDownloadState: 'importpending',
         progress: 100,
@@ -1836,8 +1837,7 @@ describe('app state', () => {
         poster: null,
         sourceService: 'radarr',
         status: 'Completed',
-        statusDetail:
-          'Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
+        statusDetail: 'Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
         trackedDownloadStatus: 'warning',
         trackedDownloadState: 'importpending',
         progress: 100,
@@ -1925,8 +1925,7 @@ describe('app state', () => {
       poster: null,
       sourceService: 'radarr',
       status: 'Completed',
-      statusDetail:
-        'Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
+      statusDetail: 'Not an upgrade for existing movie file. Existing quality: Bluray-2160p.',
       trackedDownloadStatus: 'warning',
       trackedDownloadState: 'importpending',
       progress: 100,
@@ -1951,7 +1950,9 @@ describe('app state', () => {
   it('keeps managed queue removal failures inline on the queue card', async () => {
     const dependencies = createDependencies({
       api: {
-        deleteArrItem: vi.fn().mockRejectedValue(new Error('Unable to delete the selected Arr item.')),
+        deleteArrItem: vi
+          .fn()
+          .mockRejectedValue(new Error('Unable to delete the selected Arr item.')),
       },
     });
     const state = new AppState(pageData, dependencies);
@@ -1959,9 +1960,7 @@ describe('app state', () => {
 
     await state.deleteQueueEntry(managedEntry);
 
-    expect(state.queueEntryError(managedEntry.id)).toBe(
-      'Unable to delete the selected Arr item.',
-    );
+    expect(state.queueEntryError(managedEntry.id)).toBe('Unable to delete the selected Arr item.');
     expect(state.deleteError).toBeNull();
   });
 

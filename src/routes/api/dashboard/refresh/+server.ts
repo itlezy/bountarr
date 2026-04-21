@@ -1,17 +1,13 @@
 import { json } from '@sveltejs/kit';
+import { readJsonRecord } from '$lib/server/api-request';
 import { getDashboard } from '$lib/server/queue-dashboard-service';
 import { createAreaLogger, toErrorLogContext } from '$lib/server/logger';
 import { sanitizePreferences } from '$lib/shared/preferences';
-import type { ThemeMode } from '$lib/shared/themes';
 
 const logger = createAreaLogger('api.dashboard-refresh');
 
 export const POST = async ({ request }) => {
-  const payload = (await request.json()) as {
-    preferredLanguage?: string;
-    subtitleLanguage?: string;
-    theme?: ThemeMode;
-  };
+  const payload = await readJsonRecord(request);
   const preferences = sanitizePreferences(payload);
 
   logger.info('Dashboard refresh API request started', {

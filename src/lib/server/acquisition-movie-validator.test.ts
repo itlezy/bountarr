@@ -42,9 +42,9 @@ afterEach(() => {
 describe('validateMovieAttempt', () => {
   it('fails immediately when Radarr leaves the completed download import-pending with a terminal upgrade warning', async () => {
     vi.doMock('$lib/server/acquisition-validator-shared', async () => {
-      const actual = await vi.importActual<typeof import('$lib/server/acquisition-validator-shared')>(
-        '$lib/server/acquisition-validator-shared',
-      );
+      const actual = await vi.importActual<
+        typeof import('$lib/server/acquisition-validator-shared')
+      >('$lib/server/acquisition-validator-shared');
 
       return {
         ...actual,
@@ -105,9 +105,9 @@ describe('validateMovieAttempt', () => {
 
   it('stays pending while the movie is still downloading and no import block is present', async () => {
     vi.doMock('$lib/server/acquisition-validator-shared', async () => {
-      const actual = await vi.importActual<typeof import('$lib/server/acquisition-validator-shared')>(
-        '$lib/server/acquisition-validator-shared',
-      );
+      const actual = await vi.importActual<
+        typeof import('$lib/server/acquisition-validator-shared')
+      >('$lib/server/acquisition-validator-shared');
 
       return {
         ...actual,

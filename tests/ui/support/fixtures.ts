@@ -207,7 +207,8 @@ function buildManagedLiveSummary(items: QueueItem[]): ManagedQueueLiveSummary | 
     progress:
       items.reduce((sum, item) => sum + (item.progress ?? 0), 0) /
       Math.max(1, items.filter((item) => item.progress !== null).length),
-    status: items.length === 1 ? items[0]?.status ?? null : `${items.length} live downloads active`,
+    status:
+      items.length === 1 ? (items[0]?.status ?? null) : `${items.length} live downloads active`,
     timeLeft: items.find((item) => item.timeLeft)?.timeLeft ?? null,
     estimatedCompletionTime:
       items.find((item) => item.estimatedCompletionTime)?.estimatedCompletionTime ?? null,
@@ -230,19 +231,21 @@ function buildQueueEntries(acquisitionJobs: AcquisitionJob[], items: QueueItem[]
         item.arrItemId === job.arrItemId &&
         item.sourceService === job.sourceService &&
         (job.kind !== 'series' ||
-          ((job.targetSeasonNumbers?.some((seasonNumber) =>
+          (job.targetSeasonNumbers?.some((seasonNumber) =>
             item.seasonNumbers?.includes(seasonNumber),
           ) ??
             false) ||
-            (!job.targetSeasonNumbers &&
-              (item.episodeIds?.some((episodeId) => job.targetEpisodeIds?.includes(episodeId)) ??
-                false)) ||
-            (item.detail !== null &&
-              job.currentRelease !== null &&
-              item.detail.toLowerCase() === job.currentRelease.toLowerCase()))),
+          (!job.targetSeasonNumbers &&
+            (item.episodeIds?.some((episodeId) => job.targetEpisodeIds?.includes(episodeId)) ??
+              false)) ||
+          (item.detail !== null &&
+            job.currentRelease !== null &&
+            item.detail.toLowerCase() === job.currentRelease.toLowerCase())),
     );
     for (const liveQueueItem of liveQueueItems) {
-      const matchIndex = unmatchedItems.findIndex((item) => queueEntryId(item) === queueEntryId(liveQueueItem));
+      const matchIndex = unmatchedItems.findIndex(
+        (item) => queueEntryId(item) === queueEntryId(liveQueueItem),
+      );
       if (matchIndex >= 0) {
         unmatchedItems.splice(matchIndex, 1);
       }

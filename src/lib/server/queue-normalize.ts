@@ -75,13 +75,11 @@ export function queueFallbackIdentity(
   );
   const scopePart =
     service === 'sonarr'
-      ? (
-          scope?.episodeIds?.length
-            ? `episodes-${scope.episodeIds.join('.')}`
-            : scope?.seasonNumbers?.length
-              ? `seasons-${scope.seasonNumbers.join('.')}`
-              : 'noscope'
-        )
+      ? scope?.episodeIds?.length
+        ? `episodes-${scope.episodeIds.join('.')}`
+        : scope?.seasonNumbers?.length
+          ? `seasons-${scope.seasonNumbers.join('.')}`
+          : 'noscope'
       : 'noscope';
 
   return `${service}-${arrItemId ?? 'na'}-${titlePart}-${scopePart}`;
@@ -112,7 +110,10 @@ function normalizeTrackedDownloadValue(value: unknown): string | null {
 }
 
 export function queueItemIsImportBlocked(
-  item: Pick<QueueItem, 'status' | 'statusDetail' | 'trackedDownloadState' | 'trackedDownloadStatus'>,
+  item: Pick<
+    QueueItem,
+    'status' | 'statusDetail' | 'trackedDownloadState' | 'trackedDownloadStatus'
+  >,
 ): boolean {
   if (item.trackedDownloadState !== 'importpending') {
     return false;
@@ -128,7 +129,10 @@ export function queueItemIsImportBlocked(
 }
 
 export function queueItemIsStaleExternal(
-  item: Pick<QueueItem, 'status' | 'statusDetail' | 'trackedDownloadState' | 'trackedDownloadStatus'>,
+  item: Pick<
+    QueueItem,
+    'status' | 'statusDetail' | 'trackedDownloadState' | 'trackedDownloadStatus'
+  >,
 ): boolean {
   if (item.trackedDownloadState !== 'importpending') {
     return false;
@@ -192,10 +196,15 @@ export function normalizeQueueItem(service: ArrService, rawValue: unknown): Queu
     sizeLeft,
     queueId,
     detail:
-      (asString(record.title) ?? asString(record.sourceTitle) ?? asString(episode.title) ?? null) ===
-      title
+      (asString(record.title) ??
+        asString(record.sourceTitle) ??
+        asString(episode.title) ??
+        null) === title
         ? null
-        : (asString(record.title) ?? asString(record.sourceTitle) ?? asString(episode.title) ?? null),
+        : (asString(record.title) ??
+          asString(record.sourceTitle) ??
+          asString(episode.title) ??
+          null),
     episodeIds: seriesScope?.episodeIds ?? null,
     seasonNumbers: seriesScope?.seasonNumbers ?? null,
   };

@@ -25,9 +25,7 @@ import {
 import { getAcquisitionLifecycle } from '$lib/server/acquisition-lifecycle';
 import { getAcquisitionJobRepository } from '$lib/server/acquisition-job-repository';
 import { arrFetch } from '$lib/server/arr-client';
-import {
-  fetchQueueRecords,
-} from '$lib/server/acquisition-validator-shared';
+import { fetchQueueRecords } from '$lib/server/acquisition-validator-shared';
 import {
   queueItemMatchesManagedIdentity,
   type ManagedQueueTarget,
@@ -164,16 +162,8 @@ function canAcceptManualRelease(status: AcquisitionStatus): boolean {
   return manualReleaseEligibleStatuses.has(status);
 }
 
-function manualReleaseConflictMessage(job: {
-  id: string;
-  queueStatus: string | null;
-  status: AcquisitionStatus;
-}): string {
-  if (!canAcceptManualRelease(job.status)) {
-    return `Acquisition job ${job.id} can no longer accept manual release selections.`;
-  }
-
-  return `Acquisition job ${job.id} can no longer accept manual release selections.`;
+function manualReleaseConflictMessage(jobId: string): string {
+  return `Acquisition job ${jobId} can no longer accept manual release selections.`;
 }
 
 function managedCancelMessage(
@@ -184,11 +174,7 @@ function managedCancelMessage(
     return `${quoteTitle(job.title)} download was cancelled and unmonitored.`;
   }
 
-  if (
-    job.status === 'queued' ||
-    job.status === 'searching' ||
-    job.status === 'retrying'
-  ) {
+  if (job.status === 'queued' || job.status === 'searching' || job.status === 'retrying') {
     return `${quoteTitle(job.title)} grab was cancelled and unmonitored before Arr created a live queue entry.`;
   }
 
@@ -201,9 +187,7 @@ async function findQueueItemsForArrItem(
 ): Promise<QueueItem[]> {
   return (await fetchQueueRecords(service))
     .map((record) => normalizeQueueItem(service, record))
-    .filter(
-      (item): item is QueueItem => item !== null && item.arrItemId === arrItemId,
-    );
+    .filter((item): item is QueueItem => item !== null && item.arrItemId === arrItemId);
 }
 
 async function findManagedQueueItemsForTarget(target: ManagedQueueTarget): Promise<QueueItem[]> {
@@ -231,10 +215,17 @@ async function findManagedQueueItemsForIdentity(target: ManagedQueueTarget): Pro
 }
 
 function queueIdsFromItems(items: QueueItem[]): number[] {
-  return [...new Set(items.map((item) => item.queueId).filter((queueId): queueId is number => queueId !== null))];
+  return [
+    ...new Set(
+      items.map((item) => item.queueId).filter((queueId): queueId is number => queueId !== null),
+    ),
+  ];
 }
 
-function assertQueueItemsHaveQueueIds(items: QueueItem[], action: 'cancelled' | 'cleared'): number[] {
+function assertQueueItemsHaveQueueIds(
+  items: QueueItem[],
+  action: 'cancelled' | 'cleared',
+): number[] {
   if (items.some((item) => item.queueId === null)) {
     throw new Error(
       `This live Arr queue row cannot be ${action} because Arr did not expose a queue id. Refresh the queue and stop it directly in Arr if it is still running.`,
@@ -258,7 +249,9 @@ async function deleteQueueEntries(
   }
 
   invalidateQueueCache();
-  const deleted = await Promise.all(uniqueQueueIds.map((queueId) => deleteQueueEntry(service, queueId)));
+  const deleted = await Promise.all(
+    uniqueQueueIds.map((queueId) => deleteQueueEntry(service, queueId)),
+  );
   return deleted.filter(Boolean).length;
 }
 
@@ -291,9 +284,7 @@ async function currentExternalQueueItem(
   }
 
   if (target.downloadId) {
-    return (
-      queueItems.find((queueItem) => queueItem.downloadId === target.downloadId) ?? null
-    );
+    return queueItems.find((queueItem) => queueItem.downloadId === target.downloadId) ?? null;
   }
 
   return null;
@@ -311,7 +302,10 @@ async function requireCurrentExternalQueueItem(
   return queueItem;
 }
 
-function assertExternalQueueItemHasQueueId(queueItem: QueueItem, action: 'cancelled' | 'cleared'): number {
+function assertExternalQueueItemHasQueueId(
+  queueItem: QueueItem,
+  action: 'cancelled' | 'cleared',
+): number {
   if (queueItem.queueId === null) {
     throw new Error(
       `This live Arr queue row cannot be ${action} because Arr did not expose a queue id. Refresh the queue and stop it directly in Arr if it is still running.`,
@@ -323,7 +317,9 @@ function assertExternalQueueItemHasQueueId(queueItem: QueueItem, action: 'cancel
 
 function assertCancelableExternalQueueItem(queueItem: QueueItem): void {
   if (queueItemIsStaleExternal(queueItem)) {
-    throw new Error('This queue entry is no longer actively downloading. Clear the stale queue entry instead.');
+    throw new Error(
+      'This queue entry is no longer actively downloading. Clear the stale queue entry instead.',
+    );
   }
 }
 
@@ -359,15 +355,10 @@ export async function selectManualRelease(
     throw new Error(`Acquisition job ${jobId} was not found.`);
   }
   if (!canAcceptManualRelease(job.status)) {
-    throw new Error(manualReleaseConflictMessage(job));
+    throw new Error(manualReleaseConflictMessage(job.id));
   }
 
-  const selection = await findManualReleaseSelection(
-    job,
-    guid,
-    indexerId,
-    selectionMode,
-  );
+  const selection = await findManualReleaseSelection(job, guid, indexerId, selectionMode);
   const resumedAttempt = job.status === 'failed' ? job.attempt + 1 : job.attempt;
   const replacingQueuedSelection =
     job.status === 'queued' &&
@@ -388,7 +379,7 @@ export async function selectManualRelease(
     validationSummary: selection.selection.decision.reason,
   });
   if (!resumed.updated || !resumed.job) {
-    throw new Error(manualReleaseConflictMessage(resumed.job ?? job));
+    throw new Error(manualReleaseConflictMessage((resumed.job ?? job).id));
   }
 
   getAcquisitionRunner().enqueue(resumed.job.id);
@@ -511,11 +502,7 @@ export async function deleteArrItem(item: ArrDeleteTarget): Promise<MediaItemAct
       throw error;
     }
 
-    jobs.deleteJobsByArrItem(
-      item.arrItemId,
-      item.kind,
-      item.sourceService,
-    );
+    jobs.deleteJobsByArrItem(item.arrItemId, item.kind, item.sourceService);
 
     return {
       itemId: item.id,
