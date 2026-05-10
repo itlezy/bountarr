@@ -22,6 +22,7 @@ tmp-plex-*.json
 .env
 .env.*
 !.env.example
+live-wire-inputs.local.json
 
 # logs
 *.log

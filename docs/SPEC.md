@@ -1,116 +1,81 @@
-This specification outlines a lightweight, modern web frontend designed for local network (LAN) use. It serves as a simplified "Request & Audit" layer for **Radarr** and **Sonarr**, focusing on media discovery and automated verification of language/subtitles post-download.
+# Bountarr Architecture
 
----
+Bountarr is a local web app that sits in front of Radarr and Sonarr. It gives household users a simple grab workflow while keeping the operational details of release selection, retries, queue state, and validation visible to the operator.
 
-## 🛠 Tech Stack & Architecture
+## Product Model
 
-* **Framework:** SvelteKit (using Svelte 5 runes for high-performance reactivity).
-* **Build Tool:** Vite (for near-instant HMR and optimized builds).
-* **Styling:** UnoCSS (Atomic CSS engine with high performance and mobile-first utilities).
-* **Runtime/Process Management:** Node.js, managed by **PM2**.
-* **Storage:** LocalStorage/Cookies (User preferences) + Radarr/Sonarr APIs.
-* **Notifications:** Browser Web Notifications API (Local) + optional Gotify/ntfy integration.
+- **Search** finds movies and series through the configured Arr services and can enrich availability with Plex when configured.
+- **Grab** is the managed Arr add flow. New titles are added to Radarr or Sonarr, and existing Arr/Plex titles can enter a `Grab Again` flow for alternate releases.
+- **Acquisition jobs** are Bountarr-owned state machines for searching releases, submitting grabs, tracking queue progress, validating imports, retrying failures, and recording terminal outcomes.
+- **Queue** combines live Arr queue rows with Bountarr-managed acquisition jobs so the operator can distinguish managed grabs from external downloads.
+- **Download checks** show recently acquired media with audit state for preferred audio and subtitle expectations.
+- **Status** exposes service readiness, runtime health, storage details, local database counts, and runtime warnings.
+- **Settings** stores local browser preferences for theme, card density, preferred audio, subtitle language, and browser notifications.
 
----
+## Runtime Architecture
 
-## 📋 Functional Requirements
+- **Frontend:** SvelteKit and Svelte 5 runes.
+- **Build:** Vite with the SvelteKit Node adapter.
+- **Styling:** UnoCSS utilities and local component styles.
+- **Server:** Node.js process serving SvelteKit routes and API endpoints.
+- **Storage:** local SQLite acquisition state under `data/`, plus browser localStorage for UI preferences.
+- **External services:** Radarr, Sonarr, and optional Plex through server-side API calls.
+- **Operations:** helper-backed npm scripts for build, start, smoke checks, live integration tests, and acquisition database reset.
 
-### 1. Media Discovery & Selection
-* **Search:** Real-time search for Movies (Radarr) and Shows (Sonarr).
-* **Selection:** One-click "Request" that sends the metadata to the respective *Arr instance via API.
-* **Responsive UI:** A "Netflix-style" grid for desktop that collapses into a single-column scrollable list for mobile.
+The browser never talks directly to Radarr, Sonarr, or Plex. Server routes proxy and normalize those APIs so browser clients do not need Arr API keys.
 
-### 2. Post-Download Language & Subtitle Audit
-* **Polling/Webhook:** The app polls the *Arr "History" or "Queue" to detect completed downloads.
-* **Verification Logic:**
-    1.  Access the file path via the *Arr API.
-    2.  Use the API's `mediaInfo` or a lightweight Node worker to check:
-        * **Audio Streams:** Does it contain the user's preferred language (e.g., "eng", "spa")?
-        * **Subtitle Streams:** Are internal or external `.srt` files present?
-    3.  **Status Badges:** Display "Verified," "Missing Language," or "No Subs" on the dashboard.
+## Managed Grab Flow
 
-### 3. User Preferences (No Auth)
-* **Storage:** Save settings in `localStorage`.
-* **Configurable Items:**
-    * Target Radarr/Sonarr IP and API Keys.
-    * Preferred Language (e.g., "English").
-    * Subtitle requirement (Boolean).
-    * Theme (Light/Dark).
+1. The user searches for a movie or series.
+2. The user confirms a grab, including language, subtitle, quality profile, and series season choices when available.
+3. Bountarr creates or updates the target item in Radarr or Sonarr and creates an acquisition job.
+4. The acquisition job searches viable releases, scores candidates, submits a selected release, and tracks the live Arr queue.
+5. After import, Bountarr validates the downloaded item against the grab preferences.
+6. Failed validation can retry another viable release until the configured retry cap is reached or no acceptable releases remain.
+7. Manual release tools let an operator inspect candidates and select a direct or Arr-rejection override release when automatic selection is not enough.
 
-### 4. Notifications
-* **Triggers:** Notify when a search is successful, a download starts, or a download fails the language/subtitle audit.
-* **Local:** Use the standard Browser Notification API.
+Acquisition state is local operational state. During refactors or local recovery, it is acceptable to reset it with `npm run reset:db`.
 
----
+## Public API Surface
 
-## 🏗 System Design
+The API is internal to the app but stable enough to describe operationally:
 
+- `GET /api/search` returns normalized Radarr, Sonarr, and optional Plex search results.
+- `POST /api/grab` starts the managed grab flow for a normalized media item.
+- `POST /api/grab/resolve` resolves Plex-only or already-available candidates into grab-ready Arr candidates.
+- `GET /api/queue` returns managed and external queue entries.
+- `POST /api/queue/cancel` cancels managed jobs or external Arr queue entries.
+- `GET /api/dashboard` and `POST /api/dashboard/refresh` return download check data.
+- `GET /api/acquisition` returns acquisition jobs.
+- `GET /api/acquisition/[jobId]/releases` lists manual release candidates.
+- `POST /api/acquisition/[jobId]/select` queues a manual release selection.
+- `POST /api/acquisition/[jobId]/cancel` cancels a managed acquisition job.
+- `POST /api/media/delete` removes supported library or queue targets from Arr.
+- `GET /api/config/status` returns service readiness, quality profile choices, and runtime details.
+- `GET /api/health` returns high-level runtime health.
+- `GET /api/plex/recent` returns recent Plex media when Plex is configured.
 
+## Security And Deployment
 
----
+Bountarr has no authentication. It is intended for a trusted LAN and should not be exposed directly to the internet. For remote access, put it behind a VPN or an authenticated reverse proxy.
 
-## 🚀 Implementation Details
+Secrets belong in `.env` or the process environment. Do not commit real API keys, Plex tokens, host-specific live test titles, logs, or runtime data.
 
-Canonical local workflow uses npm scripts:
+Production deployment is a built Node app:
 
 ```powershell
-npm run dev
 npm run build
 npm run start
-npm run smoke
 ```
 
-### PM2 Deployment Configuration
-Create an `ecosystem.config.cjs` to ensure the app stays alive and restarts on crash:
+PM2 is optional and uses the repository `ecosystem.config.cjs`.
 
-```javascript
-module.exports = {
-  apps: [{
-    name: "bountarr",
-    script: "build/index.js",
-    env: {
-      NODE_ENV: "production",
-      PORT: 3000,
-      ORIGIN: "http://localhost:3000" // Change to your LAN IP
-    },
-    instances: 1,
-    exec_mode: "fork"
-  }]
-}
+## Validation
+
+Before publishing or merging changes, run:
+
+```powershell
+npm run validate
 ```
 
-### UnoCSS Mobile-First Setup
-The UI should utilize UnoCSS's shortcut features for a clean, mobile-optimized "Card" layout:
-
-```html
-<div class="p-4 rd-lg bg-gray-800 flex flex-col sm:flex-row gap-4">
-  <img src={poster} class="w-full sm:w-32 aspect-2/3 rd shadow-md" />
-  <div class="flex-1">
-    <h2 class="text-xl font-bold text-white">{title}</h2>
-    <div class="mt-auto flex justify-between items-center">
-      <button class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rd transition-colors">
-        Request
-      </button>
-    </div>
-  </div>
-</div>
-```
-
----
-
-## 🚦 Verification Workflow
-
-1.  **Selection:** User hits "Request" on the Frontend.
-2.  **API Call:** Frontend calls Node backend -> Node backend calls Radarr `POST /api/v3/movie`.
-3.  **Monitoring:** Node backend checks Radarr `GET /api/v3/history` every 5 minutes.
-4.  **Audit:** When status is "Completed", Node queries the file's `movieFile` object.
-5.  **Validation:**
-    * If `mediaInfo.audioLanguages` includes `pref_lang` → **Pass**.
-    * If `mediaInfo.subtitleLanguages` exists → **Pass**.
-6.  **Alert:** If either fail, trigger a system notification: *"Warning: [Movie Name] downloaded but missing [Language] subtitles."*
-
----
-
-## 🛡 Security & LAN Considerations
-* **No Auth:** Since there is no login, ensure this is **not** exposed to the internet. Use a VPN (Tailscale/Wireguard) to access it remotely.
-* **CORS:** The Node backend must act as a proxy for the *Arr APIs to avoid Browser CORS issues when calling different ports (8989/7878) from the main app port (3000).
+Live integration tests are destructive and require explicit opt-in with `BOUNTARR_ALLOW_LIVE_INTEGRATION=1`.

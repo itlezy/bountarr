@@ -1,48 +1,94 @@
 # Bountarr
 
-LAN-first household request concierge for Radarr and Sonarr, with queue follow-through, download checks, and embedded operator tools.
+Bountarr is a LAN-first household media grab dashboard for Radarr and Sonarr. It gives non-operator users a simple way to search, grab, and follow media while keeping operator controls for queue cleanup, retry handling, manual release selection, and runtime health in one local web app.
+
+It is designed for trusted local networks. Bountarr has no login system, so do not expose it directly to the public internet. Use a VPN such as Tailscale or WireGuard for remote access.
 
 ## Features
 
-- unified movie/show search with optional Plex enrichment and household-friendly availability states
-- guided request flow that sends new requests into Queue and explains what happens next
-- app-owned acquisition jobs that search releases, validate imports, retry automatically, and expose operator-only manual release tools
-- download checks view that surfaces missing audio/subtitle problems before verified items
-- operator support views for queue control, runtime health, and local preferences
-- browser notifications for request results and audit failures
+- unified movie and series search across Radarr, Sonarr, and optional Plex context
+- guided grab flow with per-grab language, subtitle, season, and quality profile choices
+- managed acquisition jobs that search releases, validate imports, retry failed grabs, and expose manual release tools
+- Queue view that combines Bountarr-managed grabs with live Arr queue entries
+- Download checks view sorted by newest acquisition time for recently acquired items
+- operator Status view for service health, runtime details, storage, logs, and local database state
+- local browser notifications for grab results and audit warnings
 
-## Configuration
+## Requirements
 
-Copy `.env.example` to `.env` and set:
+- Node.js 22 or newer
+- npm
+- PowerShell 7.6 or newer for the helper-backed npm scripts on Windows
+- Radarr and/or Sonarr reachable from the Bountarr server
+- optional Plex server for library-aware search and dashboard enrichment
 
-- `RADARR_URL`
-- `RADARR_API_KEY`
-- `SONARR_URL`
-- `SONARR_API_KEY`
-- `PLEX_URL` (optional)
-- `PLEX_TOKEN` (optional)
-- `RADARR_QUALITY_PROFILE_NAME`
-- `SONARR_QUALITY_PROFILE_NAME`
-- `ACQUISITION_ATTEMPT_TIMEOUT_MINUTES`
-- `ACQUISITION_MAX_RETRIES`
-- `LOG_LEVEL` (optional, defaults to `info`)
-- `PORT`
-- `ORIGIN`
+At least one Arr service must be configured. Bountarr is an app repository, not an npm library package; `package.json` intentionally remains private.
 
-At least one Arr service must be configured.
-
-The quality profile env vars are matched by profile name against Radarr and Sonarr. If a named profile does not exist, add requests fail immediately with a configuration error.
-
-Backend logs are written to `data/logs/backend.log` using human-readable lines. The file rotates at 12 MiB and keeps numbered backups `backend.log.1` through `backend.log.9`.
-
-## Development
+## Quick Start
 
 ```powershell
 npm install
+Copy-Item -LiteralPath '.env.example' -Destination '.env'
 npm run dev
 ```
 
-## Workspace Validation
+Open the URL printed by Vite, usually `http://localhost:5173`.
+
+Edit `.env` before real use:
+
+```dotenv
+RADARR_URL=http://127.0.0.1:7878
+RADARR_API_KEY=replace-me
+SONARR_URL=http://127.0.0.1:8989
+SONARR_API_KEY=replace-me
+PLEX_URL=http://127.0.0.1:32400
+PLEX_TOKEN=
+RADARR_QUALITY_PROFILE_NAME=1080p-web
+SONARR_QUALITY_PROFILE_NAME=1080p-web
+ACQUISITION_ATTEMPT_TIMEOUT_MINUTES=90
+ACQUISITION_MAX_RETRIES=
+LOG_LEVEL=info
+PORT=3000
+ORIGIN=http://localhost:3000
+```
+
+Leave optional values blank when they do not apply. `ACQUISITION_MAX_RETRIES` is an optional safety cap; when it is blank, Bountarr can try all viable releases.
+
+The quality profile names are matched against Radarr and Sonarr. If a configured profile name does not exist in the target service, grabs fail immediately with a configuration error.
+
+## Production Run
+
+Build and start the Node adapter output:
+
+```powershell
+npm run build
+npm run start
+```
+
+`npm run start` loads `.env` when present and starts `build/index.js`.
+
+PM2 is available as an optional process manager:
+
+```powershell
+npm run build
+pm2 start ecosystem.config.cjs
+```
+
+The PM2 config runs a single forked process, loads `.env`, timestamps logs, and restarts with a short delay after crashes.
+
+## Operation
+
+- Health endpoint: `/api/health`
+- Config and runtime status: `/api/config/status`
+- Backend log: `data/logs/backend.log`
+- Runtime data, helper logs, and acquisition database: `data/`
+- Reset local acquisition state: `npm run reset:db`
+
+Backend logs rotate at 12 MiB and keep numbered backups from `backend.log.1` through `backend.log.9`.
+
+If startup or grabs look wrong, check the Status view first, then `/api/health`, then `data/logs/backend.log`. Most setup issues are missing API keys, unreachable Arr URLs, no root folders, or quality profile names that do not match the target service.
+
+## Development
 
 Canonical local checks:
 
@@ -52,25 +98,7 @@ npm run lint
 npm run validate
 ```
 
-Destructive live integration tests are available for the local stack:
-
-```powershell
-$env:BOUNTARR_ALLOW_LIVE_INTEGRATION = '1'
-npm run test:integration
-```
-
-The live suite reuses the current `.env`, mutates the configured Radarr stack, and deletes the test-owned movie `Dredd (2012)` during cleanup.
-
-Coding and logging conventions live in [`docs/CODING_STANDARDS.md`](docs/CODING_STANDARDS.md).
-
-## Health & Runtime
-
-- Runtime health is available at `/api/health`.
-- Logs are written to `data/logs/backend.log`.
-- Runtime state, smoke helper logs, and other local app data live under `data/`.
-- If startup looks wrong, check `/api/health`, then `data/logs/backend.log`, then the PM2 stdout/stderr logs if you are running under PM2.
-
-## Smoke Test
+`npm run validate` runs formatting checks, linting, Svelte checks, unit tests, and a production build.
 
 `npm run smoke` can target an already running server. If nothing is listening on the local target port, it starts the built app automatically and writes temporary helper logs under `data/runtime/smoke/`.
 
@@ -78,26 +106,37 @@ Coding and logging conventions live in [`docs/CODING_STANDARDS.md`](docs/CODING_
 npm run smoke
 ```
 
-## Build And Run
+Coding and logging conventions live in [docs/CODING_STANDARDS.md](docs/CODING_STANDARDS.md). Current architecture notes live in [docs/SPEC.md](docs/SPEC.md).
+
+## Live Integration Tests
+
+Destructive live integration tests are available for a local Radarr/Sonarr stack:
 
 ```powershell
-npm run build
-npm run start
+$env:BOUNTARR_ALLOW_LIVE_INTEGRATION = '1'
+npm run test:integration
 ```
 
-## Production
+The live suite reuses the current `.env`, mutates the configured Radarr/Sonarr stack, and deletes test-owned live targets during cleanup.
 
-PM2 remains available as an optional process manager:
+Live media titles and years must stay out of tracked source, tests, and docs. Copy [live-wire-inputs.example.json](live-wire-inputs.example.json) to the ignored `live-wire-inputs.local.json` file at the repo root, then replace the synthetic values with machine-specific live targets:
 
-```powershell
-npm run build
-pm2 start ecosystem.config.cjs
+```json
+{
+  "duplicateMovie": { "title": "Fixture Existing Movie", "year": 2000 },
+  "untrackedMovie": { "title": "Fixture Disposable Movie", "year": 2001 },
+  "untrackedSeries": { "title": "Fixture Disposable Series", "year": 2002 },
+  "trackedMovieCandidates": ["Fixture Existing Movie", "Fixture Alternate Existing Movie"],
+  "seriesCandidates": ["Fixture Disposable Series", "Fixture Alternate Disposable Series"]
+}
 ```
 
-PM2 keeps the process in `fork` mode with a restart delay and timestamped logs for simpler local operations.
+Policy: commit only synthetic fixture names. Real live-wire movie and series names belong in `live-wire-inputs.local.json` or environment variables, never in tracked files.
 
-## Maintenance
+## Security
 
-```powershell
-npm run reset:db
-```
+Bountarr is unauthenticated and should only run on a trusted LAN or behind a VPN. Do not publish it through an open reverse proxy without adding an authentication layer in front of it. See [SECURITY.md](SECURITY.md) for the supported reporting and deployment posture.
+
+## License
+
+Bountarr is released under the [MIT License](LICENSE).

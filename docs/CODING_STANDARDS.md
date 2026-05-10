@@ -10,7 +10,7 @@
 ## Backend conventions
 
 - Use the shared backend logger instead of `console.*`.
-- Log request boundaries, selection decisions, retries, external service failures, and terminal outcomes.
+- Log HTTP request boundaries, selection decisions, retries, external service failures, and terminal outcomes.
 - Never log secrets, tokens, API keys, or full third-party payloads.
 - Return clear, user-facing errors while keeping deeper operational detail in logs.
 

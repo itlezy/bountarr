@@ -1,0 +1,16 @@
+{
+  "duplicateMovie": {
+    "title": "Fixture Existing Movie",
+    "year": 2000
+  },
+  "untrackedMovie": {
+    "title": "Fixture Disposable Movie",
+    "year": 2001
+  },
+  "untrackedSeries": {
+    "title": "Fixture Disposable Series",
+    "year": 2002
+  },
+  "trackedMovieCandidates": ["Fixture Existing Movie", "Fixture Alternate Existing Movie"],
+  "seriesCandidates": ["Fixture Disposable Series", "Fixture Alternate Disposable Series"]
+}
