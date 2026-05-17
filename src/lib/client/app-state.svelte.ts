@@ -415,6 +415,7 @@ export class AppState {
   searchLoading = $state(false);
   recentPlexLoading = $state(false);
   dashboardLoading = $state(false);
+  dashboardAllBountarr = $state(false);
   queueLoading = $state(false);
   manualReleaseLoading = $state<Record<string, boolean>>({});
   grabbing = $state<string | null>(null);
@@ -877,15 +878,16 @@ export class AppState {
     this.dashboardError = null;
 
     try {
+      const preferences = {
+        preferredLanguage: this.preferredLanguage,
+        subtitleLanguage: this.subtitleLanguage,
+      };
+      const options = {
+        includeAllBountarr: this.dashboardAllBountarr,
+      };
       this.dashboard = force
-        ? await this.dependencies.api.refreshDashboard({
-            preferredLanguage: this.preferredLanguage,
-            subtitleLanguage: this.subtitleLanguage,
-          })
-        : await this.dependencies.api.fetchDashboard({
-            preferredLanguage: this.preferredLanguage,
-            subtitleLanguage: this.subtitleLanguage,
-          });
+        ? await this.dependencies.api.refreshDashboard(preferences, options)
+        : await this.dependencies.api.fetchDashboard(preferences, options);
       this.dependencies.notifications.notifyAuditFailures(this.dashboard.items);
     } catch (error) {
       this.dashboardError =
@@ -893,6 +895,15 @@ export class AppState {
     } finally {
       this.dashboardLoading = false;
     }
+  }
+
+  async setDashboardAllBountarr(value: boolean): Promise<void> {
+    if (this.dashboardAllBountarr === value) {
+      return;
+    }
+
+    this.dashboardAllBountarr = value;
+    await this.loadDashboard(true);
   }
 
   async loadRecentPlex(): Promise<void> {

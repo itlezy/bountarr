@@ -12,6 +12,7 @@ export const GET = async ({ url }) => {
     preferredLanguage,
     subtitleLanguage,
   });
+  const includeAllBountarr = url.searchParams.get('includeAllBountarr') === 'true';
 
   logger.info('Dashboard API request started', {
     preferredLanguage: preferences.preferredLanguage,
@@ -19,7 +20,7 @@ export const GET = async ({ url }) => {
   });
 
   try {
-    const result = await getDashboard(preferences);
+    const result = await getDashboard(preferences, { includeAllBountarr });
     logger.info('Dashboard API request completed', {
       items: result.items.length,
       attention: result.summary.attention,

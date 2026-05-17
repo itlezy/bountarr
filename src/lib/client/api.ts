@@ -18,6 +18,9 @@ import type {
 } from '$lib/shared/types';
 
 type UserPreferencesPayload = Pick<Preferences, 'preferredLanguage' | 'subtitleLanguage'>;
+export type DashboardModeOptions = {
+  includeAllBountarr?: boolean;
+};
 
 async function readErrorMessage(response: Response, fallback: string): Promise<string> {
   const text = (await response.text()).trim();
@@ -38,18 +41,28 @@ async function requestJson<T>(
   return (await response.json()) as T;
 }
 
-function auditPreferencesQuery(preferences: UserPreferencesPayload): string {
-  return new URLSearchParams({
+function auditPreferencesQuery(
+  preferences: UserPreferencesPayload,
+  options: DashboardModeOptions = {},
+): string {
+  const params = new URLSearchParams({
     preferredLanguage: preferences.preferredLanguage,
     subtitleLanguage: preferences.subtitleLanguage,
-  }).toString();
+  });
+
+  if (options.includeAllBountarr) {
+    params.set('includeAllBountarr', 'true');
+  }
+
+  return params.toString();
 }
 
 export async function fetchDashboard(
   preferences: UserPreferencesPayload,
+  options: DashboardModeOptions = {},
 ): Promise<DashboardResponse> {
   return requestJson<DashboardResponse>(
-    `/api/dashboard?${auditPreferencesQuery(preferences)}`,
+    `/api/dashboard?${auditPreferencesQuery(preferences, options)}`,
     undefined,
     'Unable to load the dashboard.',
   );
@@ -57,6 +70,7 @@ export async function fetchDashboard(
 
 export async function refreshDashboard(
   preferences: UserPreferencesPayload,
+  options: DashboardModeOptions = {},
 ): Promise<DashboardResponse> {
   return requestJson<DashboardResponse>(
     '/api/dashboard/refresh',
@@ -65,7 +79,10 @@ export async function refreshDashboard(
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(preferences),
+      body: JSON.stringify({
+        ...preferences,
+        includeAllBountarr: options.includeAllBountarr === true,
+      }),
     },
     'Unable to refresh the dashboard.',
   );

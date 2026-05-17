@@ -6,11 +6,22 @@ let { state }: { state: AppState } = $props();
 </script>
 
 <section class="panel-shell relative px-3 py-3 sm:px-4">
-  <div>
-    <h2 class="text-lg font-800">Download checks</h2>
-    <div class="text-sm text-[var(--muted)]">
-      {state.dashboard?.updatedAt ? `Updated ${new Date(state.dashboard.updatedAt).toLocaleTimeString()}` : 'Waiting for first sync'}
+  <div class="flex flex-wrap items-start justify-between gap-3">
+    <div>
+      <h2 class="text-lg font-800">Download checks</h2>
+      <div class="text-sm text-[var(--muted)]">
+        {state.dashboard?.updatedAt ? `Updated ${new Date(state.dashboard.updatedAt).toLocaleTimeString()}` : 'Waiting for first sync'}
+      </div>
     </div>
+    <button
+      class="control-shell min-h-10 px-3 text-sm font-700 disabled:cursor-not-allowed disabled:opacity-50"
+      type="button"
+      disabled={state.dashboardLoading}
+      aria-pressed={state.dashboardAllBountarr}
+      onclick={() => void state.setDashboardAllBountarr(!state.dashboardAllBountarr)}
+    >
+      {state.dashboardAllBountarr ? 'Show recent checks' : 'Show all Bountarr grabs'}
+    </button>
   </div>
 
   {#if state.latestActionMessage}

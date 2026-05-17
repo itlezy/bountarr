@@ -9,6 +9,7 @@ const logger = createAreaLogger('api.dashboard-refresh');
 export const POST = async ({ request }) => {
   const payload = await readJsonRecord(request);
   const preferences = sanitizePreferences(payload);
+  const includeAllBountarr = payload.includeAllBountarr === true;
 
   logger.info('Dashboard refresh API request started', {
     preferredLanguage: preferences.preferredLanguage,
@@ -16,7 +17,7 @@ export const POST = async ({ request }) => {
   });
 
   try {
-    const result = await getDashboard(preferences, { force: true });
+    const result = await getDashboard(preferences, { force: true, includeAllBountarr });
     logger.info('Dashboard refresh API request completed', {
       items: result.items.length,
       attention: result.summary.attention,

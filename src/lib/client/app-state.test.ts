@@ -1717,6 +1717,30 @@ describe('app state', () => {
     expect(state.auditVerifiedItems.map((item) => item.title)).toEqual(['Verified Item']);
   });
 
+  it('reloads dashboard in all Bountarr grabs mode', async () => {
+    const dependencies = createDependencies();
+    const state = new AppState(
+      {
+        ...pageData,
+        recentPlex: [],
+      },
+      dependencies,
+    );
+
+    await state.setDashboardAllBountarr(true);
+
+    expect(state.dashboardAllBountarr).toBe(true);
+    expect(dependencies.api.refreshDashboard).toHaveBeenCalledWith(
+      {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'Any',
+      },
+      {
+        includeAllBountarr: true,
+      },
+    );
+  });
+
   it('sorts download check groups by acquisition time newest first', () => {
     const state = new AppState(
       {

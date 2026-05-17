@@ -177,13 +177,46 @@ describe('API routes', () => {
     );
     const payload = await readJson<typeof dashboardResponseFixture>(response);
 
-    expect(getDashboard).toHaveBeenCalledWith({
-      cardsView: 'rounded',
-      preferredLanguage: 'English',
-      subtitleLanguage: 'Spanish',
-      theme: 'system',
-    });
+    expect(getDashboard).toHaveBeenCalledWith(
+      {
+        cardsView: 'rounded',
+        preferredLanguage: 'English',
+        subtitleLanguage: 'Spanish',
+        theme: 'system',
+      },
+      {
+        includeAllBountarr: false,
+      },
+    );
     expect(payload.summary.attention).toBe(1);
+  });
+
+  it('passes the all Bountarr dashboard flag from query params', async () => {
+    const getDashboard = vi.fn().mockResolvedValue(dashboardResponseFixture);
+    const route = await loadRouteModule<{ GET: (event: { url: URL }) => Promise<Response> }>(
+      '../../routes/api/dashboard/+server',
+      {
+        '$lib/server/queue-dashboard-service': () => ({
+          getDashboard,
+        }),
+      },
+    );
+
+    await route.GET(
+      createGetEvent(
+        'http://local.test/api/dashboard?preferredLanguage=English&subtitleLanguage=English&includeAllBountarr=true',
+      ),
+    );
+
+    expect(getDashboard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      }),
+      {
+        includeAllBountarr: true,
+      },
+    );
   });
 
   it('returns unified queue entries for managed and external downloads', async () => {

@@ -36,6 +36,10 @@ import type {
 
 const logger = createAreaLogger('queue-dashboard');
 const dailyMissingMovieSearchIntervalMs = 24 * 60 * 60 * 1000;
+type DashboardOptions = {
+  force?: boolean;
+  includeAllBountarr?: boolean;
+};
 
 function queueItemEntryId(item: QueueItem): string {
   return item.id;
@@ -374,7 +378,8 @@ async function triggerDailyMissingMovieSearches(nowMs = Date.now()): Promise<voi
   }
 }
 
-function recentAcquisitionCheckJobs(nowMs = Date.now()): AcquisitionJob[] {
+function recentAcquisitionCheckJobs(options: { includeAll?: boolean } = {}): AcquisitionJob[] {
+  const nowMs = Date.now();
   const cutoffMs = nowMs - acquisitionDashboardWindowMs;
   const jobsByItem = new Map<string, AcquisitionJob>();
 
@@ -385,7 +390,7 @@ function recentAcquisitionCheckJobs(nowMs = Date.now()): AcquisitionJob[] {
 
     const acquiredAt = acquisitionJobAcquiredAt(job);
     const acquiredAtMs = acquisitionTimeMs(acquiredAt);
-    if (acquiredAtMs === 0 || acquiredAtMs < cutoffMs) {
+    if (acquiredAtMs === 0 || (!options.includeAll && acquiredAtMs < cutoffMs)) {
       continue;
     }
 
@@ -403,10 +408,13 @@ function recentAcquisitionCheckJobs(nowMs = Date.now()): AcquisitionJob[] {
   );
 }
 
-async function buildAcquisitionHistoryItems(preferences: Preferences): Promise<MediaItem[]> {
+async function buildAcquisitionHistoryItems(
+  preferences: Preferences,
+  options: { includeAll?: boolean } = {},
+): Promise<MediaItem[]> {
   const items: MediaItem[] = [];
 
-  for (const job of recentAcquisitionCheckJobs()) {
+  for (const job of recentAcquisitionCheckJobs(options)) {
     const acquiredAt = acquisitionJobAcquiredAt(job);
     const detail = acquisitionJobDetail(job);
 
@@ -421,6 +429,13 @@ async function buildAcquisitionHistoryItems(preferences: Preferences): Promise<M
         acquiredAt: acquiredAt ?? item.acquiredAt ?? null,
         auditStatus,
         detail: item.detail ?? detail ?? null,
+        id: options.includeAll ? `acquisition:${job.id}` : item.id,
+        requestPayload: {
+          ...asRecord(item.requestPayload),
+          acquisitionJobId: job.id,
+          acquisitionJobStatus: job.status,
+          acquisitionRelease: job.currentRelease,
+        },
       });
     } catch {
       const auditStatus = acquisitionAuditStatus(job);
@@ -918,10 +933,14 @@ export async function getQueue(options?: { force?: boolean }): Promise<QueueResp
 
 export async function getDashboard(
   preferences?: Partial<Preferences>,
-  options?: { force?: boolean },
+  options?: DashboardOptions,
 ): Promise<DashboardResponse> {
   const normalizedPreferences = sanitizePreferences(preferences);
-  const cacheKey = JSON.stringify(normalizedPreferences);
+  const includeAllBountarr = options?.includeAllBountarr === true;
+  const cacheKey = JSON.stringify({
+    ...normalizedPreferences,
+    includeAllBountarr,
+  });
   const now = Date.now();
   const cached = dashboardCache.get(cacheKey);
 
@@ -933,31 +952,32 @@ export async function getDashboard(
     await triggerDailyMissingMovieSearches(now);
   }
 
-  const recentArrItems = dedupeItems(
-    (
-      await Promise.all([
-        buildAcquisitionHistoryItems(normalizedPreferences),
-        buildMovieHistoryItems(normalizedPreferences),
-        buildSeriesHistoryItems(normalizedPreferences),
-      ])
-    ).flat(),
-  );
-  const items = (await mergeDashboardPlexItems(recentArrItems))
-    .sort((left, right) => {
-      const acquisitionSort =
-        acquisitionTimeMs(right.acquiredAt) - acquisitionTimeMs(left.acquiredAt);
-      if (acquisitionSort !== 0) {
-        return acquisitionSort;
-      }
+  const recentArrItems = includeAllBountarr
+    ? await buildAcquisitionHistoryItems(normalizedPreferences, { includeAll: true })
+    : dedupeItems(
+        (
+          await Promise.all([
+            buildAcquisitionHistoryItems(normalizedPreferences),
+            buildMovieHistoryItems(normalizedPreferences),
+            buildSeriesHistoryItems(normalizedPreferences),
+          ])
+        ).flat(),
+      );
+  const items = (await mergeDashboardPlexItems(recentArrItems)).sort((left, right) => {
+    const acquisitionSort =
+      acquisitionTimeMs(right.acquiredAt) - acquisitionTimeMs(left.acquiredAt);
+    if (acquisitionSort !== 0) {
+      return acquisitionSort;
+    }
 
-      return left.title.localeCompare(right.title);
-    })
-    .slice(0, 14);
+    return left.title.localeCompare(right.title);
+  });
+  const visibleItems = includeAllBountarr ? items : items.slice(0, 14);
 
   const value: DashboardResponse = {
     updatedAt: new Date().toISOString(),
-    items,
-    summary: summarizeDashboard(items),
+    items: visibleItems,
+    summary: summarizeDashboard(visibleItems),
   };
 
   dashboardCache.set(cacheKey, { expiresAt: now + 30_000, value });

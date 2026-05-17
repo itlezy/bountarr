@@ -160,9 +160,17 @@ function mockDashboardDependencies(
   vi.doMock('$lib/server/lookup-service', () => ({
     fetchExistingMovie: vi.fn().mockImplementation((arrItemId: number) =>
       Promise.resolve({
-        ...movieItem(arrItemId, options.title ?? 'Lunopolis'),
+        ...movieItem(
+          arrItemId,
+          options.title ??
+            acquisitionRepositoryState.jobs.find((job) => job.arrItemId === arrItemId)?.title ??
+            'Lunopolis',
+        ),
         requestPayload: {
-          title: options.title ?? 'Lunopolis',
+          title:
+            options.title ??
+            acquisitionRepositoryState.jobs.find((job) => job.arrItemId === arrItemId)?.title ??
+            'Lunopolis',
           status: options.movieStatus ?? 'released',
         },
       }),
@@ -2042,6 +2050,60 @@ describe('queue dashboard service', () => {
       auditStatus: 'not-released',
       title: 'Obsession',
     });
+  });
+
+  it('shows old Bountarr grabs only when all-grabs checks mode is requested', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-17T15:00:00.000Z'));
+
+    acquisitionRepositoryState.jobs = [
+      missingMovieJob({
+        id: 'job-old',
+        itemId: 'movie:101',
+        arrItemId: 101,
+        title: 'Old Bountarr Grab',
+        startedAt: '2026-04-01T12:00:00.000Z',
+        updatedAt: '2026-04-01T12:10:00.000Z',
+        completedAt: '2026-04-01T12:10:00.000Z',
+      }),
+      missingMovieJob({
+        id: 'job-new',
+        itemId: 'movie:102',
+        arrItemId: 102,
+        title: 'Recent Bountarr Grab',
+        startedAt: '2026-05-17T12:00:00.000Z',
+        updatedAt: '2026-05-17T12:10:00.000Z',
+        completedAt: '2026-05-17T12:10:00.000Z',
+      }),
+    ];
+    mockDashboardDependencies();
+
+    const module = await import('$lib/server/queue-dashboard-service');
+    const recent = await module.getDashboard({
+      cardsView: 'rounded',
+      preferredLanguage: 'English',
+      subtitleLanguage: 'English',
+      theme: 'system',
+    });
+    const all = await module.getDashboard(
+      {
+        cardsView: 'rounded',
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+        theme: 'system',
+      },
+      { includeAllBountarr: true },
+    );
+
+    expect(recent.items.map((item) => item.title)).toEqual(['Recent Bountarr Grab']);
+    expect(all.items.map((item) => item.title)).toEqual([
+      'Recent Bountarr Grab',
+      'Old Bountarr Grab',
+    ]);
+    expect(all.items.map((item) => item.id)).toEqual([
+      'acquisition:job-new',
+      'acquisition:job-old',
+    ]);
   });
 
   it('skips daily missing searches for movies that already need manual review', async () => {
