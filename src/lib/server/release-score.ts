@@ -21,6 +21,7 @@ type ReleaseSelection = {
 
 export type EvaluatedRelease = {
   acceptedByLocalRules: boolean;
+  adjacentYearFallback: boolean;
   arrRejected: boolean;
   autoSelectable: boolean;
   candidate: ReleaseDecisionCandidate;
@@ -30,6 +31,7 @@ export type EvaluatedRelease = {
   rejectionReasons: string[];
   scopeReason: string | null;
   scopeStatus: ReleaseScopeStatus;
+  yearMatch: 'exact' | 'adjacent' | 'mismatch' | 'unknown' | 'not-applicable';
 };
 
 type ReleaseSelectionOptions = {
@@ -613,14 +615,19 @@ function applyAvailabilityRules(
   state: CandidateScoreState,
   releaseRejectionReasons: string[],
   title: string,
-  options: { allowAutomaticArrOverride: boolean } = { allowAutomaticArrOverride: false },
+  options: { allowAutomaticArrOverride: boolean; automaticArrOverrideReason: string | null } = {
+    allowAutomaticArrOverride: false,
+    automaticArrOverrideReason: null,
+  },
 ): void {
   if (releaseRejectionReasons.length > 0) {
     if (isExistingFileArrRejection(releaseRejectionReasons)) {
       state.reasons.push(...releaseRejectionReasons);
     } else if (options.allowAutomaticArrOverride) {
       state.reasons.push(...releaseRejectionReasons);
-      state.reasons.push('Bountarr title/year matched target for Arr rejection override');
+      if (options.automaticArrOverrideReason !== null) {
+        state.reasons.push(options.automaticArrOverrideReason);
+      }
     } else {
       for (const rejection of releaseRejectionReasons) {
         rejectCandidate(state, rejection);
@@ -633,13 +640,13 @@ function applyAvailabilityRules(
   }
 }
 
-function releaseYearMatchesTarget(
+function releaseYearMatch(
   release: Record<string, unknown>,
   releaseTitle: string,
   targetYear: number | null | undefined,
-): boolean {
+): EvaluatedRelease['yearMatch'] {
   if (targetYear === null || targetYear === undefined) {
-    return false;
+    return 'not-applicable';
   }
 
   const releaseYear =
@@ -648,23 +655,56 @@ function releaseYearMatchesTarget(
     asNumber(release.movieYear) ??
     extractReleaseYear(releaseTitle);
 
-  return releaseYear === targetYear;
+  if (releaseYear === null) {
+    return 'unknown';
+  }
+
+  if (releaseYear === targetYear) {
+    return 'exact';
+  }
+
+  return Math.abs(releaseYear - targetYear) === 1 ? 'adjacent' : 'mismatch';
 }
 
-function canAutomaticallyOverrideArrRejection(
+function isUnknownMovieArrRejection(reasons: string[]): boolean {
+  return reasons.some((reason) => /unknown movie/i.test(reason));
+}
+
+function automaticArrOverrideMode(
   release: Record<string, unknown>,
   title: string,
   options: ReleaseSelectionOptions,
   identity: ReturnType<typeof classifyIdentity>,
   arrRejectionReasons: string[],
-): boolean {
-  return (
-    options.kind === 'movie' &&
-    arrRejectionReasons.length > 0 &&
-    !isExistingFileArrRejection(arrRejectionReasons) &&
-    identity.status === 'exact-match' &&
-    releaseYearMatchesTarget(release, title, options.targetYear)
-  );
+): 'exact-year' | 'adjacent-year' | null {
+  if (
+    options.kind !== 'movie' ||
+    arrRejectionReasons.length === 0 ||
+    isExistingFileArrRejection(arrRejectionReasons) ||
+    identity.status !== 'exact-match'
+  ) {
+    return null;
+  }
+
+  const yearMatch = releaseYearMatch(release, title, options.targetYear);
+  if (yearMatch === 'exact') {
+    return 'exact-year';
+  }
+
+  return yearMatch === 'adjacent' && isUnknownMovieArrRejection(arrRejectionReasons)
+    ? 'adjacent-year'
+    : null;
+}
+
+function automaticArrOverrideReason(mode: 'exact-year' | 'adjacent-year' | null): string | null {
+  switch (mode) {
+    case 'exact-year':
+      return 'Bountarr title/year matched target for Arr rejection override';
+    case 'adjacent-year':
+      return 'Bountarr accepted adjacent release year because no exact-year match was available';
+    default:
+      return null;
+  }
 }
 
 function applyPreferenceBonuses(
@@ -816,16 +856,19 @@ function buildCandidate(
   const state = createScoreState(release);
   const identity = classifyIdentity(release, options);
   const arrRejectionReasons = releaseRejectionReasons(release);
-  const allowAutomaticArrOverride = canAutomaticallyOverrideArrRejection(
+  const arrOverrideMode = automaticArrOverrideMode(
     release,
     title,
     options,
     identity,
     arrRejectionReasons,
   );
+  const yearMatch = releaseYearMatch(release, title, options.targetYear);
 
   applyAvailabilityRules(state, arrRejectionReasons, title, {
-    allowAutomaticArrOverride,
+    allowAutomaticArrOverride: arrOverrideMode !== null,
+    automaticArrOverrideReason:
+      arrOverrideMode === 'adjacent-year' ? null : automaticArrOverrideReason(arrOverrideMode),
   });
   applyPreferenceBonuses(
     state,
@@ -840,10 +883,12 @@ function buildCandidate(
 
   const acceptedByLocalRules = state.score > ACCEPTED_SCORE_FLOOR;
   // Manual selection may still allow mismatches, but auto-selection must never promote them.
-  const autoSelectable = acceptedByLocalRules && identity.autoSelectable;
+  const adjacentYearFallback = arrOverrideMode === 'adjacent-year';
+  const autoSelectable = acceptedByLocalRules && identity.autoSelectable && !adjacentYearFallback;
 
   return {
     acceptedByLocalRules,
+    adjacentYearFallback,
     arrRejected: arrRejectionReasons.length > 0,
     autoSelectable,
     candidate: {
@@ -863,7 +908,46 @@ function buildCandidate(
     rejectionReasons: arrRejectionReasons,
     scopeReason: identity.scopeReason,
     scopeStatus: identity.scopeStatus,
+    yearMatch,
   };
+}
+
+function promoteAdjacentYearFallbacks(
+  evaluated: EvaluatedRelease[],
+  options: ReleaseSelectionOptions,
+): EvaluatedRelease[] {
+  if (options.kind !== 'movie' || options.targetYear === null || options.targetYear === undefined) {
+    return evaluated;
+  }
+
+  const exactYearAutoCandidateExists = evaluated.some(
+    (release) =>
+      release.autoSelectable &&
+      release.identityStatus === 'exact-match' &&
+      release.yearMatch === 'exact',
+  );
+  if (exactYearAutoCandidateExists) {
+    return evaluated;
+  }
+
+  return evaluated.map((release) => {
+    if (
+      !release.adjacentYearFallback ||
+      !release.acceptedByLocalRules ||
+      release.identityStatus !== 'exact-match'
+    ) {
+      return release;
+    }
+
+    return {
+      ...release,
+      autoSelectable: true,
+      candidate: {
+        ...release.candidate,
+        reason: [release.candidate.reason, automaticArrOverrideReason('adjacent-year')].join('; '),
+      },
+    };
+  });
 }
 
 function orderAcceptedCandidates(accepted: EvaluatedRelease[]): EvaluatedRelease[] {
@@ -886,9 +970,10 @@ export function evaluateReleaseCandidates(
   preferences: Preferences,
   options: ReleaseSelectionOptions,
 ): EvaluatedRelease[] {
-  return rawReleases
+  const evaluated = rawReleases
     .map((entry) => buildCandidate(asRecord(entry), preferences, options))
     .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+  return promoteAdjacentYearFallbacks(evaluated, options);
 }
 
 export function selectBestEvaluatedRelease(

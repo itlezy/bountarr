@@ -254,6 +254,7 @@ function mergeReleaseCandidatePool(
 function evaluatedFromPersisted(candidate: PersistedAcquisitionReleaseCandidate): EvaluatedRelease {
   return {
     acceptedByLocalRules: candidate.acceptedByLocalRules,
+    adjacentYearFallback: false,
     arrRejected: candidate.arrRejected,
     autoSelectable: candidate.autoSelectable,
     candidate,
@@ -263,6 +264,7 @@ function evaluatedFromPersisted(candidate: PersistedAcquisitionReleaseCandidate)
     rejectionReasons: candidate.rejectionReasons,
     scopeReason: candidate.scopeReason,
     scopeStatus: candidate.scopeStatus,
+    yearMatch: 'not-applicable',
   };
 }
 

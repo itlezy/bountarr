@@ -229,6 +229,115 @@ describe('selectBestRelease', () => {
     expect(result.decision.reason).toBe('No acceptable release passed the local scoring rules');
   });
 
+  it('auto-selects an adjacent-year unknown-movie release when no exact-year release is acceptable', () => {
+    const result = selectBestRelease(
+      [
+        {
+          guid: 'adjacent-year',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Fixture.Movie.1998.1080p.WEB-DL-GROUP',
+          languages: [{ name: 'English' }],
+          qualityWeight: 70,
+          releaseWeight: 40,
+          customFormatScore: 0,
+          size: 1_000,
+          protocol: 'usenet',
+          downloadAllowed: false,
+          rejected: true,
+          rejections: ['Unknown Movie. Unable to match to correct movie using release title.'],
+        },
+      ],
+      defaultPreferences,
+      {
+        kind: 'movie',
+        targetTitle: 'Fixture Movie',
+        targetYear: 1999,
+      },
+    );
+
+    expect(result.decision.selected?.guid).toBe('adjacent-year');
+    expect(result.decision.reason).toContain(
+      'Bountarr accepted adjacent release year because no exact-year match was available',
+    );
+  });
+
+  it('prefers an exact-year release over an adjacent-year unknown-movie fallback', () => {
+    const result = selectBestRelease(
+      [
+        {
+          guid: 'adjacent-year',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Fixture.Movie.1998.2160p.WEB-DL-GROUP',
+          languages: [{ name: 'English' }],
+          qualityWeight: 150,
+          releaseWeight: 150,
+          customFormatScore: 0,
+          size: 1_000,
+          protocol: 'usenet',
+          downloadAllowed: false,
+          rejected: true,
+          rejections: ['Unknown Movie. Unable to match to correct movie using release title.'],
+        },
+        {
+          guid: 'exact-year',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Fixture.Movie.1999.480p.WEB-DL-GROUP',
+          languages: [{ name: 'English' }],
+          qualityWeight: 10,
+          releaseWeight: 10,
+          customFormatScore: 0,
+          size: 1_000,
+          protocol: 'usenet',
+          downloadAllowed: true,
+        },
+      ],
+      defaultPreferences,
+      {
+        kind: 'movie',
+        targetTitle: 'Fixture Movie',
+        targetYear: 1999,
+      },
+    );
+
+    expect(result.decision.selected?.guid).toBe('exact-year');
+    expect(result.decision.reason).not.toContain(
+      'Bountarr accepted adjacent release year because no exact-year match was available',
+    );
+  });
+
+  it('does not auto-select adjacent-year candidates when the title mismatches', () => {
+    const result = selectBestRelease(
+      [
+        {
+          guid: 'wrong-title',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Different.Movie.1998.1080p.WEB-DL-GROUP',
+          languages: [{ name: 'English' }],
+          qualityWeight: 70,
+          releaseWeight: 40,
+          customFormatScore: 0,
+          size: 1_000,
+          protocol: 'usenet',
+          downloadAllowed: false,
+          rejected: true,
+          rejections: ['Unknown Movie. Unable to match to correct movie using release title.'],
+        },
+      ],
+      defaultPreferences,
+      {
+        kind: 'movie',
+        targetTitle: 'Fixture Movie',
+        targetYear: 1999,
+      },
+    );
+
+    expect(result.decision.selected).toBeNull();
+  });
+
   it('uses accent-insensitive title hints for preferred audio', () => {
     const result = selectBestRelease(
       [
