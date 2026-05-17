@@ -2247,6 +2247,70 @@ describe('queue dashboard service', () => {
     expect(acquisitionRunnerState.enqueuedJobIds).toEqual(['job-lunopolis']);
   });
 
+  it('queues an automatic retry for a crashed adjacent-year movie after the override payload is fixed', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-17T15:00:00.000Z'));
+
+    const releaseCandidate = {
+      arrRejected: true,
+      attempt: null,
+      detectedAudioLanguages: [],
+      detectedSubtitleLanguages: [],
+      failedAt: null,
+      failureReason: null,
+      firstSeenAt: '2026-05-16T12:10:00.000Z',
+      guid: 'guid-lunopolis',
+      indexer: 'Indexer',
+      indexerId: 4,
+      languages: ['English'],
+      lastSeenAt: '2026-05-16T12:10:00.000Z',
+      protocol: 'usenet',
+      reason: 'Bountarr accepted adjacent release year because no exact-year match was available',
+      score: 124,
+      selectionMode: 'override-arr-rejection' as const,
+      size: 700_000_000,
+      status: 'available' as const,
+      title: 'Lunopolis.2009.480p.WEB-DL.x264-mSD-ORHk',
+    };
+    acquisitionRepositoryState.jobs = [
+      missingMovieJob({
+        failureReason: 'radarr 500: Value can not be null. (Parameter release.MovieId)',
+        reasonCode: 'crashed',
+        releaseCandidates: [releaseCandidate],
+      }),
+    ];
+    mockDashboardDependencies();
+    acquisitionSelectionState.findReleaseSelection.mockResolvedValue({
+      selectedGuid: releaseCandidate.guid,
+      selectedRelease: releaseCandidate,
+      selection: {
+        payload: {
+          guid: releaseCandidate.guid,
+          indexerId: releaseCandidate.indexerId,
+        },
+      },
+    });
+
+    const module = await import('$lib/server/queue-dashboard-service');
+    await module.getDashboard(
+      {
+        cardsView: 'rounded',
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+        theme: 'system',
+      },
+      { force: true },
+    );
+
+    expect(acquisitionRepositoryState.jobs[0]).toMatchObject({
+      attempt: 2,
+      queueStatus: 'Queued automatic release retry',
+      reasonCode: null,
+      status: 'queued',
+    });
+    expect(acquisitionRunnerState.enqueuedJobIds).toEqual(['job-lunopolis']);
+  });
+
   it('shows no-release jobs with later release candidates as needing manual review', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-05-17T15:00:00.000Z'));

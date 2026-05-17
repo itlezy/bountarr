@@ -323,7 +323,7 @@ function jobNeedsAutomaticReleaseRetry(job: AcquisitionJob, jobs: AcquisitionJob
     job.kind === 'movie' &&
     job.sourceService === 'radarr' &&
     job.status === 'failed' &&
-    acquisitionAuditStatus(job) === 'release-blocked' &&
+    (acquisitionAuditStatus(job) === 'release-blocked' || job.reasonCode === 'crashed') &&
     !activeAcquisitionJobExists(job, jobs)
   );
 }
