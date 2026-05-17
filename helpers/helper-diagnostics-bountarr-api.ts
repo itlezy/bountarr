@@ -72,6 +72,15 @@ async function readJson<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+async function readJsonOrNull<T>(path: string, init?: RequestInit): Promise<T | null> {
+  const response = await fetch(new URL(path, baseUrl), init);
+  if (!response.ok) {
+    return null;
+  }
+
+  return (await response.json()) as T;
+}
+
 const acquisition = await readJson<AcquisitionResponse>('/api/acquisition');
 const releaseLists = new Map<string, ManualReleaseListResponse | null>();
 
@@ -79,7 +88,9 @@ for (const title of titles) {
   const job = acquisition.jobs.find((entry) => entry.title === title) ?? null;
   releaseLists.set(
     title,
-    job ? await readJson<ManualReleaseListResponse>(`/api/acquisition/${job.id}/releases`) : null,
+    job
+      ? await readJsonOrNull<ManualReleaseListResponse>(`/api/acquisition/${job.id}/releases`)
+      : null,
   );
 }
 
