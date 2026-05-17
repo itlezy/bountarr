@@ -2,13 +2,15 @@
 
 Bountarr is a local web app that sits in front of Radarr and Sonarr. It gives household users a simple grab workflow while keeping the operational details of release selection, retries, queue state, and validation visible to the operator.
 
+Bountarr is not a Radarr/Sonarr replacement. It owns only the lifecycle of grabs it starts, and it uses Arr as the source of truth for tracked media, queue rows, quality profiles, and file deletion.
+
 ## Product Model
 
 - **Search** finds movies and series through the configured Arr services and can enrich availability with Plex when configured.
 - **Grab** is the managed Arr add flow. New titles are added to Radarr or Sonarr, and existing Arr/Plex titles can enter a `Grab Again` flow for alternate releases.
 - **Acquisition jobs** are Bountarr-owned state machines for searching releases, submitting grabs, tracking queue progress, validating imports, retrying failures, and recording terminal outcomes.
 - **Queue** combines live Arr queue rows with Bountarr-managed acquisition jobs so the operator can distinguish managed grabs from external downloads.
-- **Download checks** show recently acquired media with audit state for preferred audio and subtitle expectations.
+- **Download checks** show recent actionable Bountarr/Arr outcomes by default and can switch to all Bountarr-owned grabs for cleanup and history.
 - **Status** exposes service readiness, runtime health, storage details, local database counts, and runtime warnings.
 - **Settings** stores local browser preferences for theme, card density, preferred audio, subtitle language, and browser notifications.
 
@@ -33,6 +35,14 @@ The browser never talks directly to Radarr, Sonarr, or Plex. Server routes proxy
 5. After import, Bountarr validates the downloaded item against the grab preferences.
 6. Failed validation can retry another viable release until the configured retry cap is reached or no acceptable releases remain.
 7. Manual release tools let an operator inspect candidates and select a direct or Arr-rejection override release when automatic selection is not enough.
+
+Automation uses conservative guardrails:
+
+- Radarr movie automation can retry daily searches for released missing movies when neither Bountarr nor Radarr searched them in the last 24 hours.
+- Not-yet-released Radarr movies stay visible as `not-released` and are not searched daily.
+- Arr rejection overrides are automatic only for movie releases whose normalized title and year match the target. Other Arr rejections require user choice.
+- Fallback quality profiles can be used for Radarr movie searches; Bountarr may auto-grab only locally accepted fallback releases. If fallback succeeds, the movie remains on the profile that made the release viable.
+- Sonarr automation is intentionally narrower until series scope behavior is handled separately.
 
 Acquisition state is local operational state. During refactors or local recovery, it is acceptable to reset it with `npm run reset:db`.
 

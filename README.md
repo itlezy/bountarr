@@ -1,6 +1,8 @@
 # Bountarr
 
-Bountarr is a LAN-first household media grab dashboard for Radarr and Sonarr. It gives non-operator users a simple way to search, grab, and follow media while keeping operator controls for queue cleanup, retry handling, manual release selection, and runtime health in one local web app.
+Bountarr is a LAN-first household media grab dashboard for Radarr and Sonarr. It gives household users a simple way to search, grab, follow, and clean up media while keeping the release-selection, validation, and runtime evidence visible enough for an operator to understand every outcome.
+
+Bountarr owns the lifecycle of grabs it starts. Radarr and Sonarr remain the source of truth for library state, downloads, quality profiles, and file deletion. Bountarr tracks its own acquisition jobs, validates imports against the user's grab preferences, and explains whether an item is verified, waiting for release, missing a release, or blocked for manual choice.
 
 It is designed for trusted local networks. Bountarr has no login system, so do not expose it directly to the public internet. Use a VPN such as Tailscale or WireGuard for remote access.
 
@@ -10,9 +12,18 @@ It is designed for trusted local networks. Bountarr has no login system, so do n
 - guided grab flow with per-grab language, subtitle, season, and quality profile choices
 - managed acquisition jobs that search releases, validate imports, retry failed grabs, and expose manual release tools
 - Queue view that combines Bountarr-managed grabs with live Arr queue entries
-- Download checks view sorted by newest acquisition time for recently acquired items
+- Download checks view sorted by newest acquisition time for recent actionable checks, with an all-Bountarr-grabs mode for cleanup and history
 - operator Status view for service health, runtime details, storage, logs, and local database state
 - local browser notifications for grab results and audit warnings
+
+## Product Contract
+
+- Bountarr is household-first: the default path is search, confirm, grab, watch status, and clean up when needed.
+- A grab is successful only after Arr imports the file and Bountarr validates it against the grab's audio and subtitle preferences.
+- Checks use plain outcome labels: `Not released yet`, `No release found`, `Needs manual review`, and `Looks good` should mean distinct things.
+- Cleanup from checks is destructive by design: it deletes the tracked Arr item and its files after confirmation.
+- Bountarr history is durable local operational state. The default checks view stays recent and actionable, while `Show all Bountarr grabs` exposes older Bountarr-owned items.
+- Automation should stop for user choice when identity, scope, quality, or Arr rejection evidence is not high confidence.
 
 ## Requirements
 
