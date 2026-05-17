@@ -7,7 +7,13 @@ export type SearchAvailability = 'all' | 'available-only' | 'not-available-only'
 export type SearchSortField = 'title' | 'year' | 'popularity' | 'rating';
 export type SearchSortDirection = 'asc' | 'desc';
 export type MediaKind = 'movie' | 'series';
-export type AuditStatus = 'pending' | 'verified' | 'missing-language' | 'no-subs' | 'unknown';
+export type AuditStatus =
+  | 'pending'
+  | 'verified'
+  | 'missing-language'
+  | 'no-subs'
+  | 'not-found'
+  | 'unknown';
 export type AppView = 'search' | 'queue' | 'dashboard' | 'status' | 'settings';
 export type AcquisitionStatus =
   | 'queued'

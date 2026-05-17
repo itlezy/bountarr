@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { actionLabel, formatBytes, queueItemNextStep } from './app-ui';
+import type { MediaItem } from '$lib/shared/types';
+import {
+  actionLabel,
+  auditDetailSummary,
+  auditLabel,
+  formatBytes,
+  queueItemNextStep,
+} from './app-ui';
 
 describe('formatBytes', () => {
   it('formats zero-byte values explicitly', () => {
@@ -86,6 +93,15 @@ describe('actionLabel', () => {
         null,
       ),
     ).toBe('Grab');
+  });
+});
+
+describe('audit labels', () => {
+  it('uses a specific label and detail when no release was found', () => {
+    expect(auditLabel('not-found')).toBe('No release found');
+    expect(auditDetailSummary({ auditStatus: 'not-found' } as MediaItem)).toBe(
+      'No matching release was available from the configured grab sources.',
+    );
   });
 });
 

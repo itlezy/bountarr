@@ -1647,6 +1647,83 @@ describe('queue dashboard service', () => {
     expect(dashboard.items[0]?.acquiredAt).toBe('2026-05-17T14:48:49.113Z');
   });
 
+  it('shows no-release acquisition jobs as not found instead of unknown', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-17T15:00:00.000Z'));
+
+    acquisitionRepositoryState.jobs = [
+      {
+        id: 'job-lunopolis',
+        itemId: 'movie:959',
+        arrItemId: 959,
+        kind: 'movie',
+        title: 'Lunopolis',
+        sourceService: 'radarr',
+        status: 'failed',
+        attempt: 1,
+        maxRetries: 4,
+        currentRelease: null,
+        selectedReleaser: null,
+        preferredReleaser: null,
+        reasonCode: 'no-release-available',
+        failureReason: 'No manual-search releases were returned by Arr',
+        validationSummary: 'No manual-search releases were returned by Arr',
+        autoRetrying: false,
+        progress: null,
+        queueStatus: 'Search failed',
+        preferences: {
+          preferredLanguage: 'English',
+          subtitleLanguage: 'English',
+        },
+        targetSeasonNumbers: null,
+        targetEpisodeIds: null,
+        startedAt: '2026-05-17T14:30:00.000Z',
+        updatedAt: '2026-05-17T14:40:11.310Z',
+        completedAt: '2026-05-17T14:40:11.310Z',
+        attempts: [],
+      },
+    ];
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch: vi.fn().mockResolvedValue({ records: [] }),
+    }));
+    vi.doMock('$lib/server/runtime', () => ({
+      getConfiguredServiceFlags: () => ({
+        configured: true,
+        plexConfigured: false,
+        radarrConfigured: true,
+        sonarrConfigured: false,
+      }),
+    }));
+    vi.doMock('$lib/server/lookup-service', () => ({
+      fetchExistingMovie: vi.fn().mockRejectedValue(new Error('movie missing')),
+      fetchExistingSeries: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-service', () => ({
+      ensureAcquisitionWorkers: vi.fn(),
+      getQueueAcquisitionJobs: () => [],
+    }));
+
+    const module = await import('$lib/server/queue-dashboard-service');
+    const dashboard = await module.getDashboard({
+      cardsView: 'rounded',
+      preferredLanguage: 'English',
+      subtitleLanguage: 'English',
+      theme: 'system',
+    });
+
+    expect(dashboard.items).toHaveLength(1);
+    expect(dashboard.items[0]).toMatchObject({
+      auditStatus: 'not-found',
+      detail: 'No manual-search releases were returned by Arr',
+      title: 'Lunopolis',
+    });
+    expect(dashboard.summary).toMatchObject({
+      attention: 1,
+      pending: 0,
+    });
+  });
+
   it('keeps dashboard queue card ids stable when Arr later adds a queue id', async () => {
     const arrFetch = vi.fn().mockImplementation(async (_service: string, path: string) => {
       if (path === '/api/v3/history') {

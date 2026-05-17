@@ -477,7 +477,10 @@ export class AppState {
   get auditAttentionItems(): MediaItem[] {
     return sortAuditItems(
       [...(this.dashboard?.items ?? [])].filter(
-        (item) => item.auditStatus === 'missing-language' || item.auditStatus === 'no-subs',
+        (item) =>
+          item.auditStatus === 'missing-language' ||
+          item.auditStatus === 'no-subs' ||
+          item.auditStatus === 'not-found',
       ),
     );
   }

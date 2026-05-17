@@ -45,7 +45,10 @@ function summarizeDashboard(items: MediaItem[]) {
       (item) => item.auditStatus === 'pending' || item.auditStatus === 'unknown',
     ).length,
     attention: items.filter(
-      (item) => item.auditStatus === 'missing-language' || item.auditStatus === 'no-subs',
+      (item) =>
+        item.auditStatus === 'missing-language' ||
+        item.auditStatus === 'no-subs' ||
+        item.auditStatus === 'not-found',
     ).length,
   };
 }
@@ -96,8 +99,9 @@ function acquisitionAuditStatus(job: AcquisitionJob): AuditStatus {
     case 'import-timeout':
     case 'manual-selection-lost':
     case 'no-acceptable-release':
-    case 'no-release-available':
       return 'unknown';
+    case 'no-release-available':
+      return 'not-found';
     default:
       return 'pending';
   }

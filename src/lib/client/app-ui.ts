@@ -30,6 +30,8 @@ export const statusTone: Record<AuditStatus, string> = {
     'border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-200',
   'no-subs':
     'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200',
+  'not-found':
+    'border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-700 dark:bg-sky-950/40 dark:text-sky-200',
   unknown:
     'border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100',
 };
@@ -42,6 +44,8 @@ export function auditLabel(status: AuditStatus): string {
       return 'Missing audio';
     case 'no-subs':
       return 'Missing subtitles';
+    case 'not-found':
+      return 'No release found';
     case 'unknown':
       return 'Unknown';
     default:
@@ -411,6 +415,8 @@ export function auditDetailSummary(item: MediaItem): string {
       return 'The downloaded media is missing your preferred audio language.';
     case 'no-subs':
       return 'The downloaded media is missing the subtitle language you asked for.';
+    case 'not-found':
+      return 'No matching release was available from the configured grab sources.';
     case 'unknown':
       return 'The app could not read enough media details to confirm this item yet.';
     default:
