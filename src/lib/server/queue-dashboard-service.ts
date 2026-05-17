@@ -46,7 +46,10 @@ function summarizeDashboard(items: MediaItem[]) {
     total: items.length,
     verified: items.filter((item) => item.auditStatus === 'verified').length,
     pending: items.filter(
-      (item) => item.auditStatus === 'pending' || item.auditStatus === 'unknown',
+      (item) =>
+        item.auditStatus === 'pending' ||
+        item.auditStatus === 'unknown' ||
+        item.auditStatus === 'not-released',
     ).length,
     attention: items.filter(
       (item) =>
@@ -159,6 +162,26 @@ function acquisitionJobDetail(job: AcquisitionJob): string | null {
   }
 
   return job.currentRelease ?? job.validationSummary ?? job.failureReason;
+}
+
+function radarrMovieStatus(item: MediaItem): string | null {
+  return asString(asRecord(item.requestPayload).status)?.toLowerCase() ?? null;
+}
+
+function acquisitionItemAuditStatus(job: AcquisitionJob, item: MediaItem): AuditStatus {
+  const auditStatus = acquisitionAuditStatus(job);
+  const movieStatus = radarrMovieStatus(item);
+  if (
+    auditStatus === 'not-found' &&
+    job.kind === 'movie' &&
+    job.sourceService === 'radarr' &&
+    movieStatus !== null &&
+    movieStatus !== 'released'
+  ) {
+    return 'not-released';
+  }
+
+  return auditStatus;
 }
 
 function commandName(value: Record<string, unknown>): string {
@@ -386,13 +409,13 @@ async function buildAcquisitionHistoryItems(preferences: Preferences): Promise<M
   for (const job of recentAcquisitionCheckJobs()) {
     const acquiredAt = acquisitionJobAcquiredAt(job);
     const detail = acquisitionJobDetail(job);
-    const auditStatus = acquisitionAuditStatus(job);
 
     try {
       const item =
         job.kind === 'movie'
           ? await fetchExistingMovie(job.arrItemId, preferences)
           : await fetchExistingSeries(job.arrItemId, preferences, null, detail ?? job.title);
+      const auditStatus = acquisitionItemAuditStatus(job, item);
       items.push({
         ...item,
         acquiredAt: acquiredAt ?? item.acquiredAt ?? null,
@@ -400,6 +423,7 @@ async function buildAcquisitionHistoryItems(preferences: Preferences): Promise<M
         detail: item.detail ?? detail ?? null,
       });
     } catch {
+      const auditStatus = acquisitionAuditStatus(job);
       items.push(
         normalizeItem(job.kind, {}, preferences, {
           acquiredAt,

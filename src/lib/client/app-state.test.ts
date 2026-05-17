@@ -1694,6 +1694,14 @@ describe('app state', () => {
           inArr: true,
           canAdd: false,
         },
+        {
+          ...movieItem,
+          id: 'movie:6',
+          title: 'Not Released',
+          auditStatus: 'not-released',
+          inArr: true,
+          canAdd: false,
+        },
       ],
     };
 
@@ -1702,7 +1710,10 @@ describe('app state', () => {
       'Needs Audio',
       'No Release',
     ]);
-    expect(state.auditPendingItems.map((item) => item.title)).toEqual(['Still Downloading']);
+    expect(state.auditPendingItems.map((item) => item.title)).toEqual([
+      'Not Released',
+      'Still Downloading',
+    ]);
     expect(state.auditVerifiedItems.map((item) => item.title)).toEqual(['Verified Item']);
   });
 

@@ -489,7 +489,10 @@ export class AppState {
   get auditPendingItems(): MediaItem[] {
     return sortAuditItems(
       [...(this.dashboard?.items ?? [])].filter(
-        (item) => item.auditStatus === 'pending' || item.auditStatus === 'unknown',
+        (item) =>
+          item.auditStatus === 'pending' ||
+          item.auditStatus === 'unknown' ||
+          item.auditStatus === 'not-released',
       ),
     );
   }

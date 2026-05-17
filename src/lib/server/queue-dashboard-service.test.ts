@@ -158,11 +158,15 @@ function mockDashboardDependencies(
     }),
   }));
   vi.doMock('$lib/server/lookup-service', () => ({
-    fetchExistingMovie: vi
-      .fn()
-      .mockImplementation((arrItemId: number) =>
-        Promise.resolve(movieItem(arrItemId, options.title ?? 'Lunopolis')),
-      ),
+    fetchExistingMovie: vi.fn().mockImplementation((arrItemId: number) =>
+      Promise.resolve({
+        ...movieItem(arrItemId, options.title ?? 'Lunopolis'),
+        requestPayload: {
+          title: options.title ?? 'Lunopolis',
+          status: options.movieStatus ?? 'released',
+        },
+      }),
+    ),
     fetchExistingSeries: vi.fn(),
   }));
   vi.doMock('$lib/server/acquisition-service', () => ({
@@ -2035,7 +2039,7 @@ describe('queue dashboard service', () => {
     expect(acquisitionRepositoryState.jobs[0]?.status).toBe('failed');
     expect(acquisitionRunnerState.enqueuedJobIds).toEqual([]);
     expect(dashboard.items[0]).toMatchObject({
-      auditStatus: 'not-found',
+      auditStatus: 'not-released',
       title: 'Obsession',
     });
   });

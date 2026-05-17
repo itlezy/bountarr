@@ -32,6 +32,8 @@ export const statusTone: Record<AuditStatus, string> = {
     'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200',
   'not-found':
     'border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-700 dark:bg-sky-950/40 dark:text-sky-200',
+  'not-released':
+    'border-violet-300 bg-violet-50 text-violet-700 dark:border-violet-700 dark:bg-violet-950/40 dark:text-violet-200',
   'release-blocked':
     'border-orange-300 bg-orange-50 text-orange-700 dark:border-orange-700 dark:bg-orange-950/40 dark:text-orange-200',
   unknown:
@@ -48,6 +50,8 @@ export function auditLabel(status: AuditStatus): string {
       return 'Missing subtitles';
     case 'not-found':
       return 'No release found';
+    case 'not-released':
+      return 'Not released yet';
     case 'release-blocked':
       return 'Needs manual review';
     case 'unknown':
@@ -421,6 +425,8 @@ export function auditDetailSummary(item: MediaItem): string {
       return 'The downloaded media is missing the subtitle language you asked for.';
     case 'not-found':
       return 'No matching release was available from the configured grab sources.';
+    case 'not-released':
+      return 'Radarr says this movie is not released yet, so Bountarr is waiting instead of searching daily.';
     case 'release-blocked':
       return 'Release options are available but need manual review before grabbing.';
     case 'unknown':

@@ -104,6 +104,13 @@ describe('audit labels', () => {
     );
   });
 
+  it('uses a specific label and detail when a movie is not released yet', () => {
+    expect(auditLabel('not-released')).toBe('Not released yet');
+    expect(auditDetailSummary({ auditStatus: 'not-released' } as MediaItem)).toBe(
+      'Radarr says this movie is not released yet, so Bountarr is waiting instead of searching daily.',
+    );
+  });
+
   it('uses a specific label and detail when release options need manual review', () => {
     expect(auditLabel('release-blocked')).toBe('Needs manual review');
     expect(auditDetailSummary({ auditStatus: 'release-blocked' } as MediaItem)).toBe(
