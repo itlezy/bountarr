@@ -1810,6 +1810,62 @@ describe('queue dashboard service', () => {
           },
         ],
       },
+      {
+        id: 'job-obsession',
+        itemId: 'movie:956',
+        arrItemId: 956,
+        kind: 'movie',
+        title: 'Obsession',
+        sourceService: 'radarr',
+        status: 'failed',
+        attempt: 1,
+        maxRetries: 4,
+        currentRelease: null,
+        selectedReleaser: null,
+        preferredReleaser: null,
+        reasonCode: 'no-release-available',
+        failureReason: 'No manual-search releases were returned by Arr',
+        validationSummary: 'No manual-search releases were returned by Arr',
+        autoRetrying: false,
+        progress: null,
+        queueStatus: 'Search failed',
+        preferences: {
+          preferredLanguage: 'English',
+          subtitleLanguage: 'English',
+        },
+        targetSeasonNumbers: null,
+        targetEpisodeIds: null,
+        startedAt: '2026-05-17T14:20:00.000Z',
+        updatedAt: '2026-05-17T14:30:00.000Z',
+        completedAt: '2026-05-17T14:30:00.000Z',
+        attempts: [],
+        releaseCandidates: [
+          {
+            arrRejected: true,
+            attempt: null,
+            detectedAudioLanguages: [],
+            detectedSubtitleLanguages: [],
+            failedAt: null,
+            failureReason: null,
+            firstSeenAt: '2026-05-17T14:30:00.000Z',
+            guid: 'guid-obsession',
+            indexer: 'Indexer',
+            indexerId: 4,
+            languages: ['English'],
+            lastSeenAt: '2026-05-17T14:30:00.000Z',
+            protocol: 'usenet',
+            reason: 'Release title points to WhatsApp Obsession',
+            score: -10_000,
+            selectionMode: 'override-arr-rejection',
+            size: 700_000_000,
+            status: 'available',
+            title: 'WhatsApp.Obsession.The.Murder.Of.Stephanie.Hansen.2026.1080p.WEB.H264-CBFM',
+            identityStatus: 'mismatch',
+          } as NonNullable<AcquisitionJob['releaseCandidates']>[number] & {
+            identityStatus: 'mismatch';
+          },
+        ],
+      },
     ];
 
     vi.doMock('$lib/server/arr-client', () => ({
@@ -1824,35 +1880,37 @@ describe('queue dashboard service', () => {
       }),
     }));
     vi.doMock('$lib/server/lookup-service', () => ({
-      fetchExistingMovie: vi.fn().mockResolvedValue({
-        id: 'movie:959',
-        arrItemId: 959,
-        kind: 'movie',
-        title: 'Lunopolis',
-        year: 2010,
-        rating: null,
-        poster: null,
-        overview: '',
-        status: 'Monitored',
-        isExisting: true,
-        isRequested: true,
-        auditStatus: 'unknown',
-        audioLanguages: [],
-        subtitleLanguages: [],
-        sourceService: 'radarr',
-        origin: 'arr',
-        inArr: true,
-        inPlex: false,
-        plexLibraries: [],
-        canAdd: false,
-        canDeleteFromArr: true,
-        detail: null,
-        acquiredAt: null,
-        requestPayload: {
-          title: 'Lunopolis',
-          tmdbId: 83399,
-        },
-      } satisfies MediaItem),
+      fetchExistingMovie: vi.fn().mockImplementation((arrItemId: number) => {
+        const title = arrItemId === 956 ? 'Obsession' : 'Lunopolis';
+        return Promise.resolve({
+          id: `movie:${arrItemId}`,
+          arrItemId,
+          kind: 'movie',
+          title,
+          year: arrItemId === 956 ? 2019 : 2010,
+          rating: null,
+          poster: null,
+          overview: '',
+          status: 'Monitored',
+          isExisting: true,
+          isRequested: true,
+          auditStatus: 'unknown',
+          audioLanguages: [],
+          subtitleLanguages: [],
+          sourceService: 'radarr',
+          origin: 'arr',
+          inArr: true,
+          inPlex: false,
+          plexLibraries: [],
+          canAdd: false,
+          canDeleteFromArr: true,
+          detail: null,
+          acquiredAt: null,
+          requestPayload: {
+            title,
+          },
+        } satisfies MediaItem);
+      }),
       fetchExistingSeries: vi.fn(),
     }));
     vi.doMock('$lib/server/acquisition-service', () => ({
@@ -1868,14 +1926,21 @@ describe('queue dashboard service', () => {
       theme: 'system',
     });
 
-    expect(dashboard.items[0]).toMatchObject({
+    const lunopolis = dashboard.items.find((item) => item.title === 'Lunopolis');
+    const obsession = dashboard.items.find((item) => item.title === 'Obsession');
+
+    expect(lunopolis).toMatchObject({
       auditStatus: 'release-blocked',
       detail: '1 release option need manual review.',
       title: 'Lunopolis',
     });
+    expect(obsession).toMatchObject({
+      auditStatus: 'not-found',
+      detail: 'No manual-search releases were returned by Arr',
+      title: 'Obsession',
+    });
     expect(dashboard.summary).toMatchObject({
-      attention: 1,
-      pending: 0,
+      attention: 2,
     });
   });
 

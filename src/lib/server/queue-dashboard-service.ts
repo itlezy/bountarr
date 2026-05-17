@@ -87,6 +87,8 @@ function acquisitionJobAcquiredAt(job: AcquisitionJob): string | null {
 }
 
 function acquisitionAuditStatus(job: AcquisitionJob): AuditStatus {
+  const manualReviewCandidates = acquisitionManualReviewCandidates(job);
+
   switch (job.reasonCode) {
     case 'validated':
       return 'verified';
@@ -101,9 +103,9 @@ function acquisitionAuditStatus(job: AcquisitionJob): AuditStatus {
     case 'manual-selection-lost':
       return 'unknown';
     case 'no-acceptable-release':
-      return 'release-blocked';
+      return manualReviewCandidates.length > 0 ? 'release-blocked' : 'not-found';
     case 'no-release-available':
-      if ((job.releaseCandidates ?? []).length > 0) {
+      if (manualReviewCandidates.length > 0) {
         return 'release-blocked';
       }
       return 'not-found';
@@ -112,8 +114,26 @@ function acquisitionAuditStatus(job: AcquisitionJob): AuditStatus {
   }
 }
 
+function acquisitionManualReviewCandidates(
+  job: AcquisitionJob,
+): NonNullable<AcquisitionJob['releaseCandidates']> {
+  return (job.releaseCandidates ?? []).filter((candidate) => {
+    if (candidate.status === 'failed') {
+      return false;
+    }
+
+    const record = candidate as unknown as Record<string, unknown>;
+    return (
+      record.identityStatus !== 'mismatch' &&
+      record.scopeStatus !== 'mismatch' &&
+      record.scopeStatus !== 'partial' &&
+      record.scopeStatus !== 'unknown'
+    );
+  });
+}
+
 function acquisitionJobDetail(job: AcquisitionJob): string | null {
-  const releaseCandidates = job.releaseCandidates ?? [];
+  const releaseCandidates = acquisitionManualReviewCandidates(job);
   if (
     releaseCandidates.length > 0 &&
     (job.reasonCode === 'no-release-available' || job.reasonCode === 'no-acceptable-release')
