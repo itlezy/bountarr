@@ -11,3 +11,5 @@
   `Content-Type: application/json`; the default form-style POST trips CSRF protection.
 - PM2 log files may include the process id suffix, such as `bountarr-error-4.log`; list
   `C:\Users\macius\.pm2\logs` before reading an assumed log path.
+- For TS helper flags that take `TITLE=VALUE`, quote the whole value when the title has spaces:
+  use `--expect-audit "Soylent Green=verified"`, not `--expect-audit "Soylent Green"=verified`.
