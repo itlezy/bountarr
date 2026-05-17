@@ -7,3 +7,4 @@
 - Prefer the cleanest current design over transitional code. When forced to choose, remove or replace old behavior instead of preserving it.
 - Do not spend time on migrations, deprecations, versioned schemas, fallback readers, compatibility adapters, or preserving old data formats unless the user explicitly requests that work.
 - When diagnosing an issue that needs code verification, stop the daemon with `scripts\windows\stopDaemon.cmd`, test the fix, then restart it with `scripts\windows\runDaemon.cmd`.
+- Always make granular commits as work progresses.
