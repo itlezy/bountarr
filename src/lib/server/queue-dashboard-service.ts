@@ -41,6 +41,8 @@ import type {
 
 const logger = createAreaLogger('queue-dashboard');
 const dailyMissingMovieSearchIntervalMs = 24 * 60 * 60 * 1000;
+const adjacentYearFallbackReason =
+  'Bountarr accepted adjacent release year because no exact-year match was available';
 type DashboardOptions = {
   force?: boolean;
   includeAllBountarr?: boolean;
@@ -377,24 +379,39 @@ async function enqueueAutomaticReleaseRetry(job: AcquisitionJob): Promise<void> 
     return;
   }
 
+  if (!selection.selectedRelease.reason.includes(adjacentYearFallbackReason)) {
+    return;
+  }
+
   const jobs = getAcquisitionJobRepository();
   const current = jobs.getJob(job.id) ?? job;
-  const result = jobs.updateJobIfStatus(job.id, ['failed'], {
-    attempt: current.attempt + 1,
-    autoRetrying: false,
-    completedAt: null,
-    currentRelease: null,
-    failureReason: null,
-    liveDownloadId: null,
-    liveQueueId: null,
-    progress: null,
-    queuedManualSelection: null,
-    queueStatus: 'Queued automatic release retry',
-    reasonCode: null,
-    selectedReleaser: null,
-    status: 'queued',
-    validationSummary: null,
-  });
+  let result: ReturnType<typeof jobs.updateJobIfStatus>;
+  try {
+    result = jobs.updateJobIfStatus(job.id, ['failed'], {
+      attempt: current.attempt + 1,
+      autoRetrying: false,
+      completedAt: null,
+      currentRelease: null,
+      failureReason: null,
+      liveDownloadId: null,
+      liveQueueId: null,
+      progress: null,
+      queuedManualSelection: null,
+      queueStatus: 'Queued automatic release retry',
+      reasonCode: null,
+      selectedReleaser: null,
+      status: 'queued',
+      validationSummary: null,
+    });
+  } catch (error) {
+    logger.warn('Unable to queue automatic release retry', {
+      arrItemId: job.arrItemId,
+      jobId: job.id,
+      title: job.title,
+      ...toErrorLogContext(error),
+    });
+    return;
+  }
 
   if (!result.updated || !result.job) {
     return;

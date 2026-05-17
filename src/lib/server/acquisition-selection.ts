@@ -800,17 +800,28 @@ export async function submitSelectedRelease(
   }
 
   const overrideArrRejection = releaseRejectionReasons(selection.payload).length > 0;
+  const overridePayload =
+    job.sourceService === 'radarr'
+      ? {
+          ...selection.payload,
+          guid: selection.decision.selected.guid,
+          indexerId: selection.decision.selected.indexerId,
+          movieId: job.arrItemId,
+          shouldOverride: true,
+        }
+      : {
+          ...selection.payload,
+          guid: selection.decision.selected.guid,
+          indexerId: selection.decision.selected.indexerId,
+          seriesId: job.arrItemId,
+          shouldOverride: true,
+        };
 
   await arrFetch<unknown>(job.sourceService, '/api/v3/release', {
     method: 'POST',
     body: JSON.stringify(
       overrideArrRejection
-        ? {
-            ...selection.payload,
-            guid: selection.decision.selected.guid,
-            indexerId: selection.decision.selected.indexerId,
-            shouldOverride: true,
-          }
+        ? overridePayload
         : {
             guid: selection.decision.selected.guid,
             indexerId: selection.decision.selected.indexerId,

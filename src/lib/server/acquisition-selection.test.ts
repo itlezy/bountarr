@@ -910,6 +910,7 @@ describe('acquisition selection', () => {
         quality: { quality: { id: 3, name: 'WEBDL-1080p' } },
         rejected: true,
         rejections: ['Not an upgrade for existing movie file.'],
+        movieId: 603,
         shouldOverride: true,
       }),
     });
@@ -954,6 +955,7 @@ describe('acquisition selection', () => {
         mappedMovieId: null,
         rejected: true,
         rejections: ['Unknown Movie. Unable to match to correct movie using release title.'],
+        movieId: 603,
         shouldOverride: true,
       }),
     });

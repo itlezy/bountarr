@@ -9,3 +9,5 @@
   requires `-Method Post`.
 - When POSTing to local SvelteKit endpoints with `Invoke-RestMethod`, include a JSON body and
   `Content-Type: application/json`; the default form-style POST trips CSRF protection.
+- PM2 log files may include the process id suffix, such as `bountarr-error-4.log`; list
+  `C:\Users\macius\.pm2\logs` before reading an assumed log path.
