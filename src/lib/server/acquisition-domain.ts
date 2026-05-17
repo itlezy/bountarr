@@ -7,8 +7,12 @@ import type {
   ManualReleaseSelectionMode,
   ReleaseDecision,
   ReleaseDecisionCandidate,
+  ReleaseArrOverrideMode,
+  ReleaseAutoBlockedReason,
+  ReleaseAutoDecision,
   ReleaseIdentityStatus,
   ReleaseScopeStatus,
+  ReleaseYearMatch,
 } from '$lib/shared/types';
 
 export type ArrService = 'radarr' | 'sonarr';
@@ -24,6 +28,9 @@ export type PersistedManualSelection = {
 
 export type PersistedAcquisitionReleaseCandidate = AcquisitionReleaseCandidate & {
   acceptedByLocalRules: boolean;
+  arrOverrideMode: ReleaseArrOverrideMode;
+  autoBlockedReason: ReleaseAutoBlockedReason | null;
+  autoDecision: ReleaseAutoDecision;
   autoSelectable: boolean;
   identityReason: string;
   identityStatus: ReleaseIdentityStatus;
@@ -31,6 +38,7 @@ export type PersistedAcquisitionReleaseCandidate = AcquisitionReleaseCandidate &
   rejectionReasons: string[];
   scopeReason: string | null;
   scopeStatus: ReleaseScopeStatus;
+  yearMatch: ReleaseYearMatch;
 };
 
 export type PersistedAcquisitionJob = Omit<AcquisitionJob, 'releaseCandidates'> & {
@@ -77,11 +85,9 @@ export function cloneJob(job: PersistedAcquisitionJob): AcquisitionJob {
       acceptedByLocalRules: _acceptedByLocalRules,
       autoSelectable: _autoSelectable,
       identityReason: _identityReason,
-      identityStatus: _identityStatus,
       payload: _payload,
       rejectionReasons: _rejectionReasons,
       scopeReason: _scopeReason,
-      scopeStatus: _scopeStatus,
       ...candidate
     }) => candidate,
   );

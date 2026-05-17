@@ -62,7 +62,10 @@ function failedReleaseCandidate(
   return {
     acceptedByLocalRules: true,
     arrRejected: false,
+    arrOverrideMode: 'none',
     attempt: 1,
+    autoBlockedReason: null,
+    autoDecision: 'auto-selected',
     autoSelectable: true,
     detectedAudioLanguages: ['English'],
     detectedSubtitleLanguages: [],
@@ -87,6 +90,7 @@ function failedReleaseCandidate(
     size: 1_000,
     status: 'failed',
     title: 'Fixture.History.1998.1080p.WEB-DL-FAILED',
+    yearMatch: 'not-applicable',
     ...overrides,
   };
 }
@@ -366,8 +370,12 @@ describe('acquisition selection', () => {
       'Bountarr title/year matched target for Arr rejection override',
     );
     expect(result.manualResults[0]).toMatchObject({
+      arrOverrideMode: 'exact-year',
+      autoBlockedReason: null,
+      autoDecision: 'auto-selected',
       guid: 'guid-unknown-movie',
       status: 'selected',
+      yearMatch: 'exact',
     });
   });
 
@@ -413,8 +421,12 @@ describe('acquisition selection', () => {
       'Bountarr accepted adjacent release year because no exact-year match was available',
     );
     expect(result.manualResults[0]).toMatchObject({
+      arrOverrideMode: 'adjacent-year',
+      autoBlockedReason: null,
+      autoDecision: 'auto-selected',
       guid: 'guid-adjacent-year',
       status: 'selected',
+      yearMatch: 'adjacent',
     });
   });
 
@@ -474,6 +486,9 @@ describe('acquisition selection', () => {
       expect.objectContaining({
         selectionMode: 'override-arr-rejection',
         status: 'arr-rejected',
+        autoBlockedReason: 'adjacent-year-superseded',
+        autoDecision: 'reviewable',
+        yearMatch: 'adjacent',
       }),
     );
   });

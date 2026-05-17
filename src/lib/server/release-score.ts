@@ -10,8 +10,12 @@ import type {
   AcquisitionReasonCode,
   ReleaseDecision,
   ReleaseDecisionCandidate,
+  ReleaseArrOverrideMode,
+  ReleaseAutoBlockedReason,
+  ReleaseAutoDecision,
   ReleaseIdentityStatus,
   ReleaseScopeStatus,
+  ReleaseYearMatch,
 } from '$lib/shared/types';
 
 type ReleaseSelection = {
@@ -23,6 +27,9 @@ export type EvaluatedRelease = {
   acceptedByLocalRules: boolean;
   adjacentYearFallback: boolean;
   arrRejected: boolean;
+  arrOverrideMode: ReleaseArrOverrideMode;
+  autoBlockedReason: ReleaseAutoBlockedReason | null;
+  autoDecision: ReleaseAutoDecision;
   autoSelectable: boolean;
   candidate: ReleaseDecisionCandidate;
   identityReason: string;
@@ -31,7 +38,7 @@ export type EvaluatedRelease = {
   rejectionReasons: string[];
   scopeReason: string | null;
   scopeStatus: ReleaseScopeStatus;
-  yearMatch: 'exact' | 'adjacent' | 'mismatch' | 'unknown' | 'not-applicable';
+  yearMatch: ReleaseYearMatch;
 };
 
 type ReleaseSelectionOptions = {
@@ -644,7 +651,7 @@ function releaseYearMatch(
   release: Record<string, unknown>,
   releaseTitle: string,
   targetYear: number | null | undefined,
-): EvaluatedRelease['yearMatch'] {
+): ReleaseYearMatch {
   if (targetYear === null || targetYear === undefined) {
     return 'not-applicable';
   }
@@ -704,6 +711,76 @@ function automaticArrOverrideReason(mode: 'exact-year' | 'adjacent-year' | null)
       return 'Bountarr accepted adjacent release year because no exact-year match was available';
     default:
       return null;
+  }
+}
+
+function releaseAutoBlockedReason({
+  acceptedByLocalRules,
+  arrOverrideMode,
+  arrRejectionReasons,
+  autoSelectable,
+  identity,
+  yearMatch,
+}: {
+  acceptedByLocalRules: boolean;
+  arrOverrideMode: 'exact-year' | 'adjacent-year' | null;
+  arrRejectionReasons: string[];
+  autoSelectable: boolean;
+  identity: ReturnType<typeof classifyIdentity>;
+  yearMatch: ReleaseYearMatch;
+}): ReleaseAutoBlockedReason | null {
+  if (autoSelectable) {
+    return null;
+  }
+
+  if (identity.status === 'mismatch') {
+    return 'title-mismatch';
+  }
+
+  if (identity.scopeStatus !== 'not-applicable' && identity.scopeStatus !== 'exact') {
+    return 'scope-mismatch';
+  }
+
+  if (arrRejectionReasons.length > 0 && arrOverrideMode === null) {
+    if (yearMatch === 'mismatch') {
+      return 'year-mismatch';
+    }
+
+    if (yearMatch === 'unknown' || yearMatch === 'not-applicable') {
+      return 'year-unknown';
+    }
+
+    return 'arr-rejected';
+  }
+
+  if (!acceptedByLocalRules) {
+    return 'local-rules';
+  }
+
+  if (arrOverrideMode === 'adjacent-year') {
+    return 'adjacent-year-superseded';
+  }
+
+  return null;
+}
+
+function releaseAutoDecision(
+  autoSelectable: boolean,
+  blockedReason: ReleaseAutoBlockedReason | null,
+): ReleaseAutoDecision {
+  if (autoSelectable) {
+    return 'auto-selected';
+  }
+
+  switch (blockedReason) {
+    case 'local-rules':
+    case 'scope-mismatch':
+    case 'title-mismatch':
+    case 'year-mismatch':
+    case 'year-unknown':
+      return 'blocked';
+    default:
+      return 'reviewable';
   }
 }
 
@@ -885,11 +962,22 @@ function buildCandidate(
   // Manual selection may still allow mismatches, but auto-selection must never promote them.
   const adjacentYearFallback = arrOverrideMode === 'adjacent-year';
   const autoSelectable = acceptedByLocalRules && identity.autoSelectable && !adjacentYearFallback;
+  const autoBlockedReason = releaseAutoBlockedReason({
+    acceptedByLocalRules,
+    arrOverrideMode,
+    arrRejectionReasons,
+    autoSelectable,
+    identity,
+    yearMatch,
+  });
 
   return {
     acceptedByLocalRules,
     adjacentYearFallback,
     arrRejected: arrRejectionReasons.length > 0,
+    arrOverrideMode: arrOverrideMode ?? 'none',
+    autoBlockedReason,
+    autoDecision: releaseAutoDecision(autoSelectable, autoBlockedReason),
     autoSelectable,
     candidate: {
       title,
@@ -942,6 +1030,8 @@ function promoteAdjacentYearFallbacks(
     return {
       ...release,
       autoSelectable: true,
+      autoBlockedReason: null,
+      autoDecision: 'auto-selected',
       candidate: {
         ...release.candidate,
         reason: [release.candidate.reason, automaticArrOverrideReason('adjacent-year')].join('; '),

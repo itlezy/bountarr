@@ -67,7 +67,10 @@ function createReleaseCandidate(
   return {
     acceptedByLocalRules: true,
     arrRejected: false,
+    arrOverrideMode: 'none',
     attempt: null,
+    autoBlockedReason: null,
+    autoDecision: 'auto-selected',
     autoSelectable: true,
     detectedAudioLanguages: [],
     detectedSubtitleLanguages: [],
@@ -92,6 +95,7 @@ function createReleaseCandidate(
     size: 1_000,
     status: 'available',
     title,
+    yearMatch: 'not-applicable',
   };
 }
 

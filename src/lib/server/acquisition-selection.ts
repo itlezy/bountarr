@@ -64,6 +64,9 @@ export function persistManualSelection(result: ReleaseSelectionResult): Persiste
       release.indexerId === result.selection.decision.selected?.indexerId,
   ) ?? {
     ...structuredClone(result.selection.decision.selected),
+    arrOverrideMode: 'none',
+    autoBlockedReason: null,
+    autoDecision: 'auto-selected',
     canSelect: false,
     selectionMode: result.manualSelectionMode ?? 'direct',
     blockReason: 'already-selected',
@@ -76,6 +79,7 @@ export function persistManualSelection(result: ReleaseSelectionResult): Persiste
       arrReasons: [],
     },
     status: 'selected',
+    yearMatch: 'not-applicable',
   };
 
   return {
@@ -215,7 +219,10 @@ function mergeReleaseCandidatePool(
       ...release.candidate,
       acceptedByLocalRules: release.acceptedByLocalRules,
       arrRejected: release.arrRejected,
+      arrOverrideMode: release.arrOverrideMode,
       attempt: current?.attempt ?? null,
+      autoBlockedReason: release.autoBlockedReason,
+      autoDecision: release.autoDecision,
       autoSelectable: release.autoSelectable,
       detectedAudioLanguages: current?.detectedAudioLanguages ?? [],
       detectedSubtitleLanguages: current?.detectedSubtitleLanguages ?? [],
@@ -234,6 +241,7 @@ function mergeReleaseCandidatePool(
         current?.status === 'failed' || current?.status === 'selected'
           ? current.status
           : 'available',
+      yearMatch: release.yearMatch,
     });
   }
 
@@ -254,8 +262,12 @@ function mergeReleaseCandidatePool(
 function evaluatedFromPersisted(candidate: PersistedAcquisitionReleaseCandidate): EvaluatedRelease {
   return {
     acceptedByLocalRules: candidate.acceptedByLocalRules,
-    adjacentYearFallback: false,
+    adjacentYearFallback:
+      candidate.arrOverrideMode === 'adjacent-year' && candidate.autoDecision !== 'auto-selected',
     arrRejected: candidate.arrRejected,
+    arrOverrideMode: candidate.arrOverrideMode,
+    autoBlockedReason: candidate.autoBlockedReason,
+    autoDecision: candidate.autoDecision,
     autoSelectable: candidate.autoSelectable,
     candidate,
     identityReason: candidate.identityReason,
@@ -264,7 +276,7 @@ function evaluatedFromPersisted(candidate: PersistedAcquisitionReleaseCandidate)
     rejectionReasons: candidate.rejectionReasons,
     scopeReason: candidate.scopeReason,
     scopeStatus: candidate.scopeStatus,
-    yearMatch: 'not-applicable',
+    yearMatch: candidate.yearMatch,
   };
 }
 
@@ -540,6 +552,9 @@ function toManualReleaseResult(
 
   return {
     ...release.candidate,
+    arrOverrideMode: release.arrOverrideMode,
+    autoBlockedReason: release.autoBlockedReason,
+    autoDecision: release.autoDecision,
     canSelect,
     selectionMode: canSelect ? manualSelectionMode(release) : null,
     blockReason,
@@ -558,6 +573,7 @@ function toManualReleaseResult(
       selectedIndexerId,
       failedReleaseKeys,
     ),
+    yearMatch: release.yearMatch,
   };
 }
 

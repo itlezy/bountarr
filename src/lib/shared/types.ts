@@ -195,18 +195,35 @@ export interface ReleaseDecisionCandidate {
 
 export type AcquisitionReleaseCandidateStatus = 'available' | 'selected' | 'failed';
 export type AcquisitionRecoveryStatus = 'queued' | 'grabbing' | 'restored' | 'failed';
+export type ReleaseYearMatch = 'exact' | 'adjacent' | 'mismatch' | 'unknown' | 'not-applicable';
+export type ReleaseArrOverrideMode = 'none' | 'exact-year' | 'adjacent-year';
+export type ReleaseAutoDecision = 'auto-selected' | 'reviewable' | 'blocked';
+export type ReleaseAutoBlockedReason =
+  | 'arr-rejected'
+  | 'title-mismatch'
+  | 'scope-mismatch'
+  | 'local-rules'
+  | 'year-mismatch'
+  | 'year-unknown'
+  | 'adjacent-year-superseded';
 
 export interface AcquisitionReleaseCandidate extends ReleaseDecisionCandidate {
   arrRejected: boolean;
+  arrOverrideMode?: ReleaseArrOverrideMode;
+  autoBlockedReason?: ReleaseAutoBlockedReason | null;
+  autoDecision?: ReleaseAutoDecision;
   attempt: number | null;
   detectedAudioLanguages: string[];
   detectedSubtitleLanguages: string[];
   failedAt: string | null;
   failureReason: string | null;
   firstSeenAt: string;
+  identityStatus?: ReleaseIdentityStatus;
   lastSeenAt: string;
+  scopeStatus?: ReleaseScopeStatus;
   selectionMode: ManualReleaseSelectionMode | null;
   status: AcquisitionReleaseCandidateStatus;
+  yearMatch?: ReleaseYearMatch;
 }
 
 export type ReleaseIdentityStatus = 'exact-match' | 'weak-match' | 'mismatch';
@@ -222,6 +239,9 @@ export type ManualReleaseStatus =
   | 'previously-failed';
 
 export interface ManualReleaseResult extends ReleaseDecisionCandidate {
+  arrOverrideMode?: ReleaseArrOverrideMode;
+  autoBlockedReason?: ReleaseAutoBlockedReason | null;
+  autoDecision?: ReleaseAutoDecision;
   canSelect: boolean;
   selectionMode: ManualReleaseSelectionMode | null;
   blockReason: ManualReleaseBlockReason | null;
@@ -234,6 +254,7 @@ export interface ManualReleaseResult extends ReleaseDecisionCandidate {
     arrReasons: string[];
   };
   status: ManualReleaseStatus;
+  yearMatch?: ReleaseYearMatch;
 }
 
 export interface ReleaseDecision {

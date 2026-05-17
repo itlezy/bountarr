@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { defaultPreferences } from '$lib/shared/preferences';
-import { selectBestRelease } from '$lib/server/release-score';
+import { evaluateReleaseCandidates, selectBestRelease } from '$lib/server/release-score';
 
 describe('selectBestRelease', () => {
   it('prefers preferred-language releases', () => {
@@ -166,24 +166,25 @@ describe('selectBestRelease', () => {
   });
 
   it('auto-selects an Arr-rejected movie release when title and year match the target', () => {
+    const releases = [
+      {
+        guid: 'unknown-movie',
+        indexerId: 1,
+        indexer: 'Indexer',
+        title: 'Fixture.Movie.1999.1080p.WEB-DL-GROUP',
+        languages: [{ name: 'English' }],
+        qualityWeight: 70,
+        releaseWeight: 40,
+        customFormatScore: 0,
+        size: 1_000,
+        protocol: 'usenet',
+        downloadAllowed: false,
+        rejected: true,
+        rejections: ['Unknown Movie. Unable to match to correct movie using release title.'],
+      },
+    ];
     const result = selectBestRelease(
-      [
-        {
-          guid: 'unknown-movie',
-          indexerId: 1,
-          indexer: 'Indexer',
-          title: 'Fixture.Movie.1999.1080p.WEB-DL-GROUP',
-          languages: [{ name: 'English' }],
-          qualityWeight: 70,
-          releaseWeight: 40,
-          customFormatScore: 0,
-          size: 1_000,
-          protocol: 'usenet',
-          downloadAllowed: false,
-          rejected: true,
-          rejections: ['Unknown Movie. Unable to match to correct movie using release title.'],
-        },
-      ],
+      releases,
       defaultPreferences,
       {
         kind: 'movie',
@@ -191,32 +192,44 @@ describe('selectBestRelease', () => {
         targetYear: 1999,
       },
     );
+    const evaluated = evaluateReleaseCandidates(releases, defaultPreferences, {
+      kind: 'movie',
+      targetTitle: 'Fixture Movie',
+      targetYear: 1999,
+    });
 
     expect(result.decision.selected?.guid).toBe('unknown-movie');
     expect(result.decision.reason).toContain(
       'Bountarr title/year matched target for Arr rejection override',
     );
+    expect(evaluated[0]).toMatchObject({
+      arrOverrideMode: 'exact-year',
+      autoBlockedReason: null,
+      autoDecision: 'auto-selected',
+      yearMatch: 'exact',
+    });
   });
 
   it('does not auto-select an Arr-rejected movie release when the year mismatches', () => {
+    const releases = [
+      {
+        guid: 'wrong-year',
+        indexerId: 1,
+        indexer: 'Indexer',
+        title: 'Fixture.Movie.2001.1080p.WEB-DL-GROUP',
+        languages: [{ name: 'English' }],
+        qualityWeight: 70,
+        releaseWeight: 40,
+        customFormatScore: 0,
+        size: 1_000,
+        protocol: 'usenet',
+        downloadAllowed: false,
+        rejected: true,
+        rejections: ['Unknown Movie. Unable to match to correct movie using release title.'],
+      },
+    ];
     const result = selectBestRelease(
-      [
-        {
-          guid: 'wrong-year',
-          indexerId: 1,
-          indexer: 'Indexer',
-          title: 'Fixture.Movie.2001.1080p.WEB-DL-GROUP',
-          languages: [{ name: 'English' }],
-          qualityWeight: 70,
-          releaseWeight: 40,
-          customFormatScore: 0,
-          size: 1_000,
-          protocol: 'usenet',
-          downloadAllowed: false,
-          rejected: true,
-          rejections: ['Unknown Movie. Unable to match to correct movie using release title.'],
-        },
-      ],
+      releases,
       defaultPreferences,
       {
         kind: 'movie',
@@ -224,30 +237,41 @@ describe('selectBestRelease', () => {
         targetYear: 1999,
       },
     );
+    const evaluated = evaluateReleaseCandidates(releases, defaultPreferences, {
+      kind: 'movie',
+      targetTitle: 'Fixture Movie',
+      targetYear: 1999,
+    });
 
     expect(result.decision.selected).toBeNull();
     expect(result.decision.reason).toBe('No acceptable release passed the local scoring rules');
+    expect(evaluated[0]).toMatchObject({
+      autoBlockedReason: 'year-mismatch',
+      autoDecision: 'blocked',
+      yearMatch: 'mismatch',
+    });
   });
 
   it('auto-selects an adjacent-year unknown-movie release when no exact-year release is acceptable', () => {
+    const releases = [
+      {
+        guid: 'adjacent-year',
+        indexerId: 1,
+        indexer: 'Indexer',
+        title: 'Fixture.Movie.1998.1080p.WEB-DL-GROUP',
+        languages: [{ name: 'English' }],
+        qualityWeight: 70,
+        releaseWeight: 40,
+        customFormatScore: 0,
+        size: 1_000,
+        protocol: 'usenet',
+        downloadAllowed: false,
+        rejected: true,
+        rejections: ['Unknown Movie. Unable to match to correct movie using release title.'],
+      },
+    ];
     const result = selectBestRelease(
-      [
-        {
-          guid: 'adjacent-year',
-          indexerId: 1,
-          indexer: 'Indexer',
-          title: 'Fixture.Movie.1998.1080p.WEB-DL-GROUP',
-          languages: [{ name: 'English' }],
-          qualityWeight: 70,
-          releaseWeight: 40,
-          customFormatScore: 0,
-          size: 1_000,
-          protocol: 'usenet',
-          downloadAllowed: false,
-          rejected: true,
-          rejections: ['Unknown Movie. Unable to match to correct movie using release title.'],
-        },
-      ],
+      releases,
       defaultPreferences,
       {
         kind: 'movie',
@@ -255,45 +279,57 @@ describe('selectBestRelease', () => {
         targetYear: 1999,
       },
     );
+    const evaluated = evaluateReleaseCandidates(releases, defaultPreferences, {
+      kind: 'movie',
+      targetTitle: 'Fixture Movie',
+      targetYear: 1999,
+    });
 
     expect(result.decision.selected?.guid).toBe('adjacent-year');
     expect(result.decision.reason).toContain(
       'Bountarr accepted adjacent release year because no exact-year match was available',
     );
+    expect(evaluated[0]).toMatchObject({
+      arrOverrideMode: 'adjacent-year',
+      autoBlockedReason: null,
+      autoDecision: 'auto-selected',
+      yearMatch: 'adjacent',
+    });
   });
 
   it('prefers an exact-year release over an adjacent-year unknown-movie fallback', () => {
+    const releases = [
+      {
+        guid: 'adjacent-year',
+        indexerId: 1,
+        indexer: 'Indexer',
+        title: 'Fixture.Movie.1998.2160p.WEB-DL-GROUP',
+        languages: [{ name: 'English' }],
+        qualityWeight: 150,
+        releaseWeight: 150,
+        customFormatScore: 0,
+        size: 1_000,
+        protocol: 'usenet',
+        downloadAllowed: false,
+        rejected: true,
+        rejections: ['Unknown Movie. Unable to match to correct movie using release title.'],
+      },
+      {
+        guid: 'exact-year',
+        indexerId: 1,
+        indexer: 'Indexer',
+        title: 'Fixture.Movie.1999.480p.WEB-DL-GROUP',
+        languages: [{ name: 'English' }],
+        qualityWeight: 10,
+        releaseWeight: 10,
+        customFormatScore: 0,
+        size: 1_000,
+        protocol: 'usenet',
+        downloadAllowed: true,
+      },
+    ];
     const result = selectBestRelease(
-      [
-        {
-          guid: 'adjacent-year',
-          indexerId: 1,
-          indexer: 'Indexer',
-          title: 'Fixture.Movie.1998.2160p.WEB-DL-GROUP',
-          languages: [{ name: 'English' }],
-          qualityWeight: 150,
-          releaseWeight: 150,
-          customFormatScore: 0,
-          size: 1_000,
-          protocol: 'usenet',
-          downloadAllowed: false,
-          rejected: true,
-          rejections: ['Unknown Movie. Unable to match to correct movie using release title.'],
-        },
-        {
-          guid: 'exact-year',
-          indexerId: 1,
-          indexer: 'Indexer',
-          title: 'Fixture.Movie.1999.480p.WEB-DL-GROUP',
-          languages: [{ name: 'English' }],
-          qualityWeight: 10,
-          releaseWeight: 10,
-          customFormatScore: 0,
-          size: 1_000,
-          protocol: 'usenet',
-          downloadAllowed: true,
-        },
-      ],
+      releases,
       defaultPreferences,
       {
         kind: 'movie',
@@ -301,32 +337,44 @@ describe('selectBestRelease', () => {
         targetYear: 1999,
       },
     );
+    const evaluated = evaluateReleaseCandidates(releases, defaultPreferences, {
+      kind: 'movie',
+      targetTitle: 'Fixture Movie',
+      targetYear: 1999,
+    });
+    const adjacent = evaluated.find((release) => release.candidate.guid === 'adjacent-year');
 
     expect(result.decision.selected?.guid).toBe('exact-year');
     expect(result.decision.reason).not.toContain(
       'Bountarr accepted adjacent release year because no exact-year match was available',
     );
+    expect(adjacent).toMatchObject({
+      autoBlockedReason: 'adjacent-year-superseded',
+      autoDecision: 'reviewable',
+      yearMatch: 'adjacent',
+    });
   });
 
   it('does not auto-select adjacent-year candidates when the title mismatches', () => {
+    const releases = [
+      {
+        guid: 'wrong-title',
+        indexerId: 1,
+        indexer: 'Indexer',
+        title: 'Different.Movie.1998.1080p.WEB-DL-GROUP',
+        languages: [{ name: 'English' }],
+        qualityWeight: 70,
+        releaseWeight: 40,
+        customFormatScore: 0,
+        size: 1_000,
+        protocol: 'usenet',
+        downloadAllowed: false,
+        rejected: true,
+        rejections: ['Unknown Movie. Unable to match to correct movie using release title.'],
+      },
+    ];
     const result = selectBestRelease(
-      [
-        {
-          guid: 'wrong-title',
-          indexerId: 1,
-          indexer: 'Indexer',
-          title: 'Different.Movie.1998.1080p.WEB-DL-GROUP',
-          languages: [{ name: 'English' }],
-          qualityWeight: 70,
-          releaseWeight: 40,
-          customFormatScore: 0,
-          size: 1_000,
-          protocol: 'usenet',
-          downloadAllowed: false,
-          rejected: true,
-          rejections: ['Unknown Movie. Unable to match to correct movie using release title.'],
-        },
-      ],
+      releases,
       defaultPreferences,
       {
         kind: 'movie',
@@ -334,8 +382,17 @@ describe('selectBestRelease', () => {
         targetYear: 1999,
       },
     );
+    const evaluated = evaluateReleaseCandidates(releases, defaultPreferences, {
+      kind: 'movie',
+      targetTitle: 'Fixture Movie',
+      targetYear: 1999,
+    });
 
     expect(result.decision.selected).toBeNull();
+    expect(evaluated[0]).toMatchObject({
+      autoBlockedReason: 'title-mismatch',
+      autoDecision: 'blocked',
+    });
   });
 
   it('uses accent-insensitive title hints for preferred audio', () => {

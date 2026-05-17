@@ -16,8 +16,12 @@ import type {
   AcquisitionReleaseCandidateStatus,
   ManualReleaseSelectionMode,
   MediaKind,
+  ReleaseArrOverrideMode,
+  ReleaseAutoBlockedReason,
+  ReleaseAutoDecision,
   ReleaseIdentityStatus,
   ReleaseScopeStatus,
+  ReleaseYearMatch,
 } from '$lib/shared/types';
 
 type JobRow = {
@@ -233,6 +237,39 @@ function releaseScopeStatus(value: unknown): ReleaseScopeStatus {
     : 'not-applicable';
 }
 
+function releaseYearMatch(value: unknown): ReleaseYearMatch {
+  return value === 'exact' ||
+    value === 'adjacent' ||
+    value === 'mismatch' ||
+    value === 'unknown' ||
+    value === 'not-applicable'
+    ? value
+    : 'not-applicable';
+}
+
+function releaseArrOverrideMode(value: unknown): ReleaseArrOverrideMode {
+  return value === 'exact-year' || value === 'adjacent-year' ? value : 'none';
+}
+
+function releaseAutoDecision(value: unknown): ReleaseAutoDecision {
+  return value === 'auto-selected' || value === 'blocked' ? value : 'reviewable';
+}
+
+function releaseAutoBlockedReason(value: unknown): ReleaseAutoBlockedReason | null {
+  switch (value) {
+    case 'arr-rejected':
+    case 'title-mismatch':
+    case 'scope-mismatch':
+    case 'local-rules':
+    case 'year-mismatch':
+    case 'year-unknown':
+    case 'adjacent-year-superseded':
+      return value;
+    default:
+      return null;
+  }
+}
+
 function parseStringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((entry): entry is string => typeof entry === 'string')
@@ -288,7 +325,10 @@ function parseReleaseCandidatesJson(
         {
           acceptedByLocalRules: record.acceptedByLocalRules === true,
           arrRejected: record.arrRejected === true,
+          arrOverrideMode: releaseArrOverrideMode(record.arrOverrideMode),
           attempt: asNumber(record.attempt),
+          autoBlockedReason: releaseAutoBlockedReason(record.autoBlockedReason),
+          autoDecision: releaseAutoDecision(record.autoDecision),
           autoSelectable: record.autoSelectable === true,
           detectedAudioLanguages: parseStringArray(record.detectedAudioLanguages),
           detectedSubtitleLanguages: parseStringArray(record.detectedSubtitleLanguages),
@@ -319,6 +359,7 @@ function parseReleaseCandidatesJson(
           size: asNumber(record.size) ?? 0,
           status: releaseCandidateStatus(record.status),
           title,
+          yearMatch: releaseYearMatch(record.yearMatch),
         },
       ];
     });
