@@ -56,17 +56,32 @@ async function readJson<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 const acquisition = await readJson<AcquisitionResponse>('/api/acquisition');
+const releaseLists = new Map<string, ManualReleaseListResponse | null>();
+
+for (const title of titles) {
+  const job = acquisition.jobs.find((entry) => entry.title === title) ?? null;
+  releaseLists.set(
+    title,
+    job ? await readJson<ManualReleaseListResponse>(`/api/acquisition/${job.id}/releases`) : null,
+  );
+}
+
 const dashboard = await readJson<DashboardResponse>(
-  '/api/dashboard?preferredLanguage=English&subtitleLanguage=English',
+  '/api/dashboard/refresh?preferredLanguage=English&subtitleLanguage=English',
+  {
+    method: 'POST',
+    body: '{}',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  },
 );
 
 const result = [];
 for (const title of titles) {
   const job = acquisition.jobs.find((entry) => entry.title === title) ?? null;
   const dashboardItem = dashboard.items.find((entry) => entry.title === title) ?? null;
-  const releases = job
-    ? await readJson<ManualReleaseListResponse>(`/api/acquisition/${job.id}/releases`)
-    : null;
+  const releases = releaseLists.get(title) ?? null;
 
   result.push({
     title,
