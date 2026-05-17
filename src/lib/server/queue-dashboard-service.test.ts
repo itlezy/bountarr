@@ -5,6 +5,10 @@ const acquisitionRepositoryState = vi.hoisted(() => ({
   jobs: [] as AcquisitionJob[],
 }));
 
+const acquisitionRunnerState = vi.hoisted(() => ({
+  enqueuedJobIds: [] as string[],
+}));
+
 vi.mock('$lib/server/acquisition-job-repository', () => ({
   getAcquisitionJobRepository: () => ({
     listJobs: () => acquisitionRepositoryState.jobs,
@@ -19,15 +23,155 @@ vi.mock('$lib/server/acquisition-job-repository', () => ({
       acquisitionRepositoryState.jobs[index] = next;
       return next;
     },
+    updateJobIfStatus: (
+      jobId: string,
+      allowedStatuses: AcquisitionJob['status'][],
+      patch: Partial<AcquisitionJob>,
+    ) => {
+      const index = acquisitionRepositoryState.jobs.findIndex((job) => job.id === jobId);
+      if (index === -1) {
+        return { job: null, updated: false };
+      }
+
+      const current = acquisitionRepositoryState.jobs[index];
+      if (!allowedStatuses.includes(current.status)) {
+        return { job: current, updated: false };
+      }
+
+      const next = { ...current, ...patch };
+      acquisitionRepositoryState.jobs[index] = next;
+      return { job: next, updated: true };
+    },
+  }),
+}));
+
+vi.mock('$lib/server/acquisition-runner', () => ({
+  getAcquisitionRunner: () => ({
+    enqueue: (jobId: string) => {
+      acquisitionRunnerState.enqueuedJobIds.push(jobId);
+    },
   }),
 }));
 
 afterEach(() => {
   acquisitionRepositoryState.jobs = [];
+  acquisitionRunnerState.enqueuedJobIds = [];
   vi.resetAllMocks();
   vi.resetModules();
   vi.useRealTimers();
 });
+
+function missingMovieJob(overrides: Partial<AcquisitionJob> = {}): AcquisitionJob {
+  return {
+    id: 'job-lunopolis',
+    itemId: 'movie:959',
+    arrItemId: 959,
+    kind: 'movie',
+    title: 'Lunopolis',
+    sourceService: 'radarr',
+    status: 'failed',
+    attempt: 1,
+    maxRetries: 4,
+    currentRelease: null,
+    selectedReleaser: null,
+    preferredReleaser: null,
+    reasonCode: 'no-release-available',
+    failureReason: 'No manual-search releases were returned by Arr',
+    validationSummary: 'No manual-search releases were returned by Arr',
+    autoRetrying: false,
+    progress: null,
+    queueStatus: 'Search failed',
+    preferences: {
+      preferredLanguage: 'English',
+      subtitleLanguage: 'English',
+    },
+    targetSeasonNumbers: null,
+    targetEpisodeIds: null,
+    startedAt: '2026-05-16T12:00:00.000Z',
+    updatedAt: '2026-05-16T12:10:00.000Z',
+    completedAt: '2026-05-16T12:10:00.000Z',
+    attempts: [],
+    ...overrides,
+  };
+}
+
+function movieItem(arrItemId: number, title: string): MediaItem {
+  return {
+    id: `movie:${arrItemId}`,
+    arrItemId,
+    kind: 'movie',
+    title,
+    year: 2010,
+    rating: null,
+    poster: null,
+    overview: '',
+    status: 'Monitored',
+    isExisting: true,
+    isRequested: true,
+    auditStatus: 'unknown',
+    audioLanguages: [],
+    subtitleLanguages: [],
+    sourceService: 'radarr',
+    origin: 'arr',
+    inArr: true,
+    inPlex: false,
+    plexLibraries: [],
+    canAdd: false,
+    canDeleteFromArr: true,
+    detail: null,
+    acquiredAt: null,
+    requestPayload: {
+      title,
+    },
+  };
+}
+
+function mockDashboardDependencies(
+  options: { commands?: unknown[]; movieStatus?: string; title?: string } = {},
+) {
+  const arrFetch = vi.fn().mockImplementation(async (_service: string, path: string) => {
+    if (path === '/api/v3/command') {
+      return options.commands ?? [];
+    }
+
+    if (path.startsWith('/api/v3/movie/')) {
+      const movieId = Number(path.split('/').at(-1));
+      return {
+        id: movieId,
+        title: options.title ?? 'Lunopolis',
+        status: options.movieStatus ?? 'released',
+      };
+    }
+
+    return { records: [] };
+  });
+
+  vi.doMock('$lib/server/arr-client', () => ({
+    arrFetch,
+  }));
+  vi.doMock('$lib/server/runtime', () => ({
+    getConfiguredServiceFlags: () => ({
+      configured: true,
+      plexConfigured: false,
+      radarrConfigured: true,
+      sonarrConfigured: false,
+    }),
+  }));
+  vi.doMock('$lib/server/lookup-service', () => ({
+    fetchExistingMovie: vi
+      .fn()
+      .mockImplementation((arrItemId: number) =>
+        Promise.resolve(movieItem(arrItemId, options.title ?? 'Lunopolis')),
+      ),
+    fetchExistingSeries: vi.fn(),
+  }));
+  vi.doMock('$lib/server/acquisition-service', () => ({
+    ensureAcquisitionWorkers: vi.fn(),
+    getQueueAcquisitionJobs: () => [],
+  }));
+
+  return arrFetch;
+}
 
 describe('queue dashboard service', () => {
   it('merges matching acquisition jobs and Arr queue items into one managed entry', async () => {
@@ -1750,6 +1894,199 @@ describe('queue dashboard service', () => {
       attention: 1,
       pending: 0,
     });
+  });
+
+  it('queues a daily search for a stale missing released Radarr movie on dashboard refresh', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-17T15:00:00.000Z'));
+
+    acquisitionRepositoryState.jobs = [missingMovieJob()];
+    mockDashboardDependencies();
+
+    const module = await import('$lib/server/queue-dashboard-service');
+    await module.getDashboard(
+      {
+        cardsView: 'rounded',
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+        theme: 'system',
+      },
+      { force: true },
+    );
+
+    expect(acquisitionRepositoryState.jobs[0]).toMatchObject({
+      attempt: 2,
+      completedAt: null,
+      failureReason: null,
+      queueStatus: 'Queued daily release search',
+      reasonCode: null,
+      status: 'queued',
+      validationSummary: null,
+    });
+    expect(acquisitionRunnerState.enqueuedJobIds).toEqual(['job-lunopolis']);
+  });
+
+  it('skips the daily search when Bountarr searched the missing movie in the last 24 hours', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-17T15:00:00.000Z'));
+
+    acquisitionRepositoryState.jobs = [
+      missingMovieJob({
+        attempts: [
+          {
+            attempt: 1,
+            detectedAudioLanguages: [],
+            detectedSubtitleLanguages: [],
+            finishedAt: '2026-05-17T14:30:00.000Z',
+            manualSelectionMode: null,
+            reason: 'No manual-search releases were returned by Arr',
+            reasonCode: 'no-release-available',
+            releaseTitle: null,
+            releaser: null,
+            startedAt: '2026-05-17T14:29:00.000Z',
+            status: 'failed',
+            submittedGuid: null,
+            submittedIndexerId: null,
+            submissionClaimedAt: null,
+          },
+        ],
+        completedAt: '2026-05-17T14:30:00.000Z',
+        updatedAt: '2026-05-17T14:30:00.000Z',
+      }),
+    ];
+    const arrFetch = mockDashboardDependencies();
+
+    const module = await import('$lib/server/queue-dashboard-service');
+    await module.getDashboard(
+      {
+        cardsView: 'rounded',
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+        theme: 'system',
+      },
+      { force: true },
+    );
+
+    expect(acquisitionRepositoryState.jobs[0]?.status).toBe('failed');
+    expect(acquisitionRunnerState.enqueuedJobIds).toEqual([]);
+    expect(arrFetch).not.toHaveBeenCalledWith('radarr', '/api/v3/command');
+  });
+
+  it('skips the daily search when Radarr recently searched the missing movie', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-17T15:00:00.000Z'));
+
+    acquisitionRepositoryState.jobs = [missingMovieJob()];
+    mockDashboardDependencies({
+      commands: [
+        {
+          body: {
+            movieIds: [959],
+          },
+          name: 'MoviesSearch',
+          startedAt: '2026-05-17T14:00:00.000Z',
+        },
+      ],
+    });
+
+    const module = await import('$lib/server/queue-dashboard-service');
+    await module.getDashboard(
+      {
+        cardsView: 'rounded',
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+        theme: 'system',
+      },
+      { force: true },
+    );
+
+    expect(acquisitionRepositoryState.jobs[0]?.status).toBe('failed');
+    expect(acquisitionRunnerState.enqueuedJobIds).toEqual([]);
+  });
+
+  it('keeps unreleased missing movies visible without queuing daily manual review searches', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-17T15:00:00.000Z'));
+
+    acquisitionRepositoryState.jobs = [
+      missingMovieJob({
+        arrItemId: 956,
+        id: 'job-obsession',
+        itemId: 'movie:956',
+        title: 'Obsession',
+      }),
+    ];
+    mockDashboardDependencies({
+      movieStatus: 'announced',
+      title: 'Obsession',
+    });
+
+    const module = await import('$lib/server/queue-dashboard-service');
+    const dashboard = await module.getDashboard(
+      {
+        cardsView: 'rounded',
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+        theme: 'system',
+      },
+      { force: true },
+    );
+
+    expect(acquisitionRepositoryState.jobs[0]?.status).toBe('failed');
+    expect(acquisitionRunnerState.enqueuedJobIds).toEqual([]);
+    expect(dashboard.items[0]).toMatchObject({
+      auditStatus: 'not-found',
+      title: 'Obsession',
+    });
+  });
+
+  it('skips daily missing searches for movies that already need manual review', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-17T15:00:00.000Z'));
+
+    acquisitionRepositoryState.jobs = [
+      missingMovieJob({
+        releaseCandidates: [
+          {
+            arrRejected: true,
+            attempt: null,
+            detectedAudioLanguages: [],
+            detectedSubtitleLanguages: [],
+            failedAt: null,
+            failureReason: null,
+            firstSeenAt: '2026-05-16T12:10:00.000Z',
+            guid: 'guid-lunopolis',
+            indexer: 'Indexer',
+            indexerId: 4,
+            languages: ['English'],
+            lastSeenAt: '2026-05-16T12:10:00.000Z',
+            protocol: 'usenet',
+            reason: 'Arr rejected this release.',
+            score: -10_000,
+            selectionMode: 'override-arr-rejection',
+            size: 700_000_000,
+            status: 'available',
+            title: 'Lunopolis.2009.480p.WEB-DL.x264-mSD-ORHk',
+          },
+        ],
+      }),
+    ];
+    const arrFetch = mockDashboardDependencies();
+
+    const module = await import('$lib/server/queue-dashboard-service');
+    await module.getDashboard(
+      {
+        cardsView: 'rounded',
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+        theme: 'system',
+      },
+      { force: true },
+    );
+
+    expect(acquisitionRepositoryState.jobs[0]?.status).toBe('failed');
+    expect(acquisitionRunnerState.enqueuedJobIds).toEqual([]);
+    expect(arrFetch).not.toHaveBeenCalledWith('radarr', '/api/v3/movie/959');
   });
 
   it('shows no-release jobs with later release candidates as needing manual review', async () => {

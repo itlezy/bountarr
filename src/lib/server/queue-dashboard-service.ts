@@ -10,13 +10,14 @@ import { mergeItems, normalizeItem } from '$lib/server/media-normalize';
 import { getRecentPlexItems, searchPlex } from '$lib/server/plex-service';
 import { buildManagedLiveSummary } from '$lib/server/queue-live-summary';
 import { externalQueueEntryCapabilities } from '$lib/server/queue-entry-capabilities';
+import { createAreaLogger, toErrorLogContext } from '$lib/server/logger';
 import {
   bestQueueIdentityCandidate,
   queueItemMatchesManagedIdentity,
   queueItemMatchesManagedTarget,
 } from '$lib/server/queue-matching';
 import { normalizeQueueItem } from '$lib/server/queue-normalize';
-import { asNumber, asRecord, asRecordsArray, asString } from '$lib/server/raw';
+import { asArray, asNumber, asRecord, asRecordsArray, asString } from '$lib/server/raw';
 import { getConfiguredServiceFlags } from '$lib/server/runtime';
 import { sanitizePreferences } from '$lib/shared/preferences';
 import { managedQueueEntryCapabilities } from '$lib/shared/queue-entry-capabilities';
@@ -32,6 +33,9 @@ import type {
   QueueItem,
   QueueResponse,
 } from '$lib/shared/types';
+
+const logger = createAreaLogger('queue-dashboard');
+const dailyMissingMovieSearchIntervalMs = 24 * 60 * 60 * 1000;
 
 function queueItemEntryId(item: QueueItem): string {
   return item.id;
@@ -84,6 +88,17 @@ const acquisitionDashboardWindowMs = 7 * 24 * 60 * 60 * 1000;
 
 function acquisitionJobAcquiredAt(job: AcquisitionJob): string | null {
   return job.completedAt ?? job.updatedAt ?? job.startedAt ?? null;
+}
+
+function acquisitionJobLastSearchMs(job: AcquisitionJob): number {
+  const timestamps = [
+    job.startedAt,
+    job.updatedAt,
+    job.completedAt,
+    ...job.attempts.flatMap((attempt) => [attempt.startedAt, attempt.finishedAt]),
+  ];
+
+  return Math.max(0, ...timestamps.map(acquisitionTimeMs));
 }
 
 function acquisitionAuditStatus(job: AcquisitionJob): AuditStatus {
@@ -144,6 +159,196 @@ function acquisitionJobDetail(job: AcquisitionJob): string | null {
   }
 
   return job.currentRelease ?? job.validationSummary ?? job.failureReason;
+}
+
+function commandName(value: Record<string, unknown>): string {
+  return (asString(value.name) ?? asString(value.commandName) ?? '').trim().toLowerCase();
+}
+
+function commandTimestampMs(value: Record<string, unknown>): number {
+  return Math.max(
+    acquisitionTimeMs(asString(value.startedAt)),
+    acquisitionTimeMs(asString(value.startedOn)),
+    acquisitionTimeMs(asString(value.queuedAt)),
+    acquisitionTimeMs(asString(value.triggeredAt)),
+    acquisitionTimeMs(asString(value.endedAt)),
+    acquisitionTimeMs(asString(value.endedOn)),
+    acquisitionTimeMs(asString(value.completedAt)),
+    acquisitionTimeMs(asString(value.updatedAt)),
+  );
+}
+
+function commandBody(value: Record<string, unknown>): Record<string, unknown> {
+  const body = value.body;
+  if (typeof body === 'string') {
+    try {
+      return asRecord(JSON.parse(body) as unknown);
+    } catch {
+      return {};
+    }
+  }
+
+  return asRecord(body);
+}
+
+function commandMovieIds(command: Record<string, unknown>): number[] {
+  const body = commandBody(command);
+  const ids = [
+    ...asArray(body.movieIds),
+    body.movieId,
+    ...asArray(command.movieIds),
+    command.movieId,
+  ];
+
+  return [
+    ...new Set(
+      ids
+        .map((value) => {
+          if (typeof value === 'number' && Number.isFinite(value)) {
+            return Math.trunc(value);
+          }
+
+          if (typeof value === 'string' && /^\d+$/.test(value.trim())) {
+            return Number(value.trim());
+          }
+
+          return null;
+        })
+        .filter((value): value is number => value !== null && value > 0),
+    ),
+  ];
+}
+
+function commandIsMovieSearch(command: Record<string, unknown>): boolean {
+  const name = commandName(command);
+  return name === 'moviessearch' || name === 'moviesearch' || name === 'movies search';
+}
+
+async function radarrMovieWasSearchedRecently(movieId: number, sinceMs: number): Promise<boolean> {
+  try {
+    const commands = asRecordsArray(await arrFetch<unknown>('radarr', '/api/v3/command'));
+
+    return commands.map(asRecord).some((command) => {
+      if (!commandIsMovieSearch(command)) {
+        return false;
+      }
+
+      const searchedAtMs = commandTimestampMs(command);
+      return searchedAtMs >= sinceMs && commandMovieIds(command).includes(movieId);
+    });
+  } catch (error) {
+    logger.warn('Unable to inspect recent Radarr search commands', {
+      movieId,
+      ...toErrorLogContext(error),
+    });
+    return false;
+  }
+}
+
+async function radarrMovieIsReleased(movieId: number): Promise<boolean> {
+  try {
+    const movie = asRecord(await arrFetch<unknown>('radarr', `/api/v3/movie/${movieId}`));
+    return asString(movie.status)?.toLowerCase() === 'released';
+  } catch (error) {
+    logger.warn('Unable to inspect Radarr movie release status for daily missing search', {
+      movieId,
+      ...toErrorLogContext(error),
+    });
+    return false;
+  }
+}
+
+function activeAcquisitionJobExists(job: AcquisitionJob, jobs: AcquisitionJob[]): boolean {
+  return jobs.some(
+    (candidate) =>
+      candidate.id !== job.id &&
+      candidate.kind === job.kind &&
+      candidate.sourceService === job.sourceService &&
+      candidate.arrItemId === job.arrItemId &&
+      !isTerminalJobStatus(candidate.status),
+  );
+}
+
+function jobNeedsDailyMissingMovieSearch(
+  job: AcquisitionJob,
+  jobs: AcquisitionJob[],
+  sinceMs: number,
+): boolean {
+  return (
+    job.kind === 'movie' &&
+    job.sourceService === 'radarr' &&
+    job.status === 'failed' &&
+    acquisitionAuditStatus(job) === 'not-found' &&
+    acquisitionJobLastSearchMs(job) < sinceMs &&
+    !activeAcquisitionJobExists(job, jobs)
+  );
+}
+
+async function enqueueDailyMissingMovieSearch(job: AcquisitionJob): Promise<void> {
+  const jobs = getAcquisitionJobRepository();
+  const result = jobs.updateJobIfStatus(job.id, ['failed'], {
+    attempt: job.attempt + 1,
+    autoRetrying: false,
+    completedAt: null,
+    currentRelease: null,
+    failureReason: null,
+    liveDownloadId: null,
+    liveQueueId: null,
+    progress: null,
+    queuedManualSelection: null,
+    queueStatus: 'Queued daily release search',
+    reasonCode: null,
+    selectedReleaser: null,
+    status: 'queued',
+    validationSummary: null,
+  });
+
+  if (!result.updated || !result.job) {
+    return;
+  }
+
+  const { getAcquisitionRunner } = await import('$lib/server/acquisition-runner');
+  getAcquisitionRunner().enqueue(result.job.id);
+
+  logger.info('Queued daily missing movie search', {
+    arrItemId: job.arrItemId,
+    jobId: job.id,
+    title: job.title,
+  });
+}
+
+async function triggerDailyMissingMovieSearches(nowMs = Date.now()): Promise<void> {
+  if (!getConfiguredServiceFlags().radarrConfigured) {
+    return;
+  }
+
+  const sinceMs = nowMs - dailyMissingMovieSearchIntervalMs;
+  const jobs = getAcquisitionJobRepository().listJobs();
+  for (const job of jobs) {
+    if (!jobNeedsDailyMissingMovieSearch(job, jobs, sinceMs)) {
+      continue;
+    }
+
+    if (!(await radarrMovieIsReleased(job.arrItemId))) {
+      logger.info('Skipped daily missing movie search for unreleased Radarr movie', {
+        arrItemId: job.arrItemId,
+        jobId: job.id,
+        title: job.title,
+      });
+      continue;
+    }
+
+    if (await radarrMovieWasSearchedRecently(job.arrItemId, sinceMs)) {
+      logger.info('Skipped daily missing movie search after recent Radarr search command', {
+        arrItemId: job.arrItemId,
+        jobId: job.id,
+        title: job.title,
+      });
+      continue;
+    }
+
+    await enqueueDailyMissingMovieSearch(job);
+  }
 }
 
 function recentAcquisitionCheckJobs(nowMs = Date.now()): AcquisitionJob[] {
@@ -698,6 +903,10 @@ export async function getDashboard(
 
   if (!options?.force && cached && cached.expiresAt > now) {
     return cached.value;
+  }
+
+  if (options?.force) {
+    await triggerDailyMissingMovieSearches(now);
   }
 
   const recentArrItems = dedupeItems(
