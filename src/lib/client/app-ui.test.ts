@@ -8,6 +8,12 @@ import {
   auditLabel,
   formatBytes,
   queueItemNextStep,
+  releaseArrOverrideModeLabel,
+  releaseAutoBlockedReasonLabel,
+  releaseAutoDecisionLabel,
+  releaseIdentityStatusLabel,
+  releaseScopeStatusLabel,
+  releaseYearMatchLabel,
 } from './app-ui';
 
 describe('formatBytes', () => {
@@ -149,6 +155,23 @@ describe('audit labels', () => {
         },
       } as unknown as MediaItem),
     ).toBeNull();
+  });
+});
+
+describe('release explanation labels', () => {
+  it('labels automatic release decisions clearly', () => {
+    expect(releaseAutoDecisionLabel('auto-selected')).toBe('Auto selected');
+    expect(releaseAutoDecisionLabel('reviewable')).toBe('Manual review');
+    expect(releaseAutoDecisionLabel('blocked')).toBe('Blocked');
+  });
+
+  it('labels release matching and override facts without using unknown as a fallback', () => {
+    expect(releaseYearMatchLabel('unknown')).toBe('Year not detected');
+    expect(releaseYearMatchLabel(undefined)).toBe('Not recorded');
+    expect(releaseArrOverrideModeLabel('adjacent-year')).toBe('Adjacent-year fallback');
+    expect(releaseAutoBlockedReasonLabel('year-unknown')).toBe('Release year missing');
+    expect(releaseIdentityStatusLabel('mismatch')).toBe('Title mismatch');
+    expect(releaseScopeStatusLabel('unknown')).toBe('Scope not detected');
   });
 });
 

@@ -1,6 +1,16 @@
 <script lang="ts">
   import type { AppState } from '$lib/client/app-state.svelte';
-  import { formatBytes, manualReleaseStatusLabel, manualReleaseStatusTone } from '$lib/client/app-ui';
+  import {
+    formatBytes,
+    manualReleaseStatusLabel,
+    manualReleaseStatusTone,
+    releaseArrOverrideModeLabel,
+    releaseAutoBlockedReasonLabel,
+    releaseAutoDecisionLabel,
+    releaseIdentityStatusLabel,
+    releaseScopeStatusLabel,
+    releaseYearMatchLabel,
+  } from '$lib/client/app-ui';
   import OverlayDialog from '$lib/components/app/OverlayDialog.svelte';
   import { describeAcquisitionTarget } from '$lib/shared/acquisition-scope';
   import type { ManualReleaseResult } from '$lib/shared/types';
@@ -131,9 +141,35 @@ function manualReleaseActionLabel(
                   </div>
 
                   <div class="mt-2 overflow-safe-text text-sm text-[var(--muted)]">
-                    {release.languages.length > 0 ? release.languages.join(', ') : 'Unknown audio'} · Score {release.score}
+                    {release.languages.length > 0 ? release.languages.join(', ') : 'Audio not detected'} · Score {release.score}
                   </div>
                   <div class="mt-2 overflow-safe-text text-sm text-[var(--muted)]">{release.explanation.summary}</div>
+                  <div class="mt-2 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-3">
+                    <div class="min-w-0 rounded-[10px] border border-[var(--line)] bg-[var(--surface-strong)] px-2 py-1.5">
+                      <div class="uppercase tracking-[0.12em] text-[var(--muted)]">Decision</div>
+                      <div class="mt-0.5 overflow-safe-text font-700">{releaseAutoDecisionLabel(release.autoDecision)}</div>
+                    </div>
+                    <div class="min-w-0 rounded-[10px] border border-[var(--line)] bg-[var(--surface-strong)] px-2 py-1.5">
+                      <div class="uppercase tracking-[0.12em] text-[var(--muted)]">Title</div>
+                      <div class="mt-0.5 overflow-safe-text font-700">{releaseIdentityStatusLabel(release.identityStatus)}</div>
+                    </div>
+                    <div class="min-w-0 rounded-[10px] border border-[var(--line)] bg-[var(--surface-strong)] px-2 py-1.5">
+                      <div class="uppercase tracking-[0.12em] text-[var(--muted)]">Scope</div>
+                      <div class="mt-0.5 overflow-safe-text font-700">{releaseScopeStatusLabel(release.scopeStatus)}</div>
+                    </div>
+                    <div class="min-w-0 rounded-[10px] border border-[var(--line)] bg-[var(--surface-strong)] px-2 py-1.5">
+                      <div class="uppercase tracking-[0.12em] text-[var(--muted)]">Year</div>
+                      <div class="mt-0.5 overflow-safe-text font-700">{releaseYearMatchLabel(release.yearMatch)}</div>
+                    </div>
+                    <div class="min-w-0 rounded-[10px] border border-[var(--line)] bg-[var(--surface-strong)] px-2 py-1.5">
+                      <div class="uppercase tracking-[0.12em] text-[var(--muted)]">Arr</div>
+                      <div class="mt-0.5 overflow-safe-text font-700">{releaseArrOverrideModeLabel(release.arrOverrideMode)}</div>
+                    </div>
+                    <div class="min-w-0 rounded-[10px] border border-[var(--line)] bg-[var(--surface-strong)] px-2 py-1.5">
+                      <div class="uppercase tracking-[0.12em] text-[var(--muted)]">Blocker</div>
+                      <div class="mt-0.5 overflow-safe-text font-700">{releaseAutoBlockedReasonLabel(release.autoBlockedReason)}</div>
+                    </div>
+                  </div>
                   {#if release.explanation.matchReasons.length > 0}
                     <div class="mt-2 rounded-[14px] border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200">
                       <div class="text-[11px] font-700 uppercase tracking-[0.12em]">Why it matches</div>

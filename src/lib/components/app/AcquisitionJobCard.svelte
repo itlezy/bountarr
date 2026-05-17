@@ -9,6 +9,10 @@
     acquisitionStatusLabel,
     downloadedSummary,
     queueEtaLabel,
+    releaseArrOverrideModeLabel,
+    releaseAutoBlockedReasonLabel,
+    releaseAutoDecisionLabel,
+    releaseYearMatchLabel,
   } from '$lib/client/app-ui';
   import type { AppState } from '$lib/client/app-state.svelte';
   import type { ManagedQueueEntry } from '$lib/shared/types';
@@ -189,6 +193,12 @@
             </div>
             <div class="mt-1 overflow-safe-text text-sm text-[var(--muted)]">
               Score {candidate.score}
+              · {releaseAutoDecisionLabel(candidate.autoDecision)}
+              · {releaseYearMatchLabel(candidate.yearMatch)}
+              · {releaseArrOverrideModeLabel(candidate.arrOverrideMode)}
+              {#if candidate.autoBlockedReason}
+                · {releaseAutoBlockedReasonLabel(candidate.autoBlockedReason)}
+              {/if}
               {#if candidate.detectedAudioLanguages.length > 0}
                 · audio {candidate.detectedAudioLanguages.join(', ')}
               {/if}

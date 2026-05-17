@@ -9,6 +9,12 @@ import type {
   MediaItem,
   QualityProfileOption,
   QueueItem,
+  ReleaseArrOverrideMode,
+  ReleaseAutoBlockedReason,
+  ReleaseAutoDecision,
+  ReleaseIdentityStatus,
+  ReleaseScopeStatus,
+  ReleaseYearMatch,
   SearchKind,
 } from '$lib/shared/types';
 import { acquisitionNextAction, acquisitionReasonLabel } from '$lib/shared/acquisition-reasons';
@@ -412,6 +418,104 @@ export function manualReleaseStatusTone(status: ManualReleaseResult['status']): 
       return 'border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-200';
     default:
       return 'border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100';
+  }
+}
+
+export function releaseAutoDecisionLabel(status: ReleaseAutoDecision | null | undefined): string {
+  switch (status) {
+    case 'auto-selected':
+      return 'Auto selected';
+    case 'blocked':
+      return 'Blocked';
+    case 'reviewable':
+      return 'Manual review';
+    default:
+      return 'Not recorded';
+  }
+}
+
+export function releaseAutoBlockedReasonLabel(
+  reason: ReleaseAutoBlockedReason | null | undefined,
+): string {
+  switch (reason) {
+    case 'adjacent-year-superseded':
+      return 'Exact-year candidate available';
+    case 'arr-rejected':
+      return 'Arr rejected';
+    case 'local-rules':
+      return 'Local rules';
+    case 'scope-mismatch':
+      return 'Scope mismatch';
+    case 'title-mismatch':
+      return 'Title mismatch';
+    case 'year-mismatch':
+      return 'Year mismatch';
+    case 'year-unknown':
+      return 'Release year missing';
+    default:
+      return 'None';
+  }
+}
+
+export function releaseArrOverrideModeLabel(
+  mode: ReleaseArrOverrideMode | null | undefined,
+): string {
+  switch (mode) {
+    case 'exact-year':
+      return 'Exact-year override';
+    case 'adjacent-year':
+      return 'Adjacent-year fallback';
+    default:
+      return 'No override';
+  }
+}
+
+export function releaseIdentityStatusLabel(
+  status: ReleaseIdentityStatus | null | undefined,
+): string {
+  switch (status) {
+    case 'exact-match':
+      return 'Exact title';
+    case 'weak-match':
+      return 'Weak title';
+    case 'mismatch':
+      return 'Title mismatch';
+    default:
+      return 'Not recorded';
+  }
+}
+
+export function releaseScopeStatusLabel(status: ReleaseScopeStatus | null | undefined): string {
+  switch (status) {
+    case 'exact':
+      return 'Exact scope';
+    case 'partial':
+      return 'Partial scope';
+    case 'mismatch':
+      return 'Scope mismatch';
+    case 'unknown':
+      return 'Scope not detected';
+    case 'not-applicable':
+      return 'Not applicable';
+    default:
+      return 'Not recorded';
+  }
+}
+
+export function releaseYearMatchLabel(status: ReleaseYearMatch | null | undefined): string {
+  switch (status) {
+    case 'exact':
+      return 'Exact year';
+    case 'adjacent':
+      return 'Adjacent year';
+    case 'mismatch':
+      return 'Year mismatch';
+    case 'unknown':
+      return 'Year not detected';
+    case 'not-applicable':
+      return 'Not applicable';
+    default:
+      return 'Not recorded';
   }
 }
 
