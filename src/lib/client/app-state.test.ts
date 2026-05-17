@@ -1111,6 +1111,43 @@ describe('app state', () => {
     expect(state.hasOpenOverlay).toBe(false);
   });
 
+  it('opens manual release review from a dashboard check acquisition job', async () => {
+    const fetchManualReleaseResults = vi.fn().mockResolvedValue(manualReleaseResponse);
+    const state = new AppState(
+      pageData,
+      createDependencies({
+        api: {
+          fetchManualReleaseResults,
+        },
+      }),
+    );
+    const checkItem: MediaItem = {
+      ...movieItem,
+      auditStatus: 'release-blocked',
+      requestPayload: {
+        acquisitionJobId: acquisitionJob.id,
+        acquisitionJob,
+      },
+    };
+    state.dashboard = {
+      items: [checkItem],
+      summary: {
+        total: 1,
+        verified: 0,
+        pending: 0,
+        attention: 1,
+      },
+      updatedAt: '2026-04-02T10:05:00.000Z',
+    };
+
+    expect(state.canReviewAuditReleases(checkItem)).toBe(true);
+
+    await state.openManualReleaseList(acquisitionJob.id);
+
+    expect(state.activeManualReleaseJob?.title).toBe(acquisitionJob.title);
+    expect(fetchManualReleaseResults).toHaveBeenCalledWith(acquisitionJob.id);
+  });
+
   it('refreshes manual release results when reopening the same overlay', async () => {
     const refreshedManualReleaseResponse = {
       ...manualReleaseResponse,

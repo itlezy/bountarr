@@ -2104,6 +2104,14 @@ describe('queue dashboard service', () => {
       'acquisition:job-new',
       'acquisition:job-old',
     ]);
+    expect(all.items[0]?.requestPayload).toMatchObject({
+      acquisitionJob: expect.objectContaining({
+        id: 'job-new',
+        title: 'Recent Bountarr Grab',
+      }),
+      acquisitionJobId: 'job-new',
+      acquisitionJobStatus: 'failed',
+    });
   });
 
   it('skips daily missing searches for movies that already need manual review', async () => {

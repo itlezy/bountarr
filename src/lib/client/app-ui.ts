@@ -13,6 +13,11 @@ import type {
 } from '$lib/shared/types';
 import { acquisitionNextAction, acquisitionReasonLabel } from '$lib/shared/acquisition-reasons';
 
+export type AuditEvidenceRow = {
+  label: string;
+  value: string;
+};
+
 export const viewOptions: Array<{ value: AppView; label: string }> = [
   { value: 'search', label: 'Search' },
   { value: 'queue', label: 'Queue' },
@@ -20,6 +25,16 @@ export const viewOptions: Array<{ value: AppView; label: string }> = [
   { value: 'status', label: 'System status' },
   { value: 'settings', label: 'Settings' },
 ];
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
 
 export const statusTone: Record<AuditStatus, string> = {
   pending:
@@ -91,6 +106,44 @@ export function deleteActionLabel(item: MediaItem, deletingId: string | null): s
   }
 
   return 'Remove from Library';
+}
+
+export function auditAcquisitionJobId(item: MediaItem): string | null {
+  return asString(asRecord(item.requestPayload).acquisitionJobId);
+}
+
+export function auditManualReleaseJobId(item: MediaItem): string | null {
+  return item.auditStatus === 'release-blocked' ? auditAcquisitionJobId(item) : null;
+}
+
+export function auditEvidenceRows(item: MediaItem): AuditEvidenceRow[] {
+  const payload = asRecord(item.requestPayload);
+  const rows: AuditEvidenceRow[] = [];
+  const jobId = asString(payload.acquisitionJobId);
+  const status = asString(payload.acquisitionJobStatus) ?? asString(payload.status);
+  const release = asString(payload.acquisitionRelease) ?? asString(payload.currentRelease);
+  const reasonCode = asString(payload.reasonCode);
+  const reason = reasonCode
+    ? (acquisitionReasonLabel(reasonCode as AcquisitionJob['reasonCode']) ?? reasonCode)
+    : null;
+
+  if (jobId) {
+    rows.push({ label: 'Grab job', value: jobId });
+  }
+
+  if (status) {
+    rows.push({ label: 'Grab status', value: status });
+  }
+
+  if (release) {
+    rows.push({ label: 'Release', value: release });
+  }
+
+  if (reason) {
+    rows.push({ label: 'Reason', value: reason });
+  }
+
+  return rows;
 }
 
 export function mediaKindLabel(kind: MediaItem['kind']): string {

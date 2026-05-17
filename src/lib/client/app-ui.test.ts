@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { MediaItem } from '$lib/shared/types';
 import {
   actionLabel,
+  auditEvidenceRows,
+  auditManualReleaseJobId,
   auditDetailSummary,
   auditLabel,
   formatBytes,
@@ -116,6 +118,37 @@ describe('audit labels', () => {
     expect(auditDetailSummary({ auditStatus: 'release-blocked' } as MediaItem)).toBe(
       'Release options are available but need manual review before grabbing.',
     );
+  });
+
+  it('surfaces acquisition evidence and review job ids for release-blocked checks', () => {
+    const item = {
+      auditStatus: 'release-blocked',
+      requestPayload: {
+        acquisitionJobId: 'job-1',
+        acquisitionJobStatus: 'failed',
+        acquisitionRelease: 'Fixture.Movie.1999.1080p.WEB-DL-GROUP',
+        reasonCode: 'no-acceptable-release',
+      },
+    } as unknown as MediaItem;
+
+    expect(auditManualReleaseJobId(item)).toBe('job-1');
+    expect(auditEvidenceRows(item)).toEqual([
+      { label: 'Grab job', value: 'job-1' },
+      { label: 'Grab status', value: 'failed' },
+      { label: 'Release', value: 'Fixture.Movie.1999.1080p.WEB-DL-GROUP' },
+      { label: 'Reason', value: 'Nothing suitable was found' },
+    ]);
+  });
+
+  it('does not expose a manual review job for non-blocked checks', () => {
+    expect(
+      auditManualReleaseJobId({
+        auditStatus: 'not-found',
+        requestPayload: {
+          acquisitionJobId: 'job-1',
+        },
+      } as unknown as MediaItem),
+    ).toBeNull();
   });
 });
 

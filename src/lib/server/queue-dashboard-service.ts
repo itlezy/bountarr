@@ -432,6 +432,7 @@ async function buildAcquisitionHistoryItems(
         id: options.includeAll ? `acquisition:${job.id}` : item.id,
         requestPayload: {
           ...asRecord(item.requestPayload),
+          acquisitionJob: job,
           acquisitionJobId: job.id,
           acquisitionJobStatus: job.status,
           acquisitionRelease: job.currentRelease,
@@ -451,7 +452,10 @@ async function buildAcquisitionHistoryItems(
           isExisting: true,
           isRequested: true,
           requestPayload: {
+            acquisitionJob: job,
             acquisitionJobId: job.id,
+            acquisitionJobStatus: job.status,
+            acquisitionRelease: job.currentRelease,
             currentRelease: job.currentRelease,
             reasonCode: job.reasonCode,
             status: job.status,

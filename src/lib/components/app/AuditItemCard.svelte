@@ -3,6 +3,7 @@ import type { AppState } from '$lib/client/app-state.svelte';
 import {
   actionDisabled,
   actionLabel,
+  auditEvidenceRows,
   auditDetailSummary,
   auditLabel,
   deleteActionLabel,
@@ -11,6 +12,8 @@ import {
 import type { MediaItem } from '$lib/shared/types';
 
 let { item, state }: { item: MediaItem; state: AppState } = $props();
+const evidenceRows = $derived(auditEvidenceRows(item));
+const manualReleaseJobId = $derived(state.auditManualReleaseJobId(item));
 
 function fileNameOnly(value: string): string {
   const normalized = value.trim().replace(/\\/g, '/');
@@ -46,6 +49,17 @@ function fileNameOnly(value: string): string {
         {auditDetailSummary(item)}
       </div>
 
+      {#if evidenceRows.length > 0}
+        <dl class="mt-3 grid gap-x-3 gap-y-2 border-t border-[var(--line)] pt-3 text-sm sm:grid-cols-2">
+          {#each evidenceRows as row}
+            <div class="min-w-0">
+              <dt class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">{row.label}</dt>
+              <dd class="overflow-safe-text">{row.value}</dd>
+            </div>
+          {/each}
+        </dl>
+      {/if}
+
       {#if item.detail}
         <div class="mt-3 rounded-[14px] border border-[var(--line)] bg-[var(--surface)] px-3 py-2">
           <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">File name</div>
@@ -64,7 +78,7 @@ function fileNameOnly(value: string): string {
         </div>
       </div>
 
-      {#if item.canAdd || state.canGrabWithConfirmation(item) || state.hasAuditOperatorActions(item)}
+      {#if item.canAdd || state.canGrabWithConfirmation(item) || state.hasAuditOperatorActions(item) || manualReleaseJobId}
         <div class="mt-3 space-y-2">
           {#if item.canAdd || state.canGrabWithConfirmation(item)}
             <button
@@ -75,6 +89,17 @@ function fileNameOnly(value: string): string {
             >
               {actionLabel(item, state.grabbing)}
             </button>
+          {/if}
+
+          {#if manualReleaseJobId}
+          <button
+            class="control-shell min-h-11 w-full px-4 text-sm font-700 disabled:cursor-not-allowed disabled:opacity-50"
+            type="button"
+            disabled={state.manualReleaseLoading[manualReleaseJobId] === true}
+            onclick={() => void state.openManualReleaseList(manualReleaseJobId)}
+          >
+            {state.manualReleaseLoading[manualReleaseJobId] === true ? 'Loading releases...' : 'Review Releases'}
+          </button>
           {/if}
 
           {#if state.hasAuditOperatorActions(item)}

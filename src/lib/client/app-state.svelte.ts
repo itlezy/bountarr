@@ -17,6 +17,7 @@ import {
   confirmedGrabItem,
   defaultQualityProfileId,
   grabFeedbackMessage,
+  auditManualReleaseJobId,
   kindLabel,
   mergeSearchItem,
   qualityProfileOptions,
@@ -165,6 +166,24 @@ function asNumber(value: unknown): number | null {
   }
 
   return null;
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function asAcquisitionJob(value: unknown): AcquisitionJob | null {
+  const record = asRecord(value);
+  if (
+    !asString(record.id) ||
+    !asString(record.itemId) ||
+    asNumber(record.arrItemId) === null ||
+    !asString(record.title)
+  ) {
+    return null;
+  }
+
+  return record as unknown as AcquisitionJob;
 }
 
 function optimisticQueueResponse(
@@ -533,7 +552,10 @@ export class AppState {
       return null;
     }
 
-    return this.managedQueueEntry(this.activeManualReleaseJobId)?.job ?? null;
+    return (
+      this.managedQueueEntry(this.activeManualReleaseJobId)?.job ??
+      this.dashboardAcquisitionJob(this.activeManualReleaseJobId)
+    );
   }
 
   get hasOpenOverlay(): boolean {
@@ -740,6 +762,22 @@ export class AppState {
     );
   }
 
+  private dashboardAcquisitionJob(jobId: string): AcquisitionJob | null {
+    for (const item of this.dashboard?.items ?? []) {
+      const payload = asRecord(item.requestPayload);
+      if (asString(payload.acquisitionJobId) !== jobId) {
+        continue;
+      }
+
+      const job = asAcquisitionJob(payload.acquisitionJob);
+      if (job) {
+        return job;
+      }
+    }
+
+    return null;
+  }
+
   queueEntryError(entryId: string): string | null {
     return this.queueEntryErrors[entryId] ?? null;
   }
@@ -750,6 +788,14 @@ export class AppState {
 
   hasAuditOperatorActions(item: MediaItem): boolean {
     return item.canDeleteFromArr === true;
+  }
+
+  canReviewAuditReleases(item: MediaItem): boolean {
+    return auditManualReleaseJobId(item) !== null;
+  }
+
+  auditManualReleaseJobId(item: MediaItem): string | null {
+    return auditManualReleaseJobId(item);
   }
 
   isGuidedQueueJob(jobId: string): boolean {
