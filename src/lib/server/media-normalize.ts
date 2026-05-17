@@ -1,7 +1,7 @@
 import { evaluateAudit } from '$lib/server/audit';
 import { extractGuidIds, normalizeToken } from '$lib/server/media-identity';
 import { asArray, asNumber, asRecord, asScalarString, asString } from '$lib/server/raw';
-import type { MediaItem, MediaKind, Preferences } from '$lib/shared/types';
+import type { MediaDetails, MediaItem, MediaKind, Preferences } from '$lib/shared/types';
 
 export function formatLabel(value: string): string {
   return value.replace(/[-_]/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
@@ -92,6 +92,120 @@ function mediaInfoFromItem(raw: Record<string, unknown>): Record<string, unknown
   return null;
 }
 
+function fileRecordFromItem(raw: Record<string, unknown>): Record<string, unknown> | null {
+  const movieFile = asRecord(raw.movieFile);
+  if (Object.keys(movieFile).length > 0) {
+    return movieFile;
+  }
+
+  const episodeFile = asRecord(raw.episodeFile);
+  if (Object.keys(episodeFile).length > 0) {
+    return episodeFile;
+  }
+
+  return null;
+}
+
+function positiveNumber(...values: unknown[]): number | null {
+  for (const value of values) {
+    const number = asNumber(value);
+    if (number !== null && number > 0) {
+      return number;
+    }
+  }
+
+  return null;
+}
+
+function mediaDetailString(...values: unknown[]): string | null {
+  for (const value of values) {
+    const string = asString(value);
+    if (string) {
+      return string;
+    }
+  }
+
+  return null;
+}
+
+function normalizeBitrateKbps(...values: unknown[]): number | null {
+  const bitrate = positiveNumber(...values);
+  if (bitrate === null) {
+    return null;
+  }
+
+  return bitrate > 100_000 ? Math.round(bitrate / 1000) : Math.round(bitrate);
+}
+
+function parseRuntimeSeconds(...values: unknown[]): number | null {
+  for (const value of values) {
+    const numeric = asNumber(value);
+    if (numeric !== null && numeric > 0) {
+      return Math.round(numeric);
+    }
+
+    const string = asString(value);
+    if (!string) {
+      continue;
+    }
+
+    const parts = string.split(':').map((part) => Number(part));
+    if (parts.length >= 2 && parts.length <= 3 && parts.every((part) => Number.isFinite(part))) {
+      const [hours, minutes, seconds] =
+        parts.length === 3 ? parts : [0, parts[0] ?? 0, parts[1] ?? 0];
+      return Math.round(hours * 3600 + minutes * 60 + seconds);
+    }
+  }
+
+  return null;
+}
+
+function mediaResolution(mediaInfo: Record<string, unknown> | null): string | null {
+  const explicit = mediaDetailString(mediaInfo?.resolution, mediaInfo?.videoResolution);
+  if (explicit) {
+    return explicit;
+  }
+
+  const width = positiveNumber(mediaInfo?.width, mediaInfo?.videoWidth);
+  const height = positiveNumber(mediaInfo?.height, mediaInfo?.videoHeight);
+  if (width !== null && height !== null) {
+    return `${Math.round(width)}x${Math.round(height)}`;
+  }
+
+  return null;
+}
+
+function mediaDetailsFromItem(raw: Record<string, unknown>): MediaDetails | null {
+  const mediaInfo = mediaInfoFromItem(raw);
+  const file = fileRecordFromItem(raw);
+  const details: MediaDetails = {
+    audioCodec: mediaDetailString(mediaInfo?.audioCodec, mediaInfo?.audioFormat),
+    bitrate: normalizeBitrateKbps(
+      mediaInfo?.bitrate,
+      mediaInfo?.bitRate,
+      mediaInfo?.videoBitrate,
+      mediaInfo?.overallBitrate,
+      file?.bitrate,
+      file?.bitRate,
+    ),
+    fileSizeBytes: positiveNumber(file?.size, file?.sizeOnDisk, raw.size, raw.sizeOnDisk),
+    resolution: mediaResolution(mediaInfo),
+    runtimeSeconds: parseRuntimeSeconds(
+      mediaInfo?.runtimeSeconds,
+      mediaInfo?.runTimeSeconds,
+      mediaInfo?.durationSeconds,
+      mediaInfo?.runTime,
+      mediaInfo?.runtime,
+      mediaInfo?.duration,
+      raw.runtime,
+      raw.runTime,
+    ),
+    videoCodec: mediaDetailString(mediaInfo?.videoCodec, mediaInfo?.videoFormat),
+  };
+
+  return Object.values(details).some((value) => value !== null) ? details : null;
+}
+
 function isTracked(raw: Record<string, unknown>): boolean {
   return (
     asNumber(raw.id) !== null ||
@@ -143,6 +257,7 @@ export function normalizeItem(
 ): MediaItem {
   const raw = asRecord(rawValue);
   const mediaInfo = mediaInfoFromItem(raw);
+  const mediaDetails = fallback.mediaDetails ?? mediaDetailsFromItem(raw);
   const audioLanguages = normalizeLanguageEntries(mediaInfo?.audioLanguages);
   const subtitleLanguages = normalizeLanguageEntries(
     mediaInfo?.subtitles ?? mediaInfo?.subtitleLanguages,
@@ -201,6 +316,7 @@ export function normalizeItem(
     canAdd,
     canDeleteFromArr,
     detail: fallback.detail ?? asString(raw.sourceTitle) ?? null,
+    mediaDetails,
     acquiredAt:
       fallback.acquiredAt ??
       asString(raw.added) ??
@@ -227,6 +343,7 @@ export function mergeItems(left: MediaItem, right: MediaItem): MediaItem {
     overview: arrItem?.overview || plexItem?.overview || left.overview,
     rating: arrItem?.rating ?? plexItem?.rating ?? left.rating,
     detail: arrItem?.detail ?? plexItem?.detail ?? left.detail,
+    mediaDetails: arrItem?.mediaDetails ?? plexItem?.mediaDetails ?? left.mediaDetails ?? null,
     acquiredAt: arrItem?.acquiredAt ?? left.acquiredAt ?? right.acquiredAt ?? null,
     sourceService,
     origin: inArr && inPlex ? 'merged' : inPlex ? 'plex' : 'arr',

@@ -43,6 +43,100 @@ describe('normalizeItem', () => {
     expect(item.audioLanguages).toEqual(['English']);
     expect(item.subtitleLanguages).toEqual(['English']);
   });
+
+  it('extracts core media details from direct media info', () => {
+    const item = normalizeItem(
+      'movie',
+      {
+        id: 42,
+        title: 'Fixture Movie',
+        monitored: true,
+        mediaInfo: {
+          audioCodec: 'EAC3',
+          audioLanguages: [{ name: 'English' }],
+          height: 1080,
+          runTime: '01:42:30',
+          videoBitrate: 8_750,
+          videoCodec: 'x265',
+          width: 1920,
+        },
+        size: 5_500_000_000,
+      },
+      defaultPreferences,
+    );
+
+    expect(item.mediaDetails).toEqual({
+      audioCodec: 'EAC3',
+      bitrate: 8750,
+      fileSizeBytes: 5_500_000_000,
+      resolution: '1920x1080',
+      runtimeSeconds: 6150,
+      videoCodec: 'x265',
+    });
+  });
+
+  it('extracts core media details from nested movie file media info', () => {
+    const item = normalizeItem(
+      'movie',
+      {
+        id: 42,
+        title: 'Fixture Movie',
+        monitored: true,
+        movieFile: {
+          size: 9_250_000_000,
+          mediaInfo: {
+            audioFormat: 'DTS',
+            bitRate: 12_500_000,
+            resolution: '2160p',
+            runTimeSeconds: 7320,
+            videoFormat: 'HEVC',
+          },
+        },
+      },
+      defaultPreferences,
+    );
+
+    expect(item.mediaDetails).toEqual({
+      audioCodec: 'DTS',
+      bitrate: 12500,
+      fileSizeBytes: 9_250_000_000,
+      resolution: '2160p',
+      runtimeSeconds: 7320,
+      videoCodec: 'HEVC',
+    });
+  });
+
+  it('extracts core media details from nested episode file media info', () => {
+    const item = normalizeItem(
+      'series',
+      {
+        id: 84,
+        title: 'Fixture Series',
+        monitored: true,
+        episodeFile: {
+          size: 1_500_000_000,
+          mediaInfo: {
+            audioCodec: 'AAC',
+            duration: '42:10',
+            videoBitrate: 2400,
+            videoCodec: 'H.264',
+            videoHeight: 720,
+            videoWidth: 1280,
+          },
+        },
+      },
+      defaultPreferences,
+    );
+
+    expect(item.mediaDetails).toEqual({
+      audioCodec: 'AAC',
+      bitrate: 2400,
+      fileSizeBytes: 1_500_000_000,
+      resolution: '1280x720',
+      runtimeSeconds: 2530,
+      videoCodec: 'H.264',
+    });
+  });
 });
 
 describe('mergeItems', () => {

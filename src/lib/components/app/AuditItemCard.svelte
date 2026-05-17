@@ -7,12 +7,14 @@ import {
   auditDetailSummary,
   auditLabel,
   deleteActionLabel,
+  mediaDetailRows,
   statusTone,
 } from '$lib/client/app-ui';
 import type { MediaItem } from '$lib/shared/types';
 
 let { item, state }: { item: MediaItem; state: AppState } = $props();
 const evidenceRows = $derived(auditEvidenceRows(item));
+const mediaRows = $derived(mediaDetailRows(item.mediaDetails));
 const manualReleaseJobId = $derived(state.auditManualReleaseJobId(item));
 
 function fileNameOnly(value: string): string {
@@ -65,6 +67,17 @@ function fileNameOnly(value: string): string {
           <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">File name</div>
           <div class="mt-1 overflow-safe-text text-sm leading-5">{fileNameOnly(item.detail)}</div>
         </div>
+      {/if}
+
+      {#if mediaRows.length > 0}
+        <dl class="mt-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
+          {#each mediaRows as row}
+            <div class="min-w-0 rounded-[12px] border border-[var(--line)] bg-[var(--surface)] px-3 py-2">
+              <dt class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">{row.label}</dt>
+              <dd class="mt-1 overflow-safe-text font-700">{row.value}</dd>
+            </div>
+          {/each}
+        </dl>
       {/if}
 
       <div class="mt-3 grid gap-2 text-sm sm:grid-cols-2">

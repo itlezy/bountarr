@@ -135,6 +135,15 @@ export interface HealthResponse {
 
 export type ResultOrigin = 'arr' | 'plex' | 'merged';
 
+export interface MediaDetails {
+  audioCodec: string | null;
+  bitrate: number | null;
+  fileSizeBytes: number | null;
+  resolution: string | null;
+  runtimeSeconds: number | null;
+  videoCodec: string | null;
+}
+
 export interface MediaItem {
   id: string;
   arrItemId?: number | null;
@@ -158,6 +167,7 @@ export interface MediaItem {
   canAdd: boolean;
   canDeleteFromArr?: boolean;
   detail: string | null;
+  mediaDetails?: MediaDetails | null;
   acquiredAt?: string | null;
   requestPayload: Record<string, unknown> | null;
 }

@@ -6,7 +6,10 @@ import {
   auditManualReleaseJobId,
   auditDetailSummary,
   auditLabel,
+  formatBitrateKbps,
   formatBytes,
+  formatRuntimeSeconds,
+  mediaDetailRows,
   queueItemNextStep,
   releaseArrOverrideModeLabel,
   releaseAutoBlockedReasonLabel,
@@ -29,6 +32,52 @@ describe('formatBytes', () => {
     expect(formatBytes(-1)).toBe('Unknown');
     expect(formatBytes(Number.NaN)).toBe('Unknown');
     expect(formatBytes(Number.POSITIVE_INFINITY)).toBe('Unknown');
+  });
+});
+
+describe('media detail formatting', () => {
+  it('formats bitrate values in Kbps or Mbps', () => {
+    expect(formatBitrateKbps(850)).toBe('850 Kbps');
+    expect(formatBitrateKbps(8750)).toBe('8.75 Mbps');
+    expect(formatBitrateKbps(null)).toBeNull();
+  });
+
+  it('formats runtime values without empty units', () => {
+    expect(formatRuntimeSeconds(2530)).toBe('42m');
+    expect(formatRuntimeSeconds(6150)).toBe('1h 43m');
+    expect(formatRuntimeSeconds(7200)).toBe('2h');
+    expect(formatRuntimeSeconds(undefined)).toBeNull();
+  });
+
+  it('builds media detail rows only for present values', () => {
+    expect(
+      mediaDetailRows({
+        audioCodec: 'EAC3',
+        bitrate: 8750,
+        fileSizeBytes: 5_500_000_000,
+        resolution: '1920x1080',
+        runtimeSeconds: 6150,
+        videoCodec: 'x265',
+      }),
+    ).toEqual([
+      { label: 'Resolution', value: '1920x1080' },
+      { label: 'Bitrate', value: '8.75 Mbps' },
+      { label: 'Video', value: 'x265' },
+      { label: 'Audio codec', value: 'EAC3' },
+      { label: 'Runtime', value: '1h 43m' },
+      { label: 'Size', value: '5.12 GB' },
+    ]);
+
+    expect(
+      mediaDetailRows({
+        audioCodec: null,
+        bitrate: null,
+        fileSizeBytes: null,
+        resolution: '2160p',
+        runtimeSeconds: null,
+        videoCodec: null,
+      }),
+    ).toEqual([{ label: 'Resolution', value: '2160p' }]);
   });
 });
 

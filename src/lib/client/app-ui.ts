@@ -535,6 +535,56 @@ export function formatBytes(bytes: number): string {
   return `${value.toFixed(unitIndex === 0 ? 0 : 2)} ${units[unitIndex]}`;
 }
 
+export function formatBitrateKbps(kbps: number | null | undefined): string | null {
+  if (kbps === null || kbps === undefined || !Number.isFinite(kbps) || kbps <= 0) {
+    return null;
+  }
+
+  if (kbps >= 1000) {
+    return `${(kbps / 1000).toFixed(2)} Mbps`;
+  }
+
+  return `${Math.round(kbps)} Kbps`;
+}
+
+export function formatRuntimeSeconds(seconds: number | null | undefined): string | null {
+  if (seconds === null || seconds === undefined || !Number.isFinite(seconds) || seconds <= 0) {
+    return null;
+  }
+
+  const totalMinutes = Math.max(1, Math.round(seconds / 60));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours > 0 && minutes > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+
+  if (hours > 0) {
+    return `${hours}h`;
+  }
+
+  return `${minutes}m`;
+}
+
+export function mediaDetailRows(
+  details: MediaItem['mediaDetails'] | null | undefined,
+): AuditEvidenceRow[] {
+  if (!details) {
+    return [];
+  }
+
+  return [
+    details.resolution ? { label: 'Resolution', value: details.resolution } : null,
+    details.bitrate ? { label: 'Bitrate', value: formatBitrateKbps(details.bitrate) } : null,
+    details.videoCodec ? { label: 'Video', value: details.videoCodec } : null,
+    details.audioCodec ? { label: 'Audio codec', value: details.audioCodec } : null,
+    details.runtimeSeconds
+      ? { label: 'Runtime', value: formatRuntimeSeconds(details.runtimeSeconds) }
+      : null,
+    details.fileSizeBytes ? { label: 'Size', value: formatBytes(details.fileSizeBytes) } : null,
+  ].filter((row): row is AuditEvidenceRow => row !== null && row.value !== null);
+}
+
 export function mergeSearchItem(existing: MediaItem, next: MediaItem): MediaItem {
   const inPlex = existing.inPlex || next.inPlex;
   const plexOverrideEligible = inPlex && !next.inArr && next.requestPayload !== null;
@@ -547,6 +597,7 @@ export function mergeSearchItem(existing: MediaItem, next: MediaItem): MediaItem
     plexLibraries: Array.from(
       new Set([...(existing.plexLibraries ?? []), ...(next.plexLibraries ?? [])]),
     ),
+    mediaDetails: next.mediaDetails ?? existing.mediaDetails ?? null,
     canAdd: plexOverrideEligible ? false : next.canAdd,
     canDeleteFromArr: next.canDeleteFromArr || existing.canDeleteFromArr,
     origin: inPlex ? 'merged' : next.origin,
