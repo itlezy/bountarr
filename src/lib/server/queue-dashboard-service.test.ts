@@ -9,8 +9,14 @@ const acquisitionRunnerState = vi.hoisted(() => ({
   enqueuedJobIds: [] as string[],
 }));
 
+const acquisitionSelectionState = vi.hoisted(() => ({
+  findReleaseSelection: vi.fn(),
+}));
+
 vi.mock('$lib/server/acquisition-job-repository', () => ({
   getAcquisitionJobRepository: () => ({
+    getJob: (jobId: string) =>
+      acquisitionRepositoryState.jobs.find((job) => job.id === jobId) ?? null,
     listJobs: () => acquisitionRepositoryState.jobs,
     updateJob: (jobId: string, patch: Partial<AcquisitionJob>) => {
       const index = acquisitionRepositoryState.jobs.findIndex((job) => job.id === jobId);
@@ -53,9 +59,14 @@ vi.mock('$lib/server/acquisition-runner', () => ({
   }),
 }));
 
+vi.mock('$lib/server/acquisition-selection', () => ({
+  findReleaseSelection: acquisitionSelectionState.findReleaseSelection,
+}));
+
 afterEach(() => {
   acquisitionRepositoryState.jobs = [];
   acquisitionRunnerState.enqueuedJobIds = [];
+  acquisitionSelectionState.findReleaseSelection.mockReset();
   vi.resetAllMocks();
   vi.resetModules();
   vi.useRealTimers();
@@ -129,6 +140,14 @@ function movieItem(arrItemId: number, title: string): MediaItem {
 function mockDashboardDependencies(
   options: { commands?: unknown[]; movieStatus?: string; title?: string } = {},
 ) {
+  acquisitionSelectionState.findReleaseSelection.mockResolvedValue({
+    selectedGuid: null,
+    selectedRelease: null,
+    selection: {
+      payload: null,
+    },
+  });
+
   const arrFetch = vi.fn().mockImplementation(async (_service: string, path: string) => {
     if (path === '/api/v3/command') {
       return options.commands ?? [];
@@ -2161,6 +2180,71 @@ describe('queue dashboard service', () => {
     expect(acquisitionRepositoryState.jobs[0]?.status).toBe('failed');
     expect(acquisitionRunnerState.enqueuedJobIds).toEqual([]);
     expect(arrFetch).not.toHaveBeenCalledWith('radarr', '/api/v3/movie/959');
+  });
+
+  it('queues an automatic retry when a release-blocked movie now has an auto-selected release', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-17T15:00:00.000Z'));
+
+    const releaseCandidate = {
+      arrRejected: true,
+      attempt: null,
+      detectedAudioLanguages: [],
+      detectedSubtitleLanguages: [],
+      failedAt: null,
+      failureReason: null,
+      firstSeenAt: '2026-05-16T12:10:00.000Z',
+      guid: 'guid-lunopolis',
+      indexer: 'Indexer',
+      indexerId: 4,
+      languages: ['English'],
+      lastSeenAt: '2026-05-16T12:10:00.000Z',
+      protocol: 'usenet',
+      reason: 'Bountarr accepted adjacent release year because no exact-year match was available',
+      score: 124,
+      selectionMode: 'override-arr-rejection' as const,
+      size: 700_000_000,
+      status: 'available' as const,
+      title: 'Lunopolis.2009.480p.WEB-DL.x264-mSD-ORHk',
+    };
+    acquisitionRepositoryState.jobs = [
+      missingMovieJob({
+        releaseCandidates: [releaseCandidate],
+      }),
+    ];
+    mockDashboardDependencies();
+    acquisitionSelectionState.findReleaseSelection.mockResolvedValue({
+      selectedGuid: releaseCandidate.guid,
+      selectedRelease: releaseCandidate,
+      selection: {
+        payload: {
+          guid: releaseCandidate.guid,
+          indexerId: releaseCandidate.indexerId,
+        },
+      },
+    });
+
+    const module = await import('$lib/server/queue-dashboard-service');
+    await module.getDashboard(
+      {
+        cardsView: 'rounded',
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+        theme: 'system',
+      },
+      { force: true },
+    );
+
+    expect(acquisitionSelectionState.findReleaseSelection).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'job-lunopolis' }),
+    );
+    expect(acquisitionRepositoryState.jobs[0]).toMatchObject({
+      attempt: 2,
+      queueStatus: 'Queued automatic release retry',
+      reasonCode: null,
+      status: 'queued',
+    });
+    expect(acquisitionRunnerState.enqueuedJobIds).toEqual(['job-lunopolis']);
   });
 
   it('shows no-release jobs with later release candidates as needing manual review', async () => {

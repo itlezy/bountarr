@@ -1,8 +1,13 @@
 import { arrFetch } from '$lib/server/arr-client';
 import { fetchQueueRecords } from '$lib/server/acquisition-validator-shared';
 import { dashboardCache, queueCache } from '$lib/server/app-cache';
-import { isTerminalJobStatus, type ArrService } from '$lib/server/acquisition-domain';
+import {
+  isTerminalJobStatus,
+  type ArrService,
+  type PersistedAcquisitionJob,
+} from '$lib/server/acquisition-domain';
 import { getAcquisitionJobRepository } from '$lib/server/acquisition-job-repository';
+import { findReleaseSelection } from '$lib/server/acquisition-selection';
 import { ensureAcquisitionWorkers, getQueueAcquisitionJobs } from '$lib/server/acquisition-service';
 import { itemMatchKeys, itemSearchTitles } from '$lib/server/media-identity';
 import { fetchExistingMovie, fetchExistingSeries } from '$lib/server/lookup-service';
@@ -311,6 +316,16 @@ function jobNeedsDailyMissingMovieSearch(
   );
 }
 
+function jobNeedsAutomaticReleaseRetry(job: AcquisitionJob, jobs: AcquisitionJob[]): boolean {
+  return (
+    job.kind === 'movie' &&
+    job.sourceService === 'radarr' &&
+    job.status === 'failed' &&
+    acquisitionAuditStatus(job) === 'release-blocked' &&
+    !activeAcquisitionJobExists(job, jobs)
+  );
+}
+
 async function enqueueDailyMissingMovieSearch(job: AcquisitionJob): Promise<void> {
   const jobs = getAcquisitionJobRepository();
   const result = jobs.updateJobIfStatus(job.id, ['failed'], {
@@ -342,6 +357,71 @@ async function enqueueDailyMissingMovieSearch(job: AcquisitionJob): Promise<void
     jobId: job.id,
     title: job.title,
   });
+}
+
+async function enqueueAutomaticReleaseRetry(job: AcquisitionJob): Promise<void> {
+  let selection: Awaited<ReturnType<typeof findReleaseSelection>>;
+  try {
+    selection = await findReleaseSelection(job as PersistedAcquisitionJob);
+  } catch (error) {
+    logger.warn('Unable to inspect release-blocked job for automatic retry', {
+      arrItemId: job.arrItemId,
+      jobId: job.id,
+      title: job.title,
+      ...toErrorLogContext(error),
+    });
+    return;
+  }
+
+  if (!selection.selectedGuid || !selection.selectedRelease || !selection.selection.payload) {
+    return;
+  }
+
+  const jobs = getAcquisitionJobRepository();
+  const current = jobs.getJob(job.id) ?? job;
+  const result = jobs.updateJobIfStatus(job.id, ['failed'], {
+    attempt: current.attempt + 1,
+    autoRetrying: false,
+    completedAt: null,
+    currentRelease: null,
+    failureReason: null,
+    liveDownloadId: null,
+    liveQueueId: null,
+    progress: null,
+    queuedManualSelection: null,
+    queueStatus: 'Queued automatic release retry',
+    reasonCode: null,
+    selectedReleaser: null,
+    status: 'queued',
+    validationSummary: null,
+  });
+
+  if (!result.updated || !result.job) {
+    return;
+  }
+
+  const { getAcquisitionRunner } = await import('$lib/server/acquisition-runner');
+  getAcquisitionRunner().enqueue(result.job.id);
+
+  logger.info('Queued automatic release retry', {
+    arrItemId: job.arrItemId,
+    jobId: job.id,
+    selectedTitle: selection.selectedRelease.title,
+    title: job.title,
+  });
+}
+
+async function triggerAutomaticReleaseRetries(): Promise<void> {
+  if (!getConfiguredServiceFlags().radarrConfigured) {
+    return;
+  }
+
+  const jobs = getAcquisitionJobRepository().listJobs();
+  for (const job of jobs) {
+    if (jobNeedsAutomaticReleaseRetry(job, jobs)) {
+      await enqueueAutomaticReleaseRetry(job);
+    }
+  }
 }
 
 async function triggerDailyMissingMovieSearches(nowMs = Date.now()): Promise<void> {
@@ -953,6 +1033,7 @@ export async function getDashboard(
   }
 
   if (options?.force) {
+    await triggerAutomaticReleaseRetries();
     await triggerDailyMissingMovieSearches(now);
   }
 
