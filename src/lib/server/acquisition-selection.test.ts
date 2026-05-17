@@ -91,6 +91,77 @@ function failedReleaseCandidate(
   };
 }
 
+function mappedMovieRelease(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    guid: 'guid-fallback',
+    indexerId: 11,
+    indexer: 'Indexer',
+    title: 'Fixture.History.1998.1080p.WEB-DL-FALLBACK',
+    movieTitles: 'Fixture History',
+    mappedMovieId: 603,
+    languages: [{ name: 'English' }],
+    qualityWeight: 70,
+    releaseWeight: 70,
+    customFormatScore: 0,
+    size: 1_000,
+    protocol: 'torrent',
+    downloadAllowed: true,
+    ...overrides,
+  };
+}
+
+function mockMovieProfileFallbackSearch(releasesByProfileId: Record<number, unknown[]>) {
+  let currentQualityProfileId = 4;
+  return vi.spyOn(arrClient, 'arrFetch').mockImplementation(async (_service, path, options) => {
+    if (path === '/api/v3/release') {
+      return releasesByProfileId[currentQualityProfileId] ?? [];
+    }
+
+    if (path === '/api/v3/qualityprofile') {
+      return [
+        { id: 1, name: 'Any' },
+        { id: 4, name: 'HD-1080p' },
+        { id: 8, name: 'AnyAnyLang' },
+      ];
+    }
+
+    if (path === '/api/v3/movie/603') {
+      if ((options as { method?: string } | undefined)?.method === 'PUT') {
+        const body = JSON.parse(String((options as { body: string }).body)) as {
+          qualityProfileId: number;
+        };
+        currentQualityProfileId = body.qualityProfileId;
+      }
+
+      return {
+        id: 603,
+        title: 'Fixture History',
+        qualityProfileId: currentQualityProfileId,
+      };
+    }
+
+    throw new Error(`Unexpected Arr request for ${path}`);
+  });
+}
+
+function movieQualityProfileUpdateIds(
+  arrFetch: ReturnType<typeof mockMovieProfileFallbackSearch>,
+): number[] {
+  return arrFetch.mock.calls.flatMap(([, path, options]) => {
+    if (
+      path !== '/api/v3/movie/603' ||
+      (options as { method?: string } | undefined)?.method !== 'PUT'
+    ) {
+      return [];
+    }
+
+    const body = JSON.parse(String((options as { body: string }).body)) as {
+      qualityProfileId: number;
+    };
+    return [body.qualityProfileId];
+  });
+}
+
 const queuedManualSelectionInput = {
   manualResults: [
     {
@@ -174,6 +245,49 @@ afterEach(() => {
 });
 
 describe('acquisition selection', () => {
+  it('relaxes a movie search to the Any quality profile when the initial profile has no mapped releases', async () => {
+    const arrFetch = mockMovieProfileFallbackSearch({
+      1: [mappedMovieRelease({ guid: 'guid-any' })],
+    });
+
+    const result = await findReleaseSelection({
+      ...job,
+      qualityProfileId: 4,
+    });
+
+    expect(result.selectedGuid).toBe('guid-any');
+    expect(result.mappedReleases).toBe(1);
+    expect(movieQualityProfileUpdateIds(arrFetch)).toEqual([1]);
+  });
+
+  it('continues relaxing a movie search to AnyAnyLang when Any has no mapped releases', async () => {
+    const arrFetch = mockMovieProfileFallbackSearch({
+      8: [mappedMovieRelease({ guid: 'guid-any-any-lang' })],
+    });
+
+    const result = await findReleaseSelection({
+      ...job,
+      qualityProfileId: 4,
+    });
+
+    expect(result.selectedGuid).toBe('guid-any-any-lang');
+    expect(result.mappedReleases).toBe(1);
+    expect(movieQualityProfileUpdateIds(arrFetch)).toEqual([1, 8]);
+  });
+
+  it('restores the original movie quality profile when relaxed searches still find no releases', async () => {
+    const arrFetch = mockMovieProfileFallbackSearch({});
+
+    const result = await findReleaseSelection({
+      ...job,
+      qualityProfileId: 4,
+    });
+
+    expect(result.selectedGuid).toBeNull();
+    expect(result.mappedReleases).toBe(0);
+    expect(movieQualityProfileUpdateIds(arrFetch)).toEqual([1, 8, 4]);
+  });
+
   it('keeps queued manual selections visible while still refetching live manual results', async () => {
     const arrFetch = vi.spyOn(arrClient, 'arrFetch').mockResolvedValue([
       {

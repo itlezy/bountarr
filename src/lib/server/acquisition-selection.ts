@@ -13,8 +13,8 @@ import {
   type PersistedManualSelection,
 } from '$lib/server/acquisition-domain';
 import { getAcquisitionJobRepository } from '$lib/server/acquisition-job-repository';
-import { extractReleaser } from '$lib/server/media-identity';
-import { asNumber, asRecord } from '$lib/server/raw';
+import { extractReleaser, normalizeToken } from '$lib/server/media-identity';
+import { asNumber, asPositiveNumber, asRecord, asString } from '$lib/server/raw';
 import { createAreaLogger, toErrorLogContext } from '$lib/server/logger';
 import { defaultPreferences } from '$lib/shared/preferences';
 import type {
@@ -27,6 +27,7 @@ import type {
 } from '$lib/shared/types';
 
 const logger = createAreaLogger('acquisition.selection');
+const movieReleaseFallbackProfileNames = ['Any', 'AnyAnyLang'] as const;
 
 function selectMappedReleases(
   kind: MediaKind,
@@ -313,6 +314,123 @@ async function fetchReleaseInventory(job: PersistedAcquisitionJob): Promise<Rele
   };
 }
 
+function fallbackQualityProfileIds(
+  profiles: unknown[],
+  originalQualityProfileId: number | null,
+): number[] {
+  const profileIdByName = new Map<string, number>();
+  for (const profile of profiles.map(asRecord)) {
+    const name = asString(profile.name);
+    const id = asPositiveNumber(profile.id);
+    if (!name || id === null) {
+      continue;
+    }
+
+    profileIdByName.set(normalizeToken(name), id);
+  }
+
+  const ids: number[] = [];
+  for (const profileName of movieReleaseFallbackProfileNames) {
+    const id = profileIdByName.get(normalizeToken(profileName));
+    if (id === undefined || id === originalQualityProfileId || ids.includes(id)) {
+      continue;
+    }
+
+    ids.push(id);
+  }
+
+  return ids;
+}
+
+async function fetchTrackedMovie(job: PersistedAcquisitionJob): Promise<Record<string, unknown>> {
+  return asRecord(await arrFetch<unknown>(job.sourceService, `/api/v3/movie/${job.arrItemId}`));
+}
+
+async function updateTrackedMovieQualityProfile(
+  job: PersistedAcquisitionJob,
+  qualityProfileId: number,
+): Promise<void> {
+  const path = `/api/v3/movie/${job.arrItemId}`;
+  const current = await fetchTrackedMovie(job);
+  if (asPositiveNumber(current.qualityProfileId) === qualityProfileId) {
+    return;
+  }
+
+  await arrFetch<unknown>(job.sourceService, path, {
+    method: 'PUT',
+    body: JSON.stringify({
+      ...current,
+      qualityProfileId,
+    }),
+  });
+}
+
+function persistJobQualityProfile(
+  job: PersistedAcquisitionJob,
+  qualityProfileId: number,
+): PersistedAcquisitionJob {
+  if ((job.qualityProfileId ?? null) === qualityProfileId) {
+    return job;
+  }
+
+  const jobs = getAcquisitionJobRepository();
+  if (!jobs.hasJob(job.id)) {
+    return {
+      ...job,
+      qualityProfileId,
+    };
+  }
+
+  return jobs.updateJob(job.id, { qualityProfileId });
+}
+
+async function fetchReleaseInventoryWithFallback(job: PersistedAcquisitionJob): Promise<{
+  inventory: ReleaseInventory;
+  job: PersistedAcquisitionJob;
+}> {
+  const initialInventory = await fetchReleaseInventory(job);
+  if (
+    job.kind !== 'movie' ||
+    job.sourceService !== 'radarr' ||
+    initialInventory.mappedReleases > 0
+  ) {
+    return { inventory: initialInventory, job };
+  }
+
+  const originalMovie = await fetchTrackedMovie(job);
+  const originalQualityProfileId =
+    asPositiveNumber(originalMovie.qualityProfileId) ?? job.qualityProfileId ?? null;
+  const profiles = await arrFetch<unknown[]>(job.sourceService, '/api/v3/qualityprofile');
+  const fallbackProfileIds = fallbackQualityProfileIds(profiles, originalQualityProfileId);
+  let fallbackJob = job;
+  let latestInventory = initialInventory;
+
+  for (const qualityProfileId of fallbackProfileIds) {
+    await updateTrackedMovieQualityProfile(fallbackJob, qualityProfileId);
+    fallbackJob = persistJobQualityProfile(fallbackJob, qualityProfileId);
+    latestInventory = await fetchReleaseInventory(fallbackJob);
+    if (latestInventory.mappedReleases > 0) {
+      logger.info('Movie release search found candidates after relaxing quality profile', {
+        arrItemId: fallbackJob.arrItemId,
+        jobId: fallbackJob.id,
+        qualityProfileId,
+        title: fallbackJob.title,
+      });
+      return { inventory: latestInventory, job: fallbackJob };
+    }
+  }
+
+  if (
+    originalQualityProfileId !== null &&
+    (fallbackJob.qualityProfileId ?? null) !== originalQualityProfileId
+  ) {
+    await updateTrackedMovieQualityProfile(fallbackJob, originalQualityProfileId);
+    fallbackJob = persistJobQualityProfile(fallbackJob, originalQualityProfileId);
+  }
+
+  return { inventory: latestInventory, job: fallbackJob };
+}
+
 function mapManualReleaseStatus(
   release: EvaluatedRelease,
   blockReason: ManualReleaseBlockReason | null,
@@ -461,13 +579,13 @@ export async function findReleaseSelection(
 ): Promise<ReleaseSelectionResult> {
   const jobs = getAcquisitionJobRepository();
   const currentJob = jobs.getJob(job.id) ?? job;
-  const inventory = await fetchReleaseInventory(currentJob);
+  const { inventory, job: searchedJob } = await fetchReleaseInventoryWithFallback(currentJob);
   const releaseCandidates = mergeReleaseCandidatePool(
-    currentJob.releaseCandidates ?? [],
+    searchedJob.releaseCandidates ?? [],
     inventory.evaluated,
   );
   const persistedJob = jobs.replaceReleaseCandidates(job.id, releaseCandidates) ?? {
-    ...currentJob,
+    ...searchedJob,
     releaseCandidates,
   };
   const persistedReleaseCandidates = persistedJob.releaseCandidates ?? [];

@@ -104,7 +104,6 @@ export type UpdateAcquisitionJobPatch = Partial<
     | 'kind'
     | 'maxRetries'
     | 'preferences'
-    | 'qualityProfileId'
     | 'sourceService'
     | 'targetEpisodeIds'
     | 'targetSeasonNumbers'
@@ -729,8 +728,8 @@ export class AcquisitionJobRepository {
             status = ?, attempt = ?, current_release = ?, selected_releaser = ?,
             preferred_releaser = ?, reason_code = ?, failure_reason = ?, validation_summary = ?,
             auto_retrying = ?, progress = ?, queue_status = ?, live_queue_id = ?, live_download_id = ?,
-            queued_manual_selection_json = ?, recovery_selection_json = ?, recovery_attempted = ?,
-            recovery_status = ?, release_candidates_json = ?,
+            quality_profile_id = ?, queued_manual_selection_json = ?, recovery_selection_json = ?,
+            recovery_attempted = ?, recovery_status = ?, release_candidates_json = ?,
             preferred_language = ?, subtitle_language = ?,
             updated_at = ?, completed_at = ?
            WHERE id = ?`,
@@ -749,6 +748,7 @@ export class AcquisitionJobRepository {
           next.queueStatus,
           next.liveQueueId ?? null,
           next.liveDownloadId ?? null,
+          next.qualityProfileId ?? null,
           serializeManualSelection(next.queuedManualSelection),
           serializeManualSelection(next.recoverySelection ?? null),
           next.recoveryAttempted ? 1 : 0,
@@ -818,8 +818,8 @@ export class AcquisitionJobRepository {
             status = ?, attempt = ?, current_release = ?, selected_releaser = ?,
             preferred_releaser = ?, reason_code = ?, failure_reason = ?, validation_summary = ?,
             auto_retrying = ?, progress = ?, queue_status = ?, live_queue_id = ?, live_download_id = ?,
-            queued_manual_selection_json = ?, recovery_selection_json = ?, recovery_attempted = ?,
-            recovery_status = ?, release_candidates_json = ?,
+            quality_profile_id = ?, queued_manual_selection_json = ?, recovery_selection_json = ?,
+            recovery_attempted = ?, recovery_status = ?, release_candidates_json = ?,
             preferred_language = ?, subtitle_language = ?,
             updated_at = ?, completed_at = ?
            WHERE id = ?`,
@@ -838,6 +838,7 @@ export class AcquisitionJobRepository {
           next.queueStatus,
           next.liveQueueId ?? null,
           next.liveDownloadId ?? null,
+          next.qualityProfileId ?? null,
           serializeManualSelection(next.queuedManualSelection),
           serializeManualSelection(next.recoverySelection ?? null),
           next.recoveryAttempted ? 1 : 0,

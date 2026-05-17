@@ -364,10 +364,13 @@ describe('AcquisitionJobRepository', () => {
       targetSeasonNumbers: [3],
       title: 'Scoped Season',
     });
+    jobs.updateJob(created.id, {
+      qualityProfileId: 44,
+    });
 
     const loaded = jobs.getJob(created.id);
 
-    expect(loaded?.qualityProfileId).toBe(22);
+    expect(loaded?.qualityProfileId).toBe(44);
     expect(loaded?.targetEpisodeIds).toEqual([301, 302, 303]);
     expect(loaded?.targetSeasonNumbers).toEqual([3]);
   });
