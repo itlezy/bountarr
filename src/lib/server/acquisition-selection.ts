@@ -1,6 +1,5 @@
 import {
   evaluateReleaseCandidates,
-  isExistingFileArrRejection,
   releaseRejectionReasons,
   selectBestEvaluatedRelease,
   type EvaluatedRelease,
@@ -34,13 +33,14 @@ function selectMappedReleases(
   releases: unknown[],
   createdId: number,
 ): Record<string, unknown>[] {
-  return releases
-    .map(asRecord)
-    .filter((release) =>
-      kind === 'movie'
-        ? asNumber(release.mappedMovieId) === createdId
-        : asNumber(release.mappedSeriesId) === createdId,
-    );
+  return releases.map(asRecord).filter((release) => {
+    if (kind === 'movie') {
+      const mappedMovieId = asNumber(release.mappedMovieId);
+      return mappedMovieId === null || mappedMovieId === createdId;
+    }
+
+    return asNumber(release.mappedSeriesId) === createdId;
+  });
 }
 
 export type ReleaseSelectionResult = {
@@ -778,9 +778,7 @@ export async function submitSelectedRelease(
     return;
   }
 
-  const overrideArrRejection = isExistingFileArrRejection(
-    releaseRejectionReasons(selection.payload),
-  );
+  const overrideArrRejection = releaseRejectionReasons(selection.payload).length > 0;
 
   await arrFetch<unknown>(job.sourceService, '/api/v3/release', {
     method: 'POST',

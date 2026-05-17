@@ -288,6 +288,77 @@ describe('acquisition selection', () => {
     expect(movieQualityProfileUpdateIds(arrFetch)).toEqual([1, 8, 4]);
   });
 
+  it('keeps Radarr unknown-movie releases visible when their titles match the movie search', async () => {
+    vi.spyOn(arrClient, 'arrFetch').mockResolvedValue([
+      {
+        guid: 'guid-unknown-movie',
+        indexerId: 11,
+        indexer: 'Indexer',
+        title: 'Fixture.History.1998.480p.WEB-DL-GROUP',
+        movieTitles: 'Fixture History',
+        mappedMovieId: null,
+        languages: [{ name: 'English' }],
+        qualityWeight: 10,
+        releaseWeight: 10,
+        customFormatScore: 0,
+        size: 700_000_000,
+        protocol: 'usenet',
+        downloadAllowed: false,
+        rejected: true,
+        rejections: ['Unknown Movie. Unable to match to correct movie using release title.'],
+      },
+    ]);
+
+    const result = await findReleaseSelection(job);
+
+    expect(result.mappedReleases).toBe(1);
+    expect(result.selectedGuid).toBeNull();
+    expect(result.manualResults).toEqual([
+      expect.objectContaining({
+        blockReason: null,
+        canSelect: true,
+        guid: 'guid-unknown-movie',
+        selectionMode: 'override-arr-rejection',
+        status: 'arr-rejected',
+      }),
+    ]);
+  });
+
+  it('keeps title-mismatched unknown-movie releases visible but not selectable', async () => {
+    vi.spyOn(arrClient, 'arrFetch').mockResolvedValue([
+      {
+        guid: 'guid-wrong-movie',
+        indexerId: 11,
+        indexer: 'Indexer',
+        title: 'Different.Movie.1998.480p.WEB-DL-GROUP',
+        movieTitles: 'Different Movie',
+        mappedMovieId: null,
+        languages: [{ name: 'English' }],
+        qualityWeight: 10,
+        releaseWeight: 10,
+        customFormatScore: 0,
+        size: 700_000_000,
+        protocol: 'usenet',
+        downloadAllowed: false,
+        rejected: true,
+        rejections: ['Unknown Movie. Unable to match to correct movie using release title.'],
+      },
+    ]);
+
+    const result = await findReleaseSelection(job);
+
+    expect(result.mappedReleases).toBe(1);
+    expect(result.manualResults).toEqual([
+      expect.objectContaining({
+        blockReason: 'title-mismatch',
+        canSelect: false,
+        guid: 'guid-wrong-movie',
+        selectionMode: null,
+        status: 'locally-rejected',
+      }),
+    ]);
+  });
+
   it('keeps queued manual selections visible while still refetching live manual results', async () => {
     const arrFetch = vi.spyOn(arrClient, 'arrFetch').mockResolvedValue([
       {
@@ -685,6 +756,50 @@ describe('acquisition selection', () => {
         quality: { quality: { id: 3, name: 'WEBDL-1080p' } },
         rejected: true,
         rejections: ['Not an upgrade for existing movie file.'],
+        shouldOverride: true,
+      }),
+    });
+  });
+
+  it('submits manually selected Arr-rejected releases with override payload fields', async () => {
+    const arrFetch = vi.spyOn(arrClient, 'arrFetch').mockResolvedValue(undefined);
+
+    await submitSelectedRelease(job, {
+      decision: {
+        accepted: 0,
+        considered: 1,
+        reason: 'User overrode Arr rejection and selected Fixture.History.1998.480p.WEB-DL-GROUP',
+        selected: {
+          guid: 'guid-unknown-movie',
+          indexer: 'Indexer',
+          indexerId: 12,
+          languages: ['English'],
+          protocol: 'usenet',
+          reason: 'Unknown Movie. Unable to match to correct movie using release title.',
+          score: -10_000,
+          size: 700_000_000,
+          title: 'Fixture.History.1998.480p.WEB-DL-GROUP',
+        },
+      },
+      payload: {
+        downloadAllowed: false,
+        guid: 'guid-unknown-movie',
+        indexerId: 12,
+        mappedMovieId: null,
+        rejected: true,
+        rejections: ['Unknown Movie. Unable to match to correct movie using release title.'],
+      },
+    });
+
+    expect(arrFetch).toHaveBeenCalledWith('radarr', '/api/v3/release', {
+      method: 'POST',
+      body: JSON.stringify({
+        downloadAllowed: false,
+        guid: 'guid-unknown-movie',
+        indexerId: 12,
+        mappedMovieId: null,
+        rejected: true,
+        rejections: ['Unknown Movie. Unable to match to correct movie using release title.'],
         shouldOverride: true,
       }),
     });
