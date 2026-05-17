@@ -35,8 +35,25 @@ type DashboardResponse = {
   items: DashboardItem[];
 };
 
+async function readDashboard(includeAll: boolean): Promise<DashboardResponse> {
+  return readJson<DashboardResponse>(
+    '/api/dashboard/refresh?preferredLanguage=English&subtitleLanguage=English',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        includeAllBountarr: includeAll,
+      }),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    },
+  );
+}
+
 const baseUrl = process.env.BOUNTARR_URL ?? 'http://127.0.0.1:30003';
-const titles = process.argv.slice(2);
+const args = process.argv.slice(2);
+const includeAllBountarr = args.includes('--all-bountarr');
+const titles = args.filter((entry) => entry !== '--all-bountarr');
 
 if (titles.length === 0) {
   throw new Error(
@@ -66,21 +83,15 @@ for (const title of titles) {
   );
 }
 
-const dashboard = await readJson<DashboardResponse>(
-  '/api/dashboard/refresh?preferredLanguage=English&subtitleLanguage=English',
-  {
-    method: 'POST',
-    body: '{}',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  },
-);
+const dashboard = await readDashboard(includeAllBountarr);
+const comparisonDashboard = includeAllBountarr ? await readDashboard(false) : null;
 
 const result = [];
 for (const title of titles) {
   const job = acquisition.jobs.find((entry) => entry.title === title) ?? null;
   const dashboardItem = dashboard.items.find((entry) => entry.title === title) ?? null;
+  const recentDashboardItem =
+    comparisonDashboard?.items.find((entry) => entry.title === title) ?? null;
   const releases = releaseLists.get(title) ?? null;
 
   result.push({
@@ -93,6 +104,7 @@ for (const title of titles) {
           status: dashboardItem.status,
         }
       : null,
+    recentDashboardVisible: comparisonDashboard ? recentDashboardItem !== null : null,
     releases: releases
       ? {
           count: releases.releases.length,
