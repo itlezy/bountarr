@@ -36,6 +36,7 @@ type ManualReleaseListResponse = {
 type DashboardItem = {
   auditStatus: string;
   detail: string | null;
+  mediaDetails?: Record<string, unknown> | null;
   requestPayload: Record<string, unknown> | null;
   status: string;
   title: string;
@@ -281,6 +282,7 @@ for (const title of uniqueTitles) {
       ? {
           auditStatus: dashboardItem.auditStatus,
           detail: dashboardItem.detail,
+          mediaDetails: dashboardItem.mediaDetails ?? null,
           acquisitionJobId:
             typeof dashboardItem.requestPayload?.acquisitionJobId === 'string'
               ? dashboardItem.requestPayload.acquisitionJobId
