@@ -324,6 +324,53 @@ describe('acquisition selection', () => {
     ]);
   });
 
+  it('auto-selects a Radarr unknown-movie release when the title and tracked movie year match', async () => {
+    vi.spyOn(arrClient, 'arrFetch').mockImplementation(async (_service, path) => {
+      if (path === '/api/v3/movie/603') {
+        return {
+          id: 603,
+          title: 'Fixture History',
+          year: 1998,
+          qualityProfileId: 4,
+        };
+      }
+
+      if (path === '/api/v3/release') {
+        return [
+          {
+            guid: 'guid-unknown-movie',
+            indexerId: 11,
+            indexer: 'Indexer',
+            title: 'Fixture.History.1998.1080p.WEB-DL-GROUP',
+            mappedMovieId: null,
+            languages: [{ name: 'English' }],
+            qualityWeight: 70,
+            releaseWeight: 70,
+            customFormatScore: 0,
+            size: 1_000_000_000,
+            protocol: 'usenet',
+            downloadAllowed: false,
+            rejected: true,
+            rejections: ['Unknown Movie. Unable to match to correct movie using release title.'],
+          },
+        ];
+      }
+
+      throw new Error(`Unexpected Arr request for ${path}`);
+    });
+
+    const result = await findReleaseSelection(job);
+
+    expect(result.selectedGuid).toBe('guid-unknown-movie');
+    expect(result.selection.decision.reason).toContain(
+      'Bountarr title/year matched target for Arr rejection override',
+    );
+    expect(result.manualResults[0]).toMatchObject({
+      guid: 'guid-unknown-movie',
+      status: 'selected',
+    });
+  });
+
   it('keeps title-mismatched unknown-movie releases visible but not selectable', async () => {
     vi.spyOn(arrClient, 'arrFetch').mockResolvedValue([
       {

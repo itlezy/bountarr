@@ -266,7 +266,7 @@ function evaluatedFromPersisted(candidate: PersistedAcquisitionReleaseCandidate)
   };
 }
 
-function releaseOptions(job: PersistedAcquisitionJob) {
+function releaseOptions(job: PersistedAcquisitionJob, targetYear: number | null = null) {
   const failedCandidates = (job.releaseCandidates ?? []).filter(
     (candidate) => candidate.status === 'failed',
   );
@@ -285,10 +285,22 @@ function releaseOptions(job: PersistedAcquisitionJob) {
     targetEpisodeIds: job.targetEpisodeIds,
     targetSeasonNumbers: job.targetSeasonNumbers,
     targetTitle: job.title,
+    targetYear,
   } as const;
 }
 
-async function fetchReleaseInventory(job: PersistedAcquisitionJob): Promise<ReleaseInventory> {
+async function fetchMovieTargetYear(job: PersistedAcquisitionJob): Promise<number | null> {
+  if (job.kind !== 'movie' || job.sourceService !== 'radarr') {
+    return null;
+  }
+
+  return asPositiveNumber((await fetchTrackedMovie(job)).year);
+}
+
+async function fetchReleaseInventory(
+  job: PersistedAcquisitionJob,
+  targetYear?: number | null,
+): Promise<ReleaseInventory> {
   const releases = await arrFetch<unknown[]>(
     job.sourceService,
     '/api/v3/release',
@@ -296,6 +308,12 @@ async function fetchReleaseInventory(job: PersistedAcquisitionJob): Promise<Rele
     job.kind === 'movie' ? { movieId: job.arrItemId } : { seriesId: job.arrItemId },
   );
   const rawMappedReleases = selectMappedReleases(job.kind, releases, job.arrItemId);
+  const resolvedTargetYear =
+    targetYear === undefined &&
+    job.kind === 'movie' &&
+    rawMappedReleases.some((release) => releaseRejectionReasons(release).length > 0)
+      ? await fetchMovieTargetYear(job)
+      : (targetYear ?? null);
 
   return {
     evaluated: evaluateReleaseCandidates(
@@ -306,7 +324,7 @@ async function fetchReleaseInventory(job: PersistedAcquisitionJob): Promise<Rele
         subtitleLanguage: job.preferences.subtitleLanguage,
         theme: 'system',
       },
-      releaseOptions(job),
+      releaseOptions(job, resolvedTargetYear),
     ),
     mappedReleases: rawMappedReleases.length,
     rawMappedReleases,
@@ -398,6 +416,7 @@ async function fetchReleaseInventoryWithFallback(job: PersistedAcquisitionJob): 
   }
 
   const originalMovie = await fetchTrackedMovie(job);
+  const targetYear = asPositiveNumber(originalMovie.year);
   const originalQualityProfileId =
     asPositiveNumber(originalMovie.qualityProfileId) ?? job.qualityProfileId ?? null;
   const profiles = await arrFetch<unknown[]>(job.sourceService, '/api/v3/qualityprofile');
@@ -408,7 +427,7 @@ async function fetchReleaseInventoryWithFallback(job: PersistedAcquisitionJob): 
   for (const qualityProfileId of fallbackProfileIds) {
     await updateTrackedMovieQualityProfile(fallbackJob, qualityProfileId);
     fallbackJob = persistJobQualityProfile(fallbackJob, qualityProfileId);
-    latestInventory = await fetchReleaseInventory(fallbackJob);
+    latestInventory = await fetchReleaseInventory(fallbackJob, targetYear);
     if (latestInventory.mappedReleases > 0) {
       logger.info('Movie release search found candidates after relaxing quality profile', {
         arrItemId: fallbackJob.arrItemId,

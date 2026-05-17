@@ -39,6 +39,7 @@ type ReleaseSelectionOptions = {
   preferredReleaser?: string | null;
   retryReasonCode?: AcquisitionReasonCode | null;
   targetEpisodeIds?: number[] | null;
+  targetYear?: number | null;
   targetSeasonNumbers?: number[] | null;
   targetTitle: string;
 };
@@ -303,6 +304,20 @@ function extractStructuredTitles(
 
 function maybeYearToken(token: string): boolean {
   return /^(19|20)\d{2}$/.test(token);
+}
+
+function extractReleaseYear(title: string): number | null {
+  for (const token of title
+    .normalize('NFKD')
+    .replace(/[[\]()]/g, ' ')
+    .split(/[\s._-]+/)) {
+    const normalized = normalizeIdentityText(token);
+    if (maybeYearToken(normalized)) {
+      return Number(normalized);
+    }
+  }
+
+  return null;
 }
 
 function extractReleaseTitleSegment(title: string): string {
@@ -598,10 +613,14 @@ function applyAvailabilityRules(
   state: CandidateScoreState,
   releaseRejectionReasons: string[],
   title: string,
+  options: { allowAutomaticArrOverride: boolean } = { allowAutomaticArrOverride: false },
 ): void {
   if (releaseRejectionReasons.length > 0) {
     if (isExistingFileArrRejection(releaseRejectionReasons)) {
       state.reasons.push(...releaseRejectionReasons);
+    } else if (options.allowAutomaticArrOverride) {
+      state.reasons.push(...releaseRejectionReasons);
+      state.reasons.push('Bountarr title/year matched target for Arr rejection override');
     } else {
       for (const rejection of releaseRejectionReasons) {
         rejectCandidate(state, rejection);
@@ -612,6 +631,40 @@ function applyAvailabilityRules(
   if (hardRejectPatterns.some((pattern) => pattern.test(title))) {
     rejectCandidate(state, 'blocked releaser or source pattern');
   }
+}
+
+function releaseYearMatchesTarget(
+  release: Record<string, unknown>,
+  releaseTitle: string,
+  targetYear: number | null | undefined,
+): boolean {
+  if (targetYear === null || targetYear === undefined) {
+    return false;
+  }
+
+  const releaseYear =
+    asNumber(release.year) ??
+    asNumber(release.releaseYear) ??
+    asNumber(release.movieYear) ??
+    extractReleaseYear(releaseTitle);
+
+  return releaseYear === targetYear;
+}
+
+function canAutomaticallyOverrideArrRejection(
+  release: Record<string, unknown>,
+  title: string,
+  options: ReleaseSelectionOptions,
+  identity: ReturnType<typeof classifyIdentity>,
+  arrRejectionReasons: string[],
+): boolean {
+  return (
+    options.kind === 'movie' &&
+    arrRejectionReasons.length > 0 &&
+    !isExistingFileArrRejection(arrRejectionReasons) &&
+    identity.status === 'exact-match' &&
+    releaseYearMatchesTarget(release, title, options.targetYear)
+  );
 }
 
 function applyPreferenceBonuses(
@@ -763,8 +816,17 @@ function buildCandidate(
   const state = createScoreState(release);
   const identity = classifyIdentity(release, options);
   const arrRejectionReasons = releaseRejectionReasons(release);
+  const allowAutomaticArrOverride = canAutomaticallyOverrideArrRejection(
+    release,
+    title,
+    options,
+    identity,
+    arrRejectionReasons,
+  );
 
-  applyAvailabilityRules(state, arrRejectionReasons, title);
+  applyAvailabilityRules(state, arrRejectionReasons, title, {
+    allowAutomaticArrOverride,
+  });
   applyPreferenceBonuses(
     state,
     preferences,

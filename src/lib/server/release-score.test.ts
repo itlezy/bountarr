@@ -165,6 +165,70 @@ describe('selectBestRelease', () => {
     expect(result.decision.reason).toContain('preferred audio Spanish metadata');
   });
 
+  it('auto-selects an Arr-rejected movie release when title and year match the target', () => {
+    const result = selectBestRelease(
+      [
+        {
+          guid: 'unknown-movie',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Fixture.Movie.1999.1080p.WEB-DL-GROUP',
+          languages: [{ name: 'English' }],
+          qualityWeight: 70,
+          releaseWeight: 40,
+          customFormatScore: 0,
+          size: 1_000,
+          protocol: 'usenet',
+          downloadAllowed: false,
+          rejected: true,
+          rejections: ['Unknown Movie. Unable to match to correct movie using release title.'],
+        },
+      ],
+      defaultPreferences,
+      {
+        kind: 'movie',
+        targetTitle: 'Fixture Movie',
+        targetYear: 1999,
+      },
+    );
+
+    expect(result.decision.selected?.guid).toBe('unknown-movie');
+    expect(result.decision.reason).toContain(
+      'Bountarr title/year matched target for Arr rejection override',
+    );
+  });
+
+  it('does not auto-select an Arr-rejected movie release when the year mismatches', () => {
+    const result = selectBestRelease(
+      [
+        {
+          guid: 'wrong-year',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Fixture.Movie.2001.1080p.WEB-DL-GROUP',
+          languages: [{ name: 'English' }],
+          qualityWeight: 70,
+          releaseWeight: 40,
+          customFormatScore: 0,
+          size: 1_000,
+          protocol: 'usenet',
+          downloadAllowed: false,
+          rejected: true,
+          rejections: ['Unknown Movie. Unable to match to correct movie using release title.'],
+        },
+      ],
+      defaultPreferences,
+      {
+        kind: 'movie',
+        targetTitle: 'Fixture Movie',
+        targetYear: 1999,
+      },
+    );
+
+    expect(result.decision.selected).toBeNull();
+    expect(result.decision.reason).toBe('No acceptable release passed the local scoring rules');
+  });
+
   it('uses accent-insensitive title hints for preferred audio', () => {
     const result = selectBestRelease(
       [
