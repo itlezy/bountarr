@@ -8,3 +8,4 @@
 - Do not spend time on migrations, deprecations, versioned schemas, fallback readers, compatibility adapters, or preserving old data formats unless the user explicitly requests that work.
 - When diagnosing an issue that needs code verification, stop the daemon with `scripts\windows\stopDaemon.cmd`, test the fix, then restart it with `scripts\windows\runDaemon.cmd`.
 - Always make granular commits as work progresses.
+- Avoid PowerShell for non-trivial diagnostic/API interaction logic; write and run TypeScript supporting scripts instead. Keep PowerShell usage to trivial shell commands and existing project scripts.
