@@ -1696,7 +1696,35 @@ describe('queue dashboard service', () => {
       }),
     }));
     vi.doMock('$lib/server/lookup-service', () => ({
-      fetchExistingMovie: vi.fn().mockRejectedValue(new Error('movie missing')),
+      fetchExistingMovie: vi.fn().mockResolvedValue({
+        id: 'movie:959',
+        arrItemId: 959,
+        kind: 'movie',
+        title: 'Lunopolis',
+        year: 2010,
+        rating: null,
+        poster: null,
+        overview: '',
+        status: 'Monitored',
+        isExisting: true,
+        isRequested: true,
+        auditStatus: 'unknown',
+        audioLanguages: [],
+        subtitleLanguages: [],
+        sourceService: 'radarr',
+        origin: 'arr',
+        inArr: true,
+        inPlex: false,
+        plexLibraries: [],
+        canAdd: false,
+        canDeleteFromArr: true,
+        detail: null,
+        acquiredAt: null,
+        requestPayload: {
+          title: 'Lunopolis',
+          tmdbId: 83399,
+        },
+      } satisfies MediaItem),
       fetchExistingSeries: vi.fn(),
     }));
     vi.doMock('$lib/server/acquisition-service', () => ({

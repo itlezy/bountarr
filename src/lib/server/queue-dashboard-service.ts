@@ -142,6 +142,7 @@ async function buildAcquisitionHistoryItems(preferences: Preferences): Promise<M
   for (const job of recentAcquisitionCheckJobs()) {
     const acquiredAt = acquisitionJobAcquiredAt(job);
     const detail = job.currentRelease ?? job.validationSummary ?? job.failureReason;
+    const auditStatus = acquisitionAuditStatus(job);
 
     try {
       const item =
@@ -151,6 +152,7 @@ async function buildAcquisitionHistoryItems(preferences: Preferences): Promise<M
       items.push({
         ...item,
         acquiredAt: acquiredAt ?? item.acquiredAt ?? null,
+        auditStatus,
         detail: item.detail ?? detail ?? null,
       });
     } catch {
@@ -158,7 +160,7 @@ async function buildAcquisitionHistoryItems(preferences: Preferences): Promise<M
         normalizeItem(job.kind, {}, preferences, {
           acquiredAt,
           arrItemId: job.arrItemId,
-          auditStatus: acquisitionAuditStatus(job),
+          auditStatus,
           canAdd: false,
           detail,
           id: `acquisition:${job.id}`,
