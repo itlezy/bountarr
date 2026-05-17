@@ -10,7 +10,10 @@ Base URL for the running app.
 [CmdletBinding()]
 param(
     [Parameter()]
-    [string]$BaseUrl = 'http://localhost:4173'
+    [string]$BaseUrl = 'http://localhost:4173',
+
+    [Parameter()]
+    [string]$DuplicateSeriesQuery = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -23,6 +26,7 @@ $baseUri = [Uri]$BaseUrl
 $repoRoot = Split-Path -Path $PSScriptRoot -Parent
 $buildEntryPoint = Join-Path -Path $repoRoot -ChildPath 'build/index.js'
 $runtimeDirectory = Join-Path -Path $repoRoot -ChildPath 'data/runtime/smoke'
+$liveWireInputsPath = Join-Path -Path $repoRoot -ChildPath 'live-wire-inputs.local.json'
 
 function Assert-True {
     param(
@@ -51,6 +55,45 @@ function Test-ServerReady {
     catch {
         return $false
     }
+}
+
+function Get-LiveWireSeriesQuery {
+    param(
+        [Parameter()]
+        [string]$ExplicitQuery
+    )
+
+    $trimmedExplicitQuery = $ExplicitQuery.Trim()
+    if ($trimmedExplicitQuery.Length -gt 0) {
+        return $trimmedExplicitQuery
+    }
+
+    $envQuery = $env:BOUNTARR_SMOKE_SERIES_QUERY
+    if ($null -ne $envQuery -and $envQuery.Trim().Length -gt 0) {
+        return $envQuery.Trim()
+    }
+
+    if (-not (Test-Path -LiteralPath $liveWireInputsPath)) {
+        return $null
+    }
+
+    $liveWireInputs = Get-Content -LiteralPath $liveWireInputsPath -Raw -ErrorAction Stop | ConvertFrom-Json
+    $seriesCandidate = @($liveWireInputs.seriesCandidates | Where-Object {
+            $null -ne $_ -and $_.Trim().Length -gt 0
+        } | Select-Object -First 1)
+
+    if ($seriesCandidate.Count -gt 0) {
+        return [string]$seriesCandidate[0]
+    }
+
+    if ($null -ne $liveWireInputs.untrackedSeries -and $null -ne $liveWireInputs.untrackedSeries.title) {
+        $untrackedSeriesTitle = [string]$liveWireInputs.untrackedSeries.title
+        if ($untrackedSeriesTitle.Trim().Length -gt 0) {
+            return $untrackedSeriesTitle.Trim()
+        }
+    }
+
+    return $null
 }
 
 function Start-LocalServerIfNeeded {
@@ -147,22 +190,30 @@ try {
         }
     }
 
-    $search = Invoke-RestMethod -Uri "$BaseUrl/api/search?q=Andor&kind=series&availability=all"
-    Assert-True (($search | Measure-Object).Count -gt 0) 'Search endpoint returned no results.'
+    $duplicateSeriesSearchQuery = Get-LiveWireSeriesQuery -ExplicitQuery $DuplicateSeriesQuery
 
-    $tracked = $search | Where-Object { $_.inArr -eq $true } | Select-Object -First 1
-    Assert-True ($null -ne $tracked) 'Search results did not include the tracked series duplicate-path candidate.'
+    if ($null -ne $duplicateSeriesSearchQuery) {
+        $encodedDuplicateSeriesSearchQuery = [Uri]::EscapeDataString($duplicateSeriesSearchQuery)
+        $search = Invoke-RestMethod -Uri "$BaseUrl/api/search?q=$encodedDuplicateSeriesSearchQuery&kind=series&availability=all"
+        Assert-True (($search | Measure-Object).Count -gt 0) 'Search endpoint returned no results.'
 
-    $duplicateBody = @{
-        item = $tracked
-        preferences = @{
-            preferredLanguage = 'English'
-            requireSubtitles = $true
-        }
-    } | ConvertTo-Json -Depth 12
+        $tracked = $search | Where-Object { $_.inArr -eq $true } | Select-Object -First 1
+        Assert-True ($null -ne $tracked) 'Search results did not include the tracked series duplicate-path candidate.'
 
-    $duplicateResult = Invoke-RestMethod -Uri "$BaseUrl/api/request" -Method Post -ContentType 'application/json' -Body $duplicateBody
-    Assert-True ($duplicateResult.existing -eq $true) 'Duplicate add path did not return existing=true.'
+        $duplicateBody = @{
+            item = $tracked
+            preferences = @{
+                preferredLanguage = 'English'
+                requireSubtitles = $true
+            }
+        } | ConvertTo-Json -Depth 12
+
+        $duplicateResult = Invoke-RestMethod -Uri "$BaseUrl/api/request" -Method Post -ContentType 'application/json' -Body $duplicateBody
+        Assert-True ($duplicateResult.existing -eq $true) 'Duplicate add path did not return existing=true.'
+    }
+    else {
+        Write-Output 'Skipped duplicate series assertion because no live-wire series query was configured.'
+    }
     Assert-True ($duplicateResult.item.canAdd -eq $false) 'Duplicate add path returned a tracked item as addable.'
 
     $dashboard = Invoke-RestMethod -Uri "$BaseUrl/api/dashboard?preferredLanguage=English&requireSubtitles=true"

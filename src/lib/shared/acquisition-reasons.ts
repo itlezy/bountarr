@@ -10,6 +10,8 @@ export function acquisitionReasonLabel(code: AcquisitionReasonCode | null): stri
       return 'Missing selected subtitles';
     case 'import-blocked':
       return 'Import was blocked';
+    case 'download-failed':
+      return 'Download failed';
     case 'import-timeout':
       return 'Download or import took too long';
     case 'no-release-available':
@@ -66,11 +68,15 @@ export function acquisitionNextAction(
       return 'Stopped because Arr refused to import the downloaded release.';
     }
 
+    if (job.reasonCode === 'download-failed') {
+      return 'Stopped because the selected download failed before import.';
+    }
+
     if (job.reasonCode === 'crashed') {
       return 'Stopped because the acquisition flow crashed.';
     }
 
-    return 'Stopped after automatic retries were exhausted.';
+    return 'Stopped because no untried release candidates remain.';
   }
 
   if (job.status === 'retrying' || job.autoRetrying) {

@@ -142,15 +142,15 @@ describe('acquisition validator shared helpers', () => {
       {
         eventType: 'grabbed',
         date: '2026-04-18T10:07:54.000Z',
-        sourceTitle: 'Sharing.the.Secret.2000.1080p.AMZN.WEB-DL.DDP2.0.H.264-TEPES',
+        sourceTitle: 'Fixture.Secret.2000.1080p.AMZN.WEB-DL.DDP2.0.H.264-TEPES',
       },
       {
         eventType: 'downloadFolderImported',
         date: '2026-04-18T10:16:14.000Z',
-        sourceTitle: 'Sharing.the.Secret.2000.1080p.AMZN.WEB-DL.DDP2.0.H.264-TEPES',
+        sourceTitle: 'Fixture.Secret.2000.1080p.AMZN.WEB-DL.DDP2.0.H.264-TEPES',
         data: {
           importedPath:
-            'C:\\M\\H20T00\\dldz\\TVZZ\\MOVIEZ_ENG_RADARR\\Sharing the Secret (2000) tt0240894\\Sharing.the.Secret.2000.1080p.AMZN.WEB-DL.DDP2.0.H.264-TEPES.mkv',
+            'C:\\M\\H20T00\\dldz\\TVZZ\\MOVIEZ_ENG_RADARR\\Fixture Secret (2000) tt0240894\\Fixture.Secret.2000.1080p.AMZN.WEB-DL.DDP2.0.H.264-TEPES.mkv',
         },
       },
     ];
@@ -159,7 +159,7 @@ describe('acquisition validator shared helpers', () => {
       historySince(
         records,
         '2026-04-18T10:07:37.402Z',
-        'Sharing.the.Secret.2000.1080p.AMZN.WEB-DL.DDP2.0.H.264-TEPES',
+        'Fixture.Secret.2000.1080p.AMZN.WEB-DL.DDP2.0.H.264-TEPES',
       ),
     ).toEqual([records[1]]);
   });

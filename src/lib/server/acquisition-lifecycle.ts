@@ -10,6 +10,7 @@ import {
 } from '$lib/server/acquisition-job-repository';
 import { extractReleaser } from '$lib/server/media-identity';
 import {
+  persistManualSelection,
   selectionLogContext,
   type ReleaseSelectionResult,
 } from '$lib/server/acquisition-selection';
@@ -17,7 +18,9 @@ import {
   isTerminalJobStatus,
   manualSelectionQueuedStatus,
   type PersistedAcquisitionJob,
+  type PersistedAcquisitionReleaseCandidate,
 } from '$lib/server/acquisition-domain';
+import { isExistingFileImportBlock } from '$lib/server/acquisition-validator-shared';
 import type { WaitForAttemptOutcomeResult } from '$lib/server/acquisition-validator-shared';
 import type { AcquisitionReasonCode } from '$lib/shared/types';
 
@@ -50,7 +53,41 @@ function selectionFailureQueueStatus(releaseSelection: ReleaseSelectionResult): 
 }
 
 function validationFailureIsTerminal(waitResult: WaitForAttemptOutcomeResult): boolean {
-  return waitResult.reasonCode === 'import-blocked';
+  return (
+    waitResult.reasonCode === 'import-blocked' && !isExistingFileImportBlock(waitResult.summary)
+  );
+}
+
+function releaseCandidateKey(
+  candidate: Pick<PersistedAcquisitionReleaseCandidate, 'guid' | 'indexerId'>,
+): string {
+  return `${candidate.guid}:${candidate.indexerId}`;
+}
+
+function hasUntriedReleaseCandidate(job: PersistedAcquisitionJob): boolean {
+  const failedCandidateKeys = new Set(
+    (job.releaseCandidates ?? [])
+      .filter((candidate) => candidate.status === 'failed')
+      .map(releaseCandidateKey),
+  );
+  const legacyFailedGuids =
+    failedCandidateKeys.size === 0 ? new Set(job.failedGuids) : new Set<string>();
+
+  return (job.releaseCandidates ?? []).some(
+    (candidate) =>
+      candidate.status === 'available' &&
+      candidate.autoSelectable &&
+      !failedCandidateKeys.has(releaseCandidateKey(candidate)) &&
+      !legacyFailedGuids.has(candidate.guid),
+  );
+}
+
+function recoveryFailureMessage(job: PersistedAcquisitionJob): string {
+  return `No release satisfied ${job.preferences.preferredLanguage} audio and ${job.preferences.subtitleLanguage} subtitles; the initial release could not be restored.`;
+}
+
+function recoveryRestoredMessage(job: PersistedAcquisitionJob): string {
+  return `No release satisfied ${job.preferences.preferredLanguage} audio and ${job.preferences.subtitleLanguage} subtitles; the initial release was restored.`;
 }
 
 export class AcquisitionLifecycle {
@@ -159,6 +196,8 @@ export class AcquisitionLifecycle {
 
     this.jobs.upsertAttempt(current.id, {
       attempt: current.attempt,
+      detectedAudioLanguages: [],
+      detectedSubtitleLanguages: [],
       finishedAt: new Date().toISOString(),
       reasonCode,
       reason: releaseSelection.selection.decision.reason,
@@ -231,6 +270,13 @@ export class AcquisitionLifecycle {
       startedAt: attemptStartedAt,
       status: 'grabbing',
     });
+    this.jobs.ensureRecoverySelection(job.id, persistManualSelection(releaseSelection));
+    this.jobs.markReleaseCandidateSelected(
+      job.id,
+      selectedRelease.guid,
+      selectedRelease.indexerId,
+      current.attempt,
+    );
 
     this.log(next, 'selection.chosen', 'info', 'Selected release for acquisition attempt', {
       ...selectionLogContext(releaseSelection),
@@ -291,8 +337,78 @@ export class AcquisitionLifecycle {
       startedAt: attemptStartedAt,
       status: 'grabbing',
     });
+    this.jobs.ensureRecoverySelection(job.id, persistManualSelection(releaseSelection));
+    this.jobs.markReleaseCandidateSelected(
+      job.id,
+      selectedRelease.guid,
+      selectedRelease.indexerId,
+      current.attempt,
+    );
 
     this.log(next, 'selection.chosen', 'info', 'Selected release for acquisition attempt', {
+      ...selectionLogContext(releaseSelection),
+      selectedGuid: releaseSelection.selectedGuid,
+    });
+
+    return {
+      attemptStartedAt,
+      job: next,
+    };
+  }
+
+  chooseRecoveryRelease(
+    job: PersistedAcquisitionJob,
+    releaseSelection: ReleaseSelectionResult,
+  ): { attemptStartedAt: string; job: PersistedAcquisitionJob } | null {
+    const selectedRelease = releaseSelection.selectedRelease;
+    if (!selectedRelease || !releaseSelection.selectedGuid) {
+      throw new Error('A selected recovery release is required before choosing it');
+    }
+
+    const current = this.getCurrentJob(job.id);
+    if (
+      !current ||
+      current.recoveryStatus !== 'queued' ||
+      (current.status !== 'retrying' && current.status !== 'queued')
+    ) {
+      return null;
+    }
+
+    const attemptStartedAt = new Date().toISOString();
+    const releaser = extractReleaser(selectedRelease.title);
+    const result = this.jobs.updateJobIfStatus(job.id, ['retrying', 'queued'], {
+      autoRetrying: false,
+      completedAt: null,
+      currentRelease: selectedRelease.title,
+      failureReason: null,
+      liveDownloadId: null,
+      liveQueueId: null,
+      progress: null,
+      queueStatus: 'Restoring initial release',
+      queuedManualSelection: null,
+      recoveryStatus: 'grabbing',
+      selectedReleaser: releaser,
+      status: 'grabbing',
+      validationSummary: releaseSelection.selection.decision.reason,
+    });
+    const next = result.job;
+    if (!next || !result.updated) {
+      return null;
+    }
+
+    this.jobs.upsertAttempt(job.id, {
+      attempt: current.attempt,
+      finishedAt: null,
+      manualSelectionMode: releaseSelection.manualSelectionMode,
+      reasonCode: null,
+      reason: 'Recovery: restoring the initial release',
+      releaseTitle: selectedRelease.title,
+      releaser,
+      startedAt: attemptStartedAt,
+      status: 'grabbing',
+    });
+
+    this.log(next, 'recovery.chosen', 'warn', 'Selected initial release for recovery', {
       ...selectionLogContext(releaseSelection),
       selectedGuid: releaseSelection.selectedGuid,
     });
@@ -390,6 +506,8 @@ export class AcquisitionLifecycle {
 
     this.jobs.upsertAttempt(current.id, {
       attempt: current.attempt,
+      detectedAudioLanguages: waitResult.detectedAudioLanguages ?? [],
+      detectedSubtitleLanguages: waitResult.detectedSubtitleLanguages ?? [],
       finishedAt: new Date().toISOString(),
       reasonCode: waitResult.reasonCode,
       reason: waitResult.summary,
@@ -421,6 +539,104 @@ export class AcquisitionLifecycle {
     return next;
   }
 
+  completeRecoveryRestored(
+    job: PersistedAcquisitionJob,
+    waitResult: WaitForAttemptOutcomeResult,
+  ): PersistedAcquisitionJob {
+    const current = this.getMutableJob(job.id);
+    if (!current) {
+      return job;
+    }
+
+    const message = recoveryRestoredMessage(current);
+
+    this.jobs.upsertAttempt(current.id, {
+      attempt: current.attempt,
+      detectedAudioLanguages: waitResult.detectedAudioLanguages ?? [],
+      detectedSubtitleLanguages: waitResult.detectedSubtitleLanguages ?? [],
+      finishedAt: new Date().toISOString(),
+      reasonCode: waitResult.reasonCode,
+      reason: message,
+      status: 'completed',
+    });
+
+    const next = this.jobs.updateJob(current.id, {
+      autoRetrying: false,
+      completedAt: new Date().toISOString(),
+      failureReason: message,
+      liveDownloadId: null,
+      liveQueueId: null,
+      progress: waitResult.progress ?? 100,
+      queueStatus: 'Initial release restored',
+      queuedManualSelection: null,
+      reasonCode: waitResult.reasonCode,
+      recoveryStatus: 'restored',
+      status: 'failed',
+      validationSummary: message,
+    });
+
+    this.log(
+      next,
+      'recovery.restored',
+      'error',
+      'Initial release restored after preference failure',
+      {
+        progress: waitResult.progress,
+        queueStatus: waitResult.queueStatus,
+        reasonCode: waitResult.reasonCode,
+        summary: waitResult.summary,
+      },
+    );
+
+    return next;
+  }
+
+  failRecovery(
+    job: PersistedAcquisitionJob,
+    waitResult: WaitForAttemptOutcomeResult,
+  ): PersistedAcquisitionJob {
+    const current = this.getMutableJob(job.id);
+    if (!current) {
+      return job;
+    }
+
+    const message = `${recoveryFailureMessage(current)} ${waitResult.summary}`;
+
+    this.jobs.upsertAttempt(current.id, {
+      attempt: current.attempt,
+      detectedAudioLanguages: waitResult.detectedAudioLanguages ?? [],
+      detectedSubtitleLanguages: waitResult.detectedSubtitleLanguages ?? [],
+      finishedAt: new Date().toISOString(),
+      reasonCode: waitResult.reasonCode,
+      reason: message,
+      status: 'failed',
+    });
+
+    const next = this.jobs.updateJob(current.id, {
+      autoRetrying: false,
+      completedAt: new Date().toISOString(),
+      failureReason: message,
+      liveDownloadId: null,
+      liveQueueId: null,
+      progress: waitResult.progress,
+      queueStatus: 'Initial release recovery failed',
+      queuedManualSelection: null,
+      reasonCode: waitResult.reasonCode,
+      recoveryStatus: 'failed',
+      status: 'failed',
+      validationSummary: message,
+    });
+
+    this.log(next, 'recovery.failed', 'error', 'Initial release recovery failed', {
+      progress: waitResult.progress,
+      queueStatus: waitResult.queueStatus,
+      reasonCode: waitResult.reasonCode,
+      summary: waitResult.summary,
+    });
+
+    return next;
+  }
+
   handleFailedValidation(
     job: PersistedAcquisitionJob,
     selectedGuid: string | null,
@@ -435,15 +651,48 @@ export class AcquisitionLifecycle {
       return current;
     }
 
+    const currentAttempt = current.attempts.find((attempt) => attempt.attempt === current.attempt);
     if (selectedGuid) {
       this.jobs.addFailedGuid(current.id, selectedGuid);
+      if (
+        currentAttempt?.submittedIndexerId !== null &&
+        currentAttempt?.submittedIndexerId !== undefined
+      ) {
+        this.jobs.markReleaseCandidateFailed(
+          current.id,
+          selectedGuid,
+          currentAttempt.submittedIndexerId,
+          current.attempt,
+          waitResult.summary,
+          waitResult.detectedAudioLanguages ?? [],
+          waitResult.detectedSubtitleLanguages ?? [],
+        );
+      }
     }
+    const afterCandidateFailure = this.getCurrentJob(current.id) ?? current;
+    const candidatePoolKnown = (afterCandidateFailure.releaseCandidates?.length ?? 0) > 0;
     const nextAttempt = current.attempt + 1;
-    const terminal = validationFailureIsTerminal(waitResult) || nextAttempt > current.maxRetries;
-    const persistedAttempt = terminal ? current.attempt : nextAttempt;
+    const terminal =
+      validationFailureIsTerminal(waitResult) ||
+      (candidatePoolKnown
+        ? !hasUntriedReleaseCandidate(afterCandidateFailure)
+        : nextAttempt > current.maxRetries);
+    const recoverySelected = current.recoverySelection?.decision.selected;
+    const currentAttemptIsRecoverySelection =
+      recoverySelected !== undefined &&
+      currentAttempt?.submittedGuid === recoverySelected.guid &&
+      currentAttempt.submittedIndexerId === recoverySelected.indexerId;
+    const shouldRecover =
+      terminal &&
+      current.recoveryAttempted !== true &&
+      !!current.recoverySelection &&
+      !currentAttemptIsRecoverySelection;
+    const persistedAttempt = terminal && !shouldRecover ? current.attempt : nextAttempt;
 
     this.jobs.upsertAttempt(current.id, {
       attempt: current.attempt,
+      detectedAudioLanguages: waitResult.detectedAudioLanguages ?? [],
+      detectedSubtitleLanguages: waitResult.detectedSubtitleLanguages ?? [],
       finishedAt: new Date().toISOString(),
       reasonCode: waitResult.reasonCode,
       reason: waitResult.summary,
@@ -452,26 +701,30 @@ export class AcquisitionLifecycle {
 
     const next = this.jobs.updateJob(current.id, {
       attempt: persistedAttempt,
-      autoRetrying: !terminal,
-      completedAt: terminal ? new Date().toISOString() : null,
+      autoRetrying: !terminal || shouldRecover,
+      completedAt: terminal && !shouldRecover ? new Date().toISOString() : null,
       liveDownloadId: null,
       liveQueueId: null,
       reasonCode: waitResult.reasonCode,
       failureReason: waitResult.summary,
       progress: waitResult.progress,
-      queueStatus: waitResult.queueStatus,
+      queueStatus: shouldRecover ? 'Restoring initial release' : waitResult.queueStatus,
       queuedManualSelection: null,
-      status: terminal ? 'failed' : 'retrying',
+      recoveryAttempted: shouldRecover ? true : current.recoveryAttempted,
+      recoveryStatus: shouldRecover ? 'queued' : current.recoveryStatus,
+      status: terminal && !shouldRecover ? 'failed' : 'retrying',
       validationSummary: waitResult.summary,
     });
 
     this.log(
       next,
-      terminal ? 'job.failed' : 'job.retrying',
-      terminal ? 'error' : 'warn',
-      terminal
-        ? 'Acquisition attempt failed and retries are exhausted'
-        : 'Acquisition attempt failed; retry scheduled',
+      shouldRecover ? 'recovery.queued' : terminal ? 'job.failed' : 'job.retrying',
+      terminal && !shouldRecover ? 'error' : 'warn',
+      shouldRecover
+        ? 'All preferred release candidates failed; initial release recovery scheduled'
+        : terminal
+          ? 'Acquisition attempt failed and no untried release candidates remain'
+          : 'Acquisition attempt failed; retry scheduled',
       {
         nextAttempt: next.attempt,
         progress: waitResult.progress,
@@ -515,6 +768,61 @@ export class AcquisitionLifecycle {
     });
 
     this.log(next, 'job.crashed', 'error', 'Acquisition flow crashed', {
+      ...toErrorLogContext(error),
+    });
+
+    return next;
+  }
+
+  failCleanupBlocked(
+    job: PersistedAcquisitionJob,
+    error: unknown,
+    waitResult: WaitForAttemptOutcomeResult,
+  ): PersistedAcquisitionJob {
+    const current = this.getMutableJob(job.id);
+    if (!current) {
+      return job;
+    }
+
+    const message = `Failed to clean up the failed import before trying another release: ${getErrorMessage(error, 'cleanup failed')}`;
+    const currentAttempt = current.attempts.find((attempt) => attempt.attempt === current.attempt);
+
+    this.jobs.upsertAttempt(current.id, {
+      attempt: current.attempt,
+      detectedAudioLanguages: waitResult.detectedAudioLanguages ?? [],
+      detectedSubtitleLanguages: waitResult.detectedSubtitleLanguages ?? [],
+      finishedAt: new Date().toISOString(),
+      reasonCode: 'import-blocked',
+      reason: message,
+      status: 'failed',
+    });
+    if (currentAttempt?.submittedGuid && typeof currentAttempt.submittedIndexerId === 'number') {
+      this.jobs.addFailedGuid(current.id, currentAttempt.submittedGuid);
+      this.jobs.markReleaseCandidateFailed(
+        current.id,
+        currentAttempt.submittedGuid,
+        currentAttempt.submittedIndexerId,
+        current.attempt,
+        waitResult.summary,
+        waitResult.detectedAudioLanguages ?? [],
+        waitResult.detectedSubtitleLanguages ?? [],
+      );
+    }
+
+    const next = this.jobs.updateJob(current.id, {
+      autoRetrying: false,
+      completedAt: new Date().toISOString(),
+      reasonCode: 'import-blocked',
+      failureReason: message,
+      liveDownloadId: null,
+      liveQueueId: null,
+      queuedManualSelection: null,
+      queueStatus: 'Cleanup blocked',
+      status: 'failed',
+      validationSummary: message,
+    });
+
+    this.log(next, 'cleanup.blocked', 'error', 'Failed import cleanup blocked retry', {
       ...toErrorLogContext(error),
     });
 

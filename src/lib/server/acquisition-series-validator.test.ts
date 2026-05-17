@@ -6,12 +6,12 @@ const seriesJob: PersistedAcquisitionJob = {
   itemId: 'series:701',
   arrItemId: 701,
   kind: 'series',
-  title: 'Andor',
+  title: 'Fixture Series',
   sourceService: 'sonarr',
   status: 'validating',
   attempt: 1,
   maxRetries: 4,
-  currentRelease: 'Andor.S01.1080p.WEB-DL-FLUX',
+  currentRelease: 'Fixture Series.S01.1080p.WEB-DL-FLUX',
   selectedReleaser: 'flux',
   preferredReleaser: 'flux',
   reasonCode: null,
@@ -54,7 +54,7 @@ describe('validateSeriesAttempt', () => {
           {
             date: '2026-04-13T12:05:00.000Z',
             episodeFileId: 5001,
-            sourceTitle: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+            sourceTitle: 'Fixture Series.S01E01.1080p.WEB-DL-FLUX',
           },
         ]),
         fetchQueueRecords: vi.fn().mockResolvedValue([
@@ -69,10 +69,10 @@ describe('validateSeriesAttempt', () => {
             trackedDownloadStatus: 'downloading',
             size: 1000,
             sizeleft: 750,
-            title: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+            title: 'Fixture Series.S01E01.1080p.WEB-DL-FLUX',
             series: {
               id: 701,
-              title: 'Andor',
+              title: 'Fixture Series',
               year: 2022,
             },
           },
@@ -88,10 +88,10 @@ describe('validateSeriesAttempt', () => {
             trackedDownloadStatus: 'downloading',
             size: 1000,
             sizeleft: 250,
-            title: 'Andor.S01E02.1080p.WEB-DL-FLUX',
+            title: 'Fixture Series.S01E02.1080p.WEB-DL-FLUX',
             series: {
               id: 701,
-              title: 'Andor',
+              title: 'Fixture Series',
               year: 2022,
             },
           },
@@ -107,10 +107,10 @@ describe('validateSeriesAttempt', () => {
             trackedDownloadStatus: 'downloading',
             size: 1000,
             sizeleft: 100,
-            title: 'Andor.S02E01.1080p.WEB-DL-FLUX',
+            title: 'Fixture Series.S02E01.1080p.WEB-DL-FLUX',
             series: {
               id: 701,
-              title: 'Andor',
+              title: 'Fixture Series',
               year: 2022,
             },
           },
@@ -133,6 +133,8 @@ describe('validateSeriesAttempt', () => {
     const result = await module.validateSeriesAttempt(seriesJob, '2026-04-13T12:00:00.000Z');
 
     expect(result).toEqual({
+      detectedAudioLanguages: [],
+      detectedSubtitleLanguages: [],
       liveDownloadId: null,
       liveQueueId: 7,
       outcome: 'pending',
@@ -169,17 +171,17 @@ describe('validateSeriesAttempt', () => {
         {
           date: '2026-04-13T12:05:00.000Z',
           episodeFileId: 5001,
-          sourceTitle: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+          sourceTitle: 'Fixture Series.S01E01.1080p.WEB-DL-FLUX',
         },
         {
           date: '2026-04-13T12:06:00.000Z',
           episodeFileId: 5002,
-          sourceTitle: 'Andor.S01E02.1080p.WEB-DL-FLUX',
+          sourceTitle: 'Fixture Series.S01E02.1080p.WEB-DL-FLUX',
         },
         {
           date: '2026-04-13T12:07:00.000Z',
           episodeFileId: 6001,
-          sourceTitle: 'Andor.S02E01.1080p.WEB-DL-FLUX',
+          sourceTitle: 'Fixture Series.S02E01.1080p.WEB-DL-FLUX',
         },
       ]),
       fetchQueueRecords: vi.fn().mockResolvedValue([]),
@@ -200,6 +202,8 @@ describe('validateSeriesAttempt', () => {
     const result = await module.validateSeriesAttempt(seriesJob, '2026-04-13T12:00:00.000Z');
 
     expect(result).toEqual({
+      detectedAudioLanguages: ['English'],
+      detectedSubtitleLanguages: ['English'],
       liveDownloadId: null,
       liveQueueId: null,
       outcome: 'success',
@@ -229,14 +233,14 @@ describe('validateSeriesAttempt', () => {
             seasonNumbers: [1],
             series: {
               id: 701,
-              title: 'Andor',
+              title: 'Fixture Series',
               year: 2022,
             },
             seriesId: 701,
             size: 4000,
             sizeleft: 2000,
             status: 'Downloading',
-            title: 'Andor.S01.1080p.WEB-DL-FLUX',
+            title: 'Fixture Series.S01.1080p.WEB-DL-FLUX',
           },
           {
             id: 11,
@@ -247,14 +251,14 @@ describe('validateSeriesAttempt', () => {
             },
             series: {
               id: 701,
-              title: 'Andor',
+              title: 'Fixture Series',
               year: 2022,
             },
             seriesId: 701,
             size: 1000,
             sizeleft: 50,
             status: 'Downloading',
-            title: 'Andor.S02E01.1080p.WEB-DL-FLUX',
+            title: 'Fixture Series.S02E01.1080p.WEB-DL-FLUX',
           },
         ]),
         historySince: vi
@@ -275,6 +279,8 @@ describe('validateSeriesAttempt', () => {
     const result = await module.validateSeriesAttempt(seriesJob, '2026-04-13T12:00:00.000Z');
 
     expect(result).toEqual({
+      detectedAudioLanguages: [],
+      detectedSubtitleLanguages: [],
       liveDownloadId: null,
       liveQueueId: 10,
       outcome: 'pending',
@@ -305,14 +311,14 @@ describe('validateSeriesAttempt', () => {
             },
             series: {
               id: 701,
-              title: 'Andor',
+              title: 'Fixture Series',
               year: 2022,
             },
             seriesId: 701,
             size: 4000,
             sizeleft: 2000,
             status: 'Downloading',
-            title: 'Andor.S01E01.1080p.WEB-DL-OLD',
+            title: 'Fixture Series.S01E01.1080p.WEB-DL-OLD',
           },
         ]),
         historySince: vi
@@ -332,6 +338,8 @@ describe('validateSeriesAttempt', () => {
     const result = await module.validateSeriesAttempt(seriesJob, '2026-04-13T12:00:00.000Z');
 
     expect(result).toEqual({
+      detectedAudioLanguages: [],
+      detectedSubtitleLanguages: [],
       liveDownloadId: null,
       liveQueueId: null,
       outcome: 'pending',
@@ -351,17 +359,17 @@ describe('validateSeriesAttempt', () => {
         {
           date: '2026-04-13T12:05:00.000Z',
           episodeFileId: 5001,
-          sourceTitle: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+          sourceTitle: 'Fixture Series.S01E01.1080p.WEB-DL-FLUX',
         },
         {
           date: '2026-04-13T12:06:00.000Z',
           episodeFileId: 5002,
-          sourceTitle: 'Andor.S01E02.1080p.WEB-DL-FLUX',
+          sourceTitle: 'Fixture Series.S01E02.1080p.WEB-DL-FLUX',
         },
         {
           date: '2026-04-13T12:07:00.000Z',
           episodeFileId: 5003,
-          sourceTitle: 'Andor.S01E03.1080p.WEB-DL-FLUX',
+          sourceTitle: 'Fixture Series.S01E03.1080p.WEB-DL-FLUX',
         },
       ]),
       fetchQueueRecords: vi.fn().mockResolvedValue([]),
@@ -383,6 +391,8 @@ describe('validateSeriesAttempt', () => {
     const result = await module.validateSeriesAttempt(seriesJob, '2026-04-13T12:00:00.000Z');
 
     expect(result).toEqual({
+      detectedAudioLanguages: [],
+      detectedSubtitleLanguages: [],
       liveDownloadId: null,
       liveQueueId: null,
       outcome: 'pending',
@@ -407,7 +417,7 @@ describe('validateSeriesAttempt', () => {
           {
             date: '2026-04-13T12:05:00.000Z',
             eventType: 'grabbed',
-            sourceTitle: 'Andor.S01E01-E02.1080p.WEB-DL-FLUX',
+            sourceTitle: 'Fixture Series.S01E01-E02.1080p.WEB-DL-FLUX',
           },
         ]),
         fetchQueueRecords: vi.fn().mockResolvedValue([
@@ -416,13 +426,13 @@ describe('validateSeriesAttempt', () => {
             downloadId: 'sonarr-download-blocked',
             seriesId: 701,
             seasonNumbers: [1],
-            title: 'Andor.S01E01-E02.1080p.WEB-DL-FLUX',
+            title: 'Fixture Series.S01E01-E02.1080p.WEB-DL-FLUX',
             status: 'completed',
             trackedDownloadStatus: 'warning',
             trackedDownloadState: 'importPending',
             statusMessages: [
               {
-                title: 'Andor.S01E01-E02.1080p.WEB-DL-FLUX',
+                title: 'Fixture Series.S01E01-E02.1080p.WEB-DL-FLUX',
                 messages: [
                   'Not an upgrade for existing episode file(s). Existing quality: Bluray-1080p. New Quality WEBDL-1080p.',
                 ],
@@ -430,7 +440,7 @@ describe('validateSeriesAttempt', () => {
             ],
             series: {
               id: 701,
-              title: 'Andor',
+              title: 'Fixture Series',
               year: 2022,
             },
           },
@@ -449,6 +459,8 @@ describe('validateSeriesAttempt', () => {
     const result = await module.validateSeriesAttempt(seriesJob, '2026-04-13T12:00:00.000Z');
 
     expect(result).toEqual({
+      detectedAudioLanguages: [],
+      detectedSubtitleLanguages: [],
       liveDownloadId: null,
       liveQueueId: null,
       outcome: 'failure',
@@ -480,13 +492,13 @@ describe('validateSeriesAttempt', () => {
               seasonNumber: 1,
               title: 'Kassa',
             },
-            title: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+            title: 'Fixture Series.S01E01.1080p.WEB-DL-FLUX',
             status: 'completed',
             trackedDownloadStatus: 'warning',
             trackedDownloadState: 'importPending',
             statusMessages: [
               {
-                title: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+                title: 'Fixture Series.S01E01.1080p.WEB-DL-FLUX',
                 messages: [
                   'Not an upgrade for existing episode file(s). Existing quality: Bluray-1080p. New Quality WEBDL-1080p.',
                 ],
@@ -494,7 +506,7 @@ describe('validateSeriesAttempt', () => {
             ],
             series: {
               id: 701,
-              title: 'Andor',
+              title: 'Fixture Series',
               year: 2022,
             },
             size: 1_000,
@@ -509,13 +521,13 @@ describe('validateSeriesAttempt', () => {
               seasonNumber: 1,
               title: 'That Would Be Me',
             },
-            title: 'Andor.S01E02.1080p.WEB-DL-FLUX',
+            title: 'Fixture Series.S01E02.1080p.WEB-DL-FLUX',
             status: 'downloading',
             trackedDownloadStatus: 'ok',
             trackedDownloadState: 'downloading',
             series: {
               id: 701,
-              title: 'Andor',
+              title: 'Fixture Series',
               year: 2022,
             },
             size: 1_000,
@@ -536,6 +548,8 @@ describe('validateSeriesAttempt', () => {
     const result = await module.validateSeriesAttempt(seriesJob, '2026-04-13T12:00:00.000Z');
 
     expect(result).toEqual({
+      detectedAudioLanguages: [],
+      detectedSubtitleLanguages: [],
       liveDownloadId: 'sonarr-download-blocked',
       liveQueueId: 13,
       outcome: 'pending',
@@ -566,13 +580,13 @@ describe('validateSeriesAttempt', () => {
               seasonNumber: 1,
               title: 'Kassa',
             },
-            title: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+            title: 'Fixture Series.S01E01.1080p.WEB-DL-FLUX',
             status: 'downloading',
             trackedDownloadStatus: 'ok',
             trackedDownloadState: 'downloading',
             series: {
               id: 701,
-              title: 'Andor',
+              title: 'Fixture Series',
               year: 2022,
             },
             size: 1_000,
@@ -587,13 +601,13 @@ describe('validateSeriesAttempt', () => {
               seasonNumber: 1,
               title: 'That Would Be Me',
             },
-            title: 'Andor.S01E02.1080p.WEB-DL-OLD',
+            title: 'Fixture Series.S01E02.1080p.WEB-DL-OLD',
             status: 'completed',
             trackedDownloadStatus: 'warning',
             trackedDownloadState: 'importPending',
             statusMessages: [
               {
-                title: 'Andor.S01E02.1080p.WEB-DL-OLD',
+                title: 'Fixture Series.S01E02.1080p.WEB-DL-OLD',
                 messages: [
                   'Not an upgrade for existing episode file(s). Existing quality: Bluray-1080p. New Quality WEBDL-1080p.',
                 ],
@@ -601,7 +615,7 @@ describe('validateSeriesAttempt', () => {
             ],
             series: {
               id: 701,
-              title: 'Andor',
+              title: 'Fixture Series',
               year: 2022,
             },
             size: 1_000,
@@ -629,6 +643,8 @@ describe('validateSeriesAttempt', () => {
     );
 
     expect(result).toEqual({
+      detectedAudioLanguages: [],
+      detectedSubtitleLanguages: [],
       liveDownloadId: 'sonarr-download-shared',
       liveQueueId: 13,
       outcome: 'pending',

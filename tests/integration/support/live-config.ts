@@ -9,6 +9,14 @@ export type ExactMovieTarget = {
 
 export type ExactSeriesTarget = ExactMovieTarget;
 
+type LiveWireInputs = {
+  duplicateMovie?: Partial<ExactMovieTarget>;
+  seriesCandidates?: string[];
+  trackedMovieCandidates?: string[];
+  untrackedMovie?: Partial<ExactMovieTarget>;
+  untrackedSeries?: Partial<ExactSeriesTarget>;
+};
+
 export type LiveIntegrationConfig = {
   allowDestructive: boolean;
   appPort: number;
@@ -18,8 +26,10 @@ export type LiveIntegrationConfig = {
   radarrApiKey: string;
   radarrUrl: string;
   sabLogPath: string;
+  seriesCandidates: string[];
   sonarrApiKey: string | null;
   sonarrUrl: string | null;
+  trackedMovieCandidates: string[];
   untrackedMovie: ExactMovieTarget;
   untrackedSeries: ExactSeriesTarget;
 };
@@ -69,6 +79,16 @@ function readEnvValue(name: string, envFileValues: Record<string, string>): stri
   return fromFile && fromFile.length > 0 ? fromFile : null;
 }
 
+function readLiveWireInputs(repoRoot: string): LiveWireInputs {
+  const inputPath = path.join(repoRoot, 'live-wire-inputs.local.json');
+  if (!existsSync(inputPath)) {
+    return {};
+  }
+
+  const raw = JSON.parse(readFileSync(inputPath, 'utf8')) as unknown;
+  return typeof raw === 'object' && raw !== null ? (raw as LiveWireInputs) : {};
+}
+
 function requiredEnvValue(name: string, envFileValues: Record<string, string>): string {
   const value = readEnvValue(name, envFileValues);
   if (!value) {
@@ -78,10 +98,56 @@ function requiredEnvValue(name: string, envFileValues: Record<string, string>): 
   return value;
 }
 
+function readInputString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function readInputYear(value: unknown): number | null {
+  const number = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10);
+  return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+function localInputMessage(name: string): string {
+  return `Missing live-wire input ${name}. Add it to live-wire-inputs.local.json before enabling destructive live tests.`;
+}
+
+function liveTarget(
+  name: string,
+  envTitleName: string,
+  envYearName: string,
+  localTarget: Partial<ExactMovieTarget> | undefined,
+  envFileValues: Record<string, string>,
+  allowDestructive: boolean,
+): ExactMovieTarget {
+  const title = readEnvValue(envTitleName, envFileValues) ?? readInputString(localTarget?.title);
+  const year = readInputYear(readEnvValue(envYearName, envFileValues) ?? localTarget?.year);
+
+  if (title && year !== null) {
+    return { title, year };
+  }
+
+  if (allowDestructive) {
+    throw new Error(localInputMessage(name));
+  }
+
+  return {
+    title: name,
+    year: 1,
+  };
+}
+
+function localStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.map(readInputString).filter((entry): entry is string => entry !== null)
+    : [];
+}
+
 export function loadLiveIntegrationConfig(): LiveIntegrationConfig {
   const repoRoot = process.cwd();
   const userHome = homedir();
   const envFileValues = parseEnvFile(path.join(repoRoot, '.env'));
+  const liveWireInputs = readLiveWireInputs(repoRoot);
+  const allowDestructive = readEnvValue('BOUNTARR_ALLOW_LIVE_INTEGRATION', envFileValues) === '1';
   const appPortValue = readEnvValue('BOUNTARR_INTEGRATION_PORT', envFileValues) ?? '4311';
   const appPort = Number.parseInt(appPortValue, 10);
 
@@ -89,17 +155,38 @@ export function loadLiveIntegrationConfig(): LiveIntegrationConfig {
     throw new Error(`Invalid BOUNTARR_INTEGRATION_PORT value: ${appPortValue}`);
   }
 
+  const duplicateMovie = liveTarget(
+    'duplicateMovie',
+    'BOUNTARR_DUPLICATE_MOVIE_TITLE',
+    'BOUNTARR_DUPLICATE_MOVIE_YEAR',
+    liveWireInputs.duplicateMovie,
+    envFileValues,
+    allowDestructive,
+  );
+  const untrackedMovie = liveTarget(
+    'untrackedMovie',
+    'BOUNTARR_LIVE_MOVIE_TITLE',
+    'BOUNTARR_LIVE_MOVIE_YEAR',
+    liveWireInputs.untrackedMovie,
+    envFileValues,
+    allowDestructive,
+  );
+  const untrackedSeries = liveTarget(
+    'untrackedSeries',
+    'BOUNTARR_LIVE_SERIES_TITLE',
+    'BOUNTARR_LIVE_SERIES_YEAR',
+    liveWireInputs.untrackedSeries,
+    envFileValues,
+    allowDestructive,
+  );
+  const seriesCandidates = localStringArray(liveWireInputs.seriesCandidates);
+  const trackedMovieCandidates = localStringArray(liveWireInputs.trackedMovieCandidates);
+
   return {
-    allowDestructive: readEnvValue('BOUNTARR_ALLOW_LIVE_INTEGRATION', envFileValues) === '1',
+    allowDestructive,
     appPort,
     baseUrl: `http://127.0.0.1:${appPort}`,
-    duplicateMovie: {
-      title: readEnvValue('BOUNTARR_DUPLICATE_MOVIE_TITLE', envFileValues) ?? 'The Matrix',
-      year: Number.parseInt(
-        readEnvValue('BOUNTARR_DUPLICATE_MOVIE_YEAR', envFileValues) ?? '1999',
-        10,
-      ),
-    },
+    duplicateMovie,
     radarrLogPath:
       readEnvValue('RADARR_LOG_PATH', envFileValues) ??
       'C:\\var\\tarr\\RADARR_DATA_ENG\\logs\\radarr.txt',
@@ -108,16 +195,16 @@ export function loadLiveIntegrationConfig(): LiveIntegrationConfig {
     sabLogPath:
       readEnvValue('SAB_LOG_PATH', envFileValues) ??
       path.join(userHome, 'AppData', 'Local', 'sabnzbd', 'logs', 'sabnzbd.log'),
+    seriesCandidates:
+      seriesCandidates.length > 0 ? [...new Set(seriesCandidates)] : [untrackedSeries.title],
     sonarrApiKey: readEnvValue('SONARR_API_KEY', envFileValues),
     sonarrUrl: readEnvValue('SONARR_URL', envFileValues)?.replace(/\/+$/, '') ?? null,
-    untrackedMovie: {
-      title: readEnvValue('BOUNTARR_LIVE_MOVIE_TITLE', envFileValues) ?? 'Dredd',
-      year: Number.parseInt(readEnvValue('BOUNTARR_LIVE_MOVIE_YEAR', envFileValues) ?? '2012', 10),
-    },
-    untrackedSeries: {
-      title: readEnvValue('BOUNTARR_LIVE_SERIES_TITLE', envFileValues) ?? 'Andor',
-      year: Number.parseInt(readEnvValue('BOUNTARR_LIVE_SERIES_YEAR', envFileValues) ?? '2022', 10),
-    },
+    trackedMovieCandidates:
+      trackedMovieCandidates.length > 0
+        ? [...new Set(trackedMovieCandidates)]
+        : [duplicateMovie.title],
+    untrackedMovie,
+    untrackedSeries,
   };
 }
 

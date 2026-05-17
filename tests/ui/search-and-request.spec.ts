@@ -35,7 +35,7 @@ test('desktop filter menu stays interactive above results', async ({ page }, tes
   test.skip(mobileProject(testInfo), 'desktop-only filter layering check');
 
   const api = await mockAppApi(page);
-  await openSearch(page, api, 'Matrix', 'The Matrix');
+  await openSearch(page, api, 'Fixture', 'Fixture Movie');
   const initialSearchCount = api.searchUrls.length;
 
   await openFilters(page);
@@ -54,7 +54,7 @@ test('mobile filter opens as a full-screen dialog', async ({ page }, testInfo) =
   test.skip(!mobileProject(testInfo), 'mobile-only fullscreen filter check');
 
   const api = await mockAppApi(page);
-  await openSearch(page, api, 'Matrix', 'The Matrix');
+  await openSearch(page, api, 'Fixture', 'Fixture Movie');
   const initialSearchCount = api.searchUrls.length;
 
   await openFilters(page);
@@ -79,7 +79,7 @@ test('mobile filter opens as a full-screen dialog', async ({ page }, testInfo) =
 
 test('selected filter options keep the active styling marker', async ({ page }) => {
   const api = await mockAppApi(page);
-  await openSearch(page, api, 'Matrix', 'The Matrix');
+  await openSearch(page, api, 'Fixture', 'Fixture Movie');
   await openFilters(page);
 
   const activeAvailability = page.getByRole('button', { name: 'Only Not Available' });
@@ -93,7 +93,7 @@ test('selected filter options keep the active styling marker', async ({ page }) 
 
 test('clear search control uses a desktop-safe hit area and clears the query', async ({ page }) => {
   const api = await mockAppApi(page);
-  await openSearch(page, api, 'Matrix', 'The Matrix');
+  await openSearch(page, api, 'Fixture', 'Fixture Movie');
 
   const clearButton = page.getByTestId('search-clear-button');
   await expect(clearButton).toBeVisible();
@@ -125,14 +125,14 @@ test('movie grab submits through the grab dialog and moves to queue view', async
             isRequested: true,
             status: 'Queued in Radarr',
           },
-          message: '"The Matrix" was added to Radarr.',
+          message: '"Fixture Movie" was added to Radarr.',
           releaseDecision: null,
           job: {
             id: 'job-movie-603',
             itemId: 'movie:603',
             arrItemId: 603,
             kind: 'movie',
-            title: 'The Matrix',
+            title: 'Fixture Movie',
             sourceService: 'radarr',
             status: 'queued',
             attempt: 1,
@@ -170,12 +170,12 @@ test('movie grab submits through the grab dialog and moves to queue view', async
         600,
       ),
   });
-  await openSearch(page, api, 'Matrix', 'The Matrix');
+  await openSearch(page, api, 'Fixture', 'Fixture Movie');
 
-  const matrixCard = page.locator('article').filter({
-    has: page.getByRole('heading', { name: 'The Matrix' }),
+  const FixtureCard = page.locator('article').filter({
+    has: page.getByRole('heading', { name: 'Fixture Movie' }),
   });
-  await matrixCard.getByRole('button', { name: 'Grab' }).click();
+  await FixtureCard.getByRole('button', { name: 'Grab' }).click();
 
   const dialog = page.getByRole('dialog', { name: 'Grab title' });
   await expect(dialog).toBeVisible();
@@ -199,7 +199,7 @@ test('movie grab submits through the grab dialog and moves to queue view', async
 
   await expect(page.getByRole('dialog', { name: 'Grab title' })).toHaveCount(0);
   const confirmation = page.getByRole('status');
-  await expect(confirmation).toContainText('"The Matrix" was added to Radarr.');
+  await expect(confirmation).toContainText('"Fixture Movie" was added to Radarr.');
   if (mobileProject(testInfo)) {
     const box = await confirmation.boundingBox();
     expect(box).not.toBeNull();
@@ -209,7 +209,7 @@ test('movie grab submits through the grab dialog and moves to queue view', async
   expect(api.grabBodies[0]?.seasonNumbers).toBeUndefined();
   await expect(page.getByRole('heading', { name: 'Grab Progress' })).toBeVisible();
   await expect(
-    page.getByText('Tracking "The Matrix" below so you can see what happens next.'),
+    page.getByText('Tracking "Fixture Movie" below so you can see what happens next.'),
   ).toBeVisible();
   await page.waitForTimeout(3_200);
   await expect(confirmation).toHaveCount(0);
@@ -230,14 +230,14 @@ test('movie grab confirmation ignores a rapid double submit', async ({ page }) =
             isRequested: true,
             status: 'Queued in Radarr',
           },
-          message: '"The Matrix" was added to Radarr.',
+          message: '"Fixture Movie" was added to Radarr.',
           releaseDecision: null,
           job: {
             id: 'job-movie-603',
             itemId: 'movie:603',
             arrItemId: 603,
             kind: 'movie',
-            title: 'The Matrix',
+            title: 'Fixture Movie',
             sourceService: 'radarr',
             status: 'queued',
             attempt: 1,
@@ -264,12 +264,12 @@ test('movie grab confirmation ignores a rapid double submit', async ({ page }) =
         600,
       ),
   });
-  await openSearch(page, api, 'Matrix', 'The Matrix');
+  await openSearch(page, api, 'Fixture', 'Fixture Movie');
 
-  const matrixCard = page.locator('article').filter({
-    has: page.getByRole('heading', { name: 'The Matrix' }),
+  const FixtureCard = page.locator('article').filter({
+    has: page.getByRole('heading', { name: 'Fixture Movie' }),
   });
-  await matrixCard.getByRole('button', { name: 'Grab' }).click();
+  await FixtureCard.getByRole('button', { name: 'Grab' }).click();
 
   const dialog = page.getByRole('dialog', { name: 'Grab title' });
   await expect(dialog).toBeVisible();
@@ -288,12 +288,12 @@ test('movie grab confirmation ignores a rapid double submit', async ({ page }) =
 
 test('series grab defaults to season 1 and allows changing seasons', async ({ page }) => {
   const api = await mockAppApi(page);
-  await openSearch(page, api, 'Andor', 'Andor');
+  await openSearch(page, api, 'Fixture Series', 'Fixture Series');
 
-  const andorCard = page.locator('article').filter({
-    has: page.getByRole('heading', { name: 'Andor' }),
+  const seriesCard = page.locator('article').filter({
+    has: page.getByRole('heading', { name: 'Fixture Series' }),
   });
-  await andorCard.getByRole('button', { name: 'Grab' }).click();
+  await seriesCard.getByRole('button', { name: 'Grab' }).click();
 
   const dialog = page.getByRole('dialog', { name: 'Grab title' });
   await expect(dialog).toBeVisible();
@@ -316,10 +316,10 @@ test('series grab defaults to season 1 and allows changing seasons', async ({ pa
     .toBe(1);
 
   await expect(page.getByRole('dialog', { name: 'Grab title' })).toHaveCount(0);
-  await expect(page.getByRole('status')).toContainText('"Andor" was added to Sonarr.');
+  await expect(page.getByRole('status')).toContainText('"Fixture Series" was added to Sonarr.');
   expect(api.grabBodies[0]?.seasonNumbers).toEqual([1, 2]);
   await expect(
-    page.getByText('Tracking "Andor" below so you can see what happens next.'),
+    page.getByText('Tracking "Fixture Series" below so you can see what happens next.'),
   ).toBeVisible();
 });
 
@@ -332,11 +332,11 @@ test('tracked series alternate grabs submit the tracked quality profile and sele
         id: 'series:83867',
         arrItemId: 83867,
         kind: 'series',
-        title: 'Andor',
+        title: 'Fixture Series',
         year: 2022,
         rating: 8.4,
-        poster: 'https://img.example/andor.jpg',
-        overview: 'Cassian Andor begins the path toward rebellion.',
+        poster: 'https://img.example/Fixture Series.jpg',
+        overview: 'A fixture series begins the path toward a test scenario.',
         status: 'Already in Arr',
         isExisting: true,
         isRequested: true,
@@ -353,7 +353,7 @@ test('tracked series alternate grabs submit the tracked quality profile and sele
         requestPayload: {
           id: 83867,
           tvdbId: 361753,
-          title: 'Andor',
+          title: 'Fixture Series',
           year: 2022,
           qualityProfileId: 2,
           seasons: [{ seasonNumber: 1 }, { seasonNumber: 2 }],
@@ -372,14 +372,15 @@ test('tracked series alternate grabs submit the tracked quality profile and sele
           isRequested: true,
           status: 'Already in Arr',
         },
-        message: '"Andor" is already tracked in Sonarr. Alternate-release acquisition started.',
+        message:
+          '"Fixture Series" is already tracked in Sonarr. Alternate-release acquisition started.',
         releaseDecision: null,
         job: {
           id: 'job-series-83867',
           itemId: 'series:83867',
           arrItemId: 83867,
           kind: 'series',
-          title: 'Andor',
+          title: 'Fixture Series',
           sourceService: 'sonarr',
           status: 'queued',
           attempt: 1,
@@ -406,12 +407,12 @@ test('tracked series alternate grabs submit the tracked quality profile and sele
         },
       }),
   });
-  await openSearch(page, api, 'Andor', 'Andor');
+  await openSearch(page, api, 'Fixture Series', 'Fixture Series');
 
-  const andorCard = page.locator('article').filter({
-    has: page.getByRole('heading', { name: 'Andor' }),
+  const seriesCard = page.locator('article').filter({
+    has: page.getByRole('heading', { name: 'Fixture Series' }),
   });
-  await andorCard.getByRole('button', { name: 'Grab Again' }).click();
+  await seriesCard.getByRole('button', { name: 'Grab Again' }).click();
 
   const dialog = page.getByRole('dialog', { name: 'Grab title' });
   await expect(dialog).toBeVisible();
@@ -437,7 +438,7 @@ test('tracked series alternate grabs submit the tracked quality profile and sele
   expect(api.grabBodies[0]?.qualityProfileId).toBe(2);
   expect(api.grabBodies[0]?.seasonNumbers).toEqual([2]);
   await expect(page.getByRole('status')).toContainText(
-    '"Andor" is already tracked in Sonarr. Alternate-release acquisition started.',
+    '"Fixture Series" is already tracked in Sonarr. Alternate-release acquisition started.',
   );
   await expect(page.getByRole('heading', { name: 'Grab Progress' })).toBeVisible();
 });
@@ -450,7 +451,7 @@ test('plex-available search results still use the normal grab dialog with confir
       {
         id: 'movie:603',
         kind: 'movie',
-        title: 'The Matrix',
+        title: 'Fixture Movie',
         year: 1999,
         rating: 8.7,
         poster: null,
@@ -472,12 +473,12 @@ test('plex-available search results still use the normal grab dialog with confir
       },
     ],
   });
-  await openSearch(page, api, 'Matrix', 'The Matrix');
+  await openSearch(page, api, 'Fixture', 'Fixture Movie');
 
-  const matrixCard = page.locator('article').filter({
-    has: page.getByRole('heading', { name: 'The Matrix' }),
+  const FixtureCard = page.locator('article').filter({
+    has: page.getByRole('heading', { name: 'Fixture Movie' }),
   });
-  await matrixCard.getByRole('button', { name: 'Grab' }).click();
+  await FixtureCard.getByRole('button', { name: 'Grab' }).click();
 
   const dialog = page.getByRole('dialog', { name: 'Grab title' });
   await expect(dialog).toBeVisible();
@@ -501,7 +502,7 @@ test('plex-only search results resolve into the normal grab dialog', async ({ pa
       {
         id: 'plex:movie:2105',
         kind: 'movie',
-        title: 'American Pie',
+        title: 'Fixture Pie',
         year: 1999,
         rating: 7.0,
         poster: null,
@@ -526,7 +527,7 @@ test('plex-only search results resolve into the normal grab dialog', async ({ pa
       id: 'movie:2105',
       arrItemId: null,
       kind: 'movie',
-      title: 'American Pie',
+      title: 'Fixture Pie',
       year: 1999,
       rating: 7.0,
       poster: null,
@@ -547,10 +548,10 @@ test('plex-only search results resolve into the normal grab dialog', async ({ pa
       requestPayload: { tmdbId: 2105 },
     }),
   });
-  await openSearch(page, api, 'American', 'American Pie');
+  await openSearch(page, api, 'American', 'Fixture Pie');
 
   const resultCard = page.locator('article').filter({
-    has: page.getByRole('heading', { name: 'American Pie' }),
+    has: page.getByRole('heading', { name: 'Fixture Pie' }),
   });
   await resultCard.getByRole('button', { name: 'Grab' }).click();
 
@@ -576,7 +577,7 @@ test('arr-tracked search results still use the normal grab dialog with alternate
         id: 'movie:603',
         arrItemId: 603,
         kind: 'movie',
-        title: 'The Matrix',
+        title: 'Fixture Movie',
         year: 1999,
         rating: 8.7,
         poster: null,
@@ -610,14 +611,14 @@ test('arr-tracked search results still use the normal grab dialog with alternate
           status: 'Already in Arr',
         },
         message:
-          '"The Matrix" is already tracked in Radarr. Alternate-release acquisition started.',
+          '"Fixture Movie" is already tracked in Radarr. Alternate-release acquisition started.',
         releaseDecision: null,
         job: {
           id: 'job-movie-603-alt',
           itemId: 'movie:603',
           arrItemId: 603,
           kind: 'movie',
-          title: 'The Matrix',
+          title: 'Fixture Movie',
           sourceService: 'radarr',
           status: 'queued',
           attempt: 1,
@@ -642,12 +643,12 @@ test('arr-tracked search results still use the normal grab dialog with alternate
         },
       }),
   });
-  await openSearch(page, api, 'Matrix', 'The Matrix');
+  await openSearch(page, api, 'Fixture', 'Fixture Movie');
 
-  const matrixCard = page.locator('article').filter({
-    has: page.getByRole('heading', { name: 'The Matrix' }),
+  const FixtureCard = page.locator('article').filter({
+    has: page.getByRole('heading', { name: 'Fixture Movie' }),
   });
-  await matrixCard.getByRole('button', { name: 'Grab Again' }).click();
+  await FixtureCard.getByRole('button', { name: 'Grab Again' }).click();
 
   const dialog = page.getByRole('dialog', { name: 'Grab title' });
   await expect(dialog).toBeVisible();
@@ -674,7 +675,7 @@ test('duplicate tracked movie submit still moves to queue and keeps alternate-re
     itemId: 'movie:603',
     arrItemId: 603,
     kind: 'movie',
-    title: 'The Matrix',
+    title: 'Fixture Movie',
     sourceService: 'radarr',
     status: 'queued',
     attempt: 1,
@@ -718,7 +719,7 @@ test('duplicate tracked movie submit still moves to queue and keeps alternate-re
         id: 'movie:603',
         arrItemId: 603,
         kind: 'movie',
-        title: 'The Matrix',
+        title: 'Fixture Movie',
         year: 1999,
         rating: 8.7,
         poster: null,
@@ -752,17 +753,17 @@ test('duplicate tracked movie submit still moves to queue and keeps alternate-re
           status: 'Already in Arr',
         },
         message:
-          '"The Matrix" is already tracked in Radarr. Alternate-release acquisition started.',
+          '"Fixture Movie" is already tracked in Radarr. Alternate-release acquisition started.',
         releaseDecision: null,
         job: duplicateJob,
       }),
   });
-  await openSearch(page, api, 'Matrix', 'The Matrix');
+  await openSearch(page, api, 'Fixture', 'Fixture Movie');
 
-  const matrixCard = page.locator('article').filter({
-    has: page.getByRole('heading', { name: 'The Matrix' }),
+  const FixtureCard = page.locator('article').filter({
+    has: page.getByRole('heading', { name: 'Fixture Movie' }),
   });
-  await matrixCard.getByRole('button', { name: 'Grab Again' }).click();
+  await FixtureCard.getByRole('button', { name: 'Grab Again' }).click();
 
   const dialog = page.getByRole('dialog', { name: 'Grab title' });
   await expect(dialog).toBeVisible();
@@ -780,9 +781,9 @@ test('duplicate tracked movie submit still moves to queue and keeps alternate-re
   await expect(page.getByRole('heading', { name: 'Grab Progress' })).toBeVisible();
   await expect(page.getByRole('status')).toContainText('Alternate-release acquisition started.');
   await expect(
-    page.getByText('Tracking "The Matrix" below so you can see what happens next.'),
+    page.getByText('Tracking "Fixture Movie" below so you can see what happens next.'),
   ).toBeVisible();
   await expect(
-    page.getByTestId('acquisition-job-card').filter({ hasText: 'The Matrix' }).first(),
+    page.getByTestId('acquisition-job-card').filter({ hasText: 'Fixture Movie' }).first(),
   ).toBeVisible();
 });

@@ -14,7 +14,7 @@ import type { MediaItem } from '$lib/shared/types';
 const movieItem: MediaItem = {
   id: 'movie:1',
   kind: 'movie',
-  title: 'The Matrix',
+  title: 'Fixture Movie',
   year: 1999,
   rating: 8.7,
   poster: null,
@@ -38,7 +38,7 @@ const movieItem: MediaItem = {
 const seriesItem: MediaItem = {
   id: 'series:80',
   kind: 'series',
-  title: 'Andor',
+  title: 'Fixture Series',
   year: 2022,
   rating: 8.5,
   poster: null,
@@ -76,10 +76,10 @@ describe('client api', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
 
-    const result = await fetchSearchResults(' matrix ', 'movie', 'not-available-only');
+    const result = await fetchSearchResults(' Fixture ', 'movie', 'not-available-only');
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/search?q=matrix&kind=movie&availability=not-available-only',
+      '/api/search?q=Fixture&kind=movie&availability=not-available-only',
       undefined,
     );
     expect(result).toEqual([movieItem]);
@@ -264,12 +264,12 @@ describe('client api', () => {
         itemId: 'movie:1',
         arrItemId: 603,
         kind: 'movie',
-        title: 'The Matrix',
+        title: 'Fixture Movie',
         sourceService: 'radarr',
         status: 'validating',
         attempt: 1,
         maxRetries: 3,
-        currentRelease: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+        currentRelease: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
         selectedReleaser: 'flux',
         preferredReleaser: 'flux',
         reasonCode: null,
@@ -295,7 +295,7 @@ describe('client api', () => {
           arrItemId: 603,
           canCancel: true,
           kind: 'movie',
-          title: 'The Matrix',
+          title: 'Fixture Movie',
           year: 1999,
           poster: null,
           sourceService: 'radarr',
@@ -306,7 +306,7 @@ describe('client api', () => {
           size: 1_000,
           sizeLeft: 500,
           queueId: 1,
-          detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          detail: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
           episodeIds: null,
           seasonNumbers: null,
         },
@@ -451,7 +451,7 @@ describe('client api', () => {
         arrItemId: 83867,
         canCancel: true,
         kind: 'series',
-        title: 'Andor',
+        title: 'Fixture Series',
         year: 2022,
         poster: null,
         sourceService: 'sonarr',
@@ -462,7 +462,7 @@ describe('client api', () => {
         size: 1_000,
         sizeLeft: 500,
         queueId: 23,
-        detail: 'Andor.S02E01.1080p.WEB-DL-FLUX',
+        detail: 'Fixture Series.S02E01.1080p.WEB-DL-FLUX',
         episodeIds: [201],
         seasonNumbers: [2],
       },
@@ -480,7 +480,7 @@ describe('client api', () => {
       queueId: 23,
       downloadId: 'download-shared',
       sourceService: 'sonarr',
-      title: 'Andor',
+      title: 'Fixture Series',
     });
   });
 
@@ -510,7 +510,7 @@ describe('client api', () => {
         arrItemId: 603,
         canCancel: true,
         kind: 'movie',
-        title: 'The Matrix',
+        title: 'Fixture Movie',
         year: 1999,
         poster: null,
         sourceService: 'radarr',
@@ -521,7 +521,7 @@ describe('client api', () => {
         size: 1_000,
         sizeLeft: 500,
         queueId: null,
-        detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+        detail: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
         episodeIds: null,
         seasonNumbers: null,
       },
@@ -539,7 +539,7 @@ describe('client api', () => {
       queueId: null,
       downloadId: 'download-shared',
       sourceService: 'radarr',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
     });
   });
 
@@ -556,7 +556,7 @@ describe('client api', () => {
           arrItemId: 727,
           canCancel: true,
           kind: 'movie',
-          title: 'Dangerous Animals',
+          title: 'Fixture Queue',
           year: 2025,
           poster: null,
           sourceService: 'radarr',
@@ -568,7 +568,7 @@ describe('client api', () => {
           size: 7_845_710_150,
           sizeLeft: 0,
           queueId: 1996958567,
-          detail: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+          detail: 'Fixture.Queue.2025.1080p.WEB.H264-KBOX',
           episodeIds: null,
           seasonNumbers: null,
         },
@@ -615,7 +615,7 @@ describe('client api', () => {
       id: 'movie:1',
       kind: 'movie',
       sourceService: 'radarr',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
     });
   });
 
@@ -642,7 +642,7 @@ describe('client api', () => {
       kind: 'movie',
       queueId: 7,
       sourceService: 'radarr',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
     });
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -655,7 +655,7 @@ describe('client api', () => {
       queueId: 7,
       downloadId: null,
       sourceService: 'radarr',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
     });
   });
 
@@ -683,7 +683,7 @@ describe('client api', () => {
       kind: 'movie',
       queueId: null,
       sourceService: 'radarr',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
     });
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -696,7 +696,7 @@ describe('client api', () => {
       queueId: null,
       downloadId: 'download-shared',
       sourceService: 'radarr',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
     });
   });
 });

@@ -248,12 +248,33 @@ export function acquisitionAttemptSummary(attempt: AcquisitionAttempt): string {
   if (reason) {
     parts.push(reason);
   }
+  if (attempt.detectedAudioLanguages?.length) {
+    parts.push(`audio ${attempt.detectedAudioLanguages.join(', ')}`);
+  }
+  if (attempt.detectedSubtitleLanguages?.length) {
+    parts.push(`subtitles ${attempt.detectedSubtitleLanguages.join(', ')}`);
+  }
 
   return parts.join(' · ');
 }
 
 export function acquisitionJourneySummary(job: AcquisitionJob): string {
   return `${mediaKindLabel(job.kind)} grab · ${acquisitionStatusLabel(job.status)}`;
+}
+
+export function acquisitionRecoverySummary(job: AcquisitionJob): string | null {
+  switch (job.recoveryStatus) {
+    case 'queued':
+      return 'Initial release restore queued';
+    case 'grabbing':
+      return 'Restoring initial release';
+    case 'restored':
+      return 'Initial release restored';
+    case 'failed':
+      return 'Initial release recovery failed';
+    default:
+      return null;
+  }
 }
 
 export function queueItemSummary(item: QueueItem): string {
@@ -370,7 +391,9 @@ export function grabFeedbackMessage(result: GrabResponse): string {
 
   const parts = [
     acquisitionStatusLabel(result.job.status),
-    `attempt ${result.job.attempt}/${result.job.maxRetries}`,
+    result.job.releaseCandidates?.length
+      ? `${result.job.releaseCandidates.filter((candidate) => candidate.status === 'failed').length} failed releases`
+      : `attempt ${result.job.attempt}`,
   ];
   const summary = acquisitionReasonSummary(result.job);
   if (summary) {

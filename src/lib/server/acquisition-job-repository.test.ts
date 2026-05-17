@@ -33,13 +33,13 @@ describe('AcquisitionJobRepository', () => {
         subtitleLanguage: 'English',
       },
       sourceService: 'radarr',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
     });
 
     jobs.upsertAttempt(job.id, {
       attempt: 1,
       reasonCode: 'validated',
-      releaseTitle: 'The.Matrix.1999.1080p.WEB-DL-Flux',
+      releaseTitle: 'Fixture.Movie.1999.1080p.WEB-DL-Flux',
       releaser: 'flux',
       startedAt: '2026-04-02T10:00:00.000Z',
       status: 'grabbing',
@@ -67,26 +67,26 @@ describe('AcquisitionJobRepository', () => {
           indexerId: 11,
           languages: ['English'],
           protocol: 'torrent',
-          reason: 'User selected The.Matrix.1999.1080p.WEB-DL-FLUX',
+          reason: 'User selected Fixture.Movie.1999.1080p.WEB-DL-FLUX',
           score: 500,
           size: 1_000,
-          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          title: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
         },
         selection: {
           decision: {
             accepted: 1,
             considered: 1,
-            reason: 'User selected The.Matrix.1999.1080p.WEB-DL-FLUX',
+            reason: 'User selected Fixture.Movie.1999.1080p.WEB-DL-FLUX',
             selected: {
               guid: 'guid-manual',
               indexer: 'Indexer',
               indexerId: 11,
               languages: ['English'],
               protocol: 'torrent',
-              reason: 'User selected The.Matrix.1999.1080p.WEB-DL-FLUX',
+              reason: 'User selected Fixture.Movie.1999.1080p.WEB-DL-FLUX',
               score: 500,
               size: 1_000,
-              title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+              title: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
             },
           },
           payload: {
@@ -194,7 +194,7 @@ describe('AcquisitionJobRepository', () => {
         subtitleLanguage: 'English',
       },
       sourceService: 'radarr',
-      title: 'Alien',
+      title: 'Fixture Space',
     });
 
     jobs.updateJob(job.id, { status: 'searching' });
@@ -206,7 +206,7 @@ describe('AcquisitionJobRepository', () => {
       status: 'completed',
     });
 
-    expect(jobs.findPreferredReleaser('movie', 'Alien')).toBe('framestor');
+    expect(jobs.findPreferredReleaser('movie', 'Fixture Space')).toBe('framestor');
   });
 
   it('deletes all jobs for an Arr item and cascades related rows', () => {
@@ -319,7 +319,7 @@ describe('AcquisitionJobRepository', () => {
       sourceService: 'sonarr',
       targetEpisodeIds: [101, 102],
       targetSeasonNumbers: [1],
-      title: 'Andor',
+      title: 'Fixture Series',
     });
     const second = jobs.createOrReuseActiveJob({
       arrItemId: 909,
@@ -334,7 +334,7 @@ describe('AcquisitionJobRepository', () => {
       sourceService: 'sonarr',
       targetEpisodeIds: [201],
       targetSeasonNumbers: [2],
-      title: 'Andor',
+      title: 'Fixture Series',
     });
 
     expect(first.created).toBe(true);
@@ -571,7 +571,7 @@ describe('AcquisitionEventRepository', () => {
         subtitleLanguage: 'English',
       },
       sourceService: 'sonarr',
-      title: 'Andor',
+      title: 'Fixture Series',
     });
 
     events.append(job.id, 'job.created', 'info', 'Created job', {

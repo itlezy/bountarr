@@ -1,19 +1,22 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as arrClient from '$lib/server/arr-client';
 import {
+  findReleaseSelection,
   findManualReleaseSelection,
   getManualReleaseResults,
   persistManualSelection,
+  submitSelectedRelease,
 } from '$lib/server/acquisition-selection';
 import { manualSelectionQueuedStatus } from '$lib/server/acquisition-domain';
 import type { PersistedAcquisitionJob } from '$lib/server/acquisition-domain';
+import type { PersistedAcquisitionReleaseCandidate } from '$lib/server/acquisition-domain';
 
 const job: PersistedAcquisitionJob = {
   id: 'job-1',
   itemId: 'movie:603',
   arrItemId: 603,
   kind: 'movie',
-  title: 'American History X',
+  title: 'Fixture History',
   sourceService: 'radarr',
   status: 'searching',
   attempt: 1,
@@ -47,11 +50,46 @@ const seriesJob: PersistedAcquisitionJob = {
   itemId: 'series:83867',
   arrItemId: 83867,
   kind: 'series',
-  title: 'Andor',
+  title: 'Fixture Series',
   sourceService: 'sonarr',
   targetSeasonNumbers: [1],
   targetEpisodeIds: [101, 102],
 };
+
+function failedReleaseCandidate(
+  overrides: Partial<PersistedAcquisitionReleaseCandidate>,
+): PersistedAcquisitionReleaseCandidate {
+  return {
+    acceptedByLocalRules: true,
+    arrRejected: false,
+    attempt: 1,
+    autoSelectable: true,
+    detectedAudioLanguages: ['English'],
+    detectedSubtitleLanguages: [],
+    failedAt: '2026-04-13T12:05:00.000Z',
+    failureReason: 'Imported file is missing the selected subtitle language.',
+    firstSeenAt: '2026-04-13T12:00:00.000Z',
+    guid: 'guid-failed',
+    identityReason: 'Structured movie title matched Fixture History',
+    identityStatus: 'exact-match',
+    indexer: 'Indexer',
+    indexerId: 11,
+    languages: ['English'],
+    lastSeenAt: '2026-04-13T12:00:00.000Z',
+    payload: {},
+    protocol: 'torrent',
+    reason: 'previous failed release',
+    rejectionReasons: [],
+    scopeReason: null,
+    scopeStatus: 'not-applicable',
+    score: 500,
+    selectionMode: 'direct',
+    size: 1_000,
+    status: 'failed',
+    title: 'Fixture.History.1998.1080p.WEB-DL-FAILED',
+    ...overrides,
+  };
+}
 
 const queuedManualSelectionInput = {
   manualResults: [
@@ -65,18 +103,18 @@ const queuedManualSelectionInput = {
       indexerId: 11,
       languages: ['English'],
       protocol: 'torrent',
-      reason: 'User selected American.History.X.1998.1080p.WEB-DL-NTb',
+      reason: 'User selected Fixture.History.1998.1080p.WEB-DL-NTb',
       scopeStatus: 'not-applicable',
       explanation: {
-        summary: 'User selected American.History.X.1998.1080p.WEB-DL-NTb',
-        matchReasons: ['Release title matched American History X'],
+        summary: 'User selected Fixture.History.1998.1080p.WEB-DL-NTb',
+        matchReasons: ['Release title matched Fixture History'],
         warningReasons: [],
         arrReasons: [],
       },
       score: 500,
       size: 1_000,
       status: 'selected',
-      title: 'American.History.X.1998.1080p.WEB-DL-NTb',
+      title: 'Fixture.History.1998.1080p.WEB-DL-NTb',
     },
   ],
   manualSelectionMode: 'direct',
@@ -89,26 +127,26 @@ const queuedManualSelectionInput = {
     indexerId: 11,
     languages: ['English'],
     protocol: 'torrent',
-    reason: 'User selected American.History.X.1998.1080p.WEB-DL-NTb',
+    reason: 'User selected Fixture.History.1998.1080p.WEB-DL-NTb',
     score: 500,
     size: 1_000,
-    title: 'American.History.X.1998.1080p.WEB-DL-NTb',
+    title: 'Fixture.History.1998.1080p.WEB-DL-NTb',
   },
   selection: {
     decision: {
       accepted: 3,
       considered: 7,
-      reason: 'User selected American.History.X.1998.1080p.WEB-DL-NTb',
+      reason: 'User selected Fixture.History.1998.1080p.WEB-DL-NTb',
       selected: {
         guid: 'guid-selected',
         indexer: 'Indexer',
         indexerId: 11,
         languages: ['English'],
         protocol: 'torrent',
-        reason: 'User selected American.History.X.1998.1080p.WEB-DL-NTb',
+        reason: 'User selected Fixture.History.1998.1080p.WEB-DL-NTb',
         score: 500,
         size: 1_000,
-        title: 'American.History.X.1998.1080p.WEB-DL-NTb',
+        title: 'Fixture.History.1998.1080p.WEB-DL-NTb',
       },
     },
     payload: {
@@ -126,7 +164,7 @@ function buildQueuedManualJob(
     queueStatus: manualSelectionQueuedStatus,
     queuedManualSelection: persistManualSelection(queuedManualSelectionInput),
     status: 'queued',
-    validationSummary: 'User selected American.History.X.1998.1080p.WEB-DL-NTb',
+    validationSummary: 'User selected Fixture.History.1998.1080p.WEB-DL-NTb',
     ...overrides,
   };
 }
@@ -142,8 +180,8 @@ describe('acquisition selection', () => {
         guid: 'guid-selected',
         indexerId: 11,
         indexer: 'Indexer',
-        title: 'American.History.X.1998.1080p.WEB-DL-NTb',
-        movieTitles: 'American History X',
+        title: 'Fixture.History.1998.1080p.WEB-DL-NTb',
+        movieTitles: 'Fixture History',
         mappedMovieId: 603,
         languages: [{ name: 'English' }],
         qualityWeight: 70,
@@ -157,8 +195,8 @@ describe('acquisition selection', () => {
         guid: 'guid-alt',
         indexerId: 12,
         indexer: 'Indexer',
-        title: 'American.History.X.1998.1080p.BluRay-ALT',
-        movieTitles: 'American History X',
+        title: 'Fixture.History.1998.1080p.BluRay-ALT',
+        movieTitles: 'Fixture History',
         mappedMovieId: 603,
         languages: [{ name: 'English' }],
         qualityWeight: 60,
@@ -175,18 +213,173 @@ describe('acquisition selection', () => {
 
     expect(arrFetch).toHaveBeenCalledTimes(1);
     expect(results.selectedGuid).toBe('guid-selected');
-    expect(results.summary).toBe('User selected American.History.X.1998.1080p.WEB-DL-NTb');
+    expect(results.summary).toBe('User selected Fixture.History.1998.1080p.WEB-DL-NTb');
     expect(results.releases).toHaveLength(2);
     expect(results.releases[0]).toMatchObject({
       canSelect: false,
       status: 'selected',
-      title: 'American.History.X.1998.1080p.WEB-DL-NTb',
+      title: 'Fixture.History.1998.1080p.WEB-DL-NTb',
     });
     expect(results.releases[1]).toMatchObject({
       canSelect: true,
       guid: 'guid-alt',
       status: 'accepted',
     });
+  });
+
+  it('passes validation failure context into automatic retry selection', async () => {
+    vi.spyOn(arrClient, 'arrFetch').mockResolvedValue([
+      {
+        guid: 'guid-no-sub-hint',
+        indexerId: 11,
+        indexer: 'Indexer',
+        title: 'Fixture.History.1998.1080p.WEB-DL.ENG-FAST',
+        movieTitles: 'Fixture History',
+        mappedMovieId: 603,
+        languages: [{ name: 'English' }],
+        qualityWeight: 160,
+        releaseWeight: 70,
+        customFormatScore: 0,
+        size: 1_000,
+        protocol: 'torrent',
+        downloadAllowed: true,
+      },
+      {
+        guid: 'guid-sub-hint',
+        indexerId: 12,
+        indexer: 'Indexer',
+        title: 'Fixture.History.1998.1080p.WEB-DL.ENG.SUBS-SURE',
+        movieTitles: 'Fixture History',
+        mappedMovieId: 603,
+        languages: [{ name: 'English' }],
+        qualityWeight: 70,
+        releaseWeight: 70,
+        customFormatScore: 0,
+        size: 900,
+        protocol: 'torrent',
+        downloadAllowed: true,
+      },
+    ]);
+
+    const result = await findReleaseSelection({
+      ...job,
+      attempt: 2,
+      failedGuids: ['guid-previous'],
+      reasonCode: 'missing-subs',
+      status: 'retrying',
+    });
+
+    expect(result.selectedGuid).toBe('guid-sub-hint');
+    expect(result.selection.decision.reason).toContain('retry prefers English subtitle title hint');
+  });
+
+  it('excludes the failed release even when retry scoring would otherwise prefer it', async () => {
+    vi.spyOn(arrClient, 'arrFetch').mockResolvedValue([
+      {
+        guid: 'guid-failed-best',
+        indexerId: 11,
+        indexer: 'Indexer',
+        title: 'Fixture.History.1998.1080p.WEB-DL.ENG.SUBS-FLUX',
+        movieTitles: 'Fixture History',
+        mappedMovieId: 603,
+        languages: [{ name: 'English' }],
+        subtitles: [{ language: { name: 'English' } }],
+        qualityWeight: 180,
+        releaseWeight: 70,
+        customFormatScore: 0,
+        size: 1_000,
+        protocol: 'torrent',
+        downloadAllowed: true,
+      },
+      {
+        guid: 'guid-next-best',
+        indexerId: 12,
+        indexer: 'Indexer',
+        title: 'Fixture.History.1998.1080p.WEB-DL.ENG.SUBS-SURE',
+        movieTitles: 'Fixture History',
+        mappedMovieId: 603,
+        languages: [{ name: 'English' }],
+        qualityWeight: 70,
+        releaseWeight: 70,
+        customFormatScore: 0,
+        size: 900,
+        protocol: 'torrent',
+        downloadAllowed: true,
+      },
+    ]);
+
+    const result = await findReleaseSelection({
+      ...job,
+      attempt: 2,
+      failedGuids: ['guid-failed-best'],
+      reasonCode: 'missing-subs',
+      status: 'retrying',
+    });
+
+    const failed = result.manualResults.find((release) => release.guid === 'guid-failed-best');
+
+    expect(result.selectedGuid).toBe('guid-next-best');
+    expect(failed?.status).toBe('previously-failed');
+  });
+
+  it('tracks failed release identity by guid and indexer instead of guid alone', async () => {
+    vi.spyOn(arrClient, 'arrFetch').mockResolvedValue([
+      {
+        guid: 'guid-shared',
+        indexerId: 11,
+        indexer: 'Indexer',
+        title: 'Fixture.History.1998.1080p.WEB-DL.ENG.SUBS-FAILED',
+        movieTitles: 'Fixture History',
+        mappedMovieId: 603,
+        languages: [{ name: 'English' }],
+        subtitles: [{ language: { name: 'English' } }],
+        qualityWeight: 180,
+        releaseWeight: 70,
+        customFormatScore: 0,
+        size: 1_000,
+        protocol: 'torrent',
+        downloadAllowed: true,
+      },
+      {
+        guid: 'guid-shared',
+        indexerId: 12,
+        indexer: 'Other Indexer',
+        title: 'Fixture.History.1998.1080p.WEB-DL.ENG.SUBS-ALTERNATE',
+        movieTitles: 'Fixture History',
+        mappedMovieId: 603,
+        languages: [{ name: 'English' }],
+        subtitles: [{ language: { name: 'English' } }],
+        qualityWeight: 90,
+        releaseWeight: 70,
+        customFormatScore: 0,
+        size: 900,
+        protocol: 'torrent',
+        downloadAllowed: true,
+      },
+    ]);
+
+    const result = await findReleaseSelection({
+      ...job,
+      attempt: 2,
+      reasonCode: 'missing-subs',
+      status: 'retrying',
+      releaseCandidates: [
+        failedReleaseCandidate({
+          guid: 'guid-shared',
+          indexerId: 11,
+        }),
+      ],
+    });
+
+    const failed = result.manualResults.find(
+      (release) => release.guid === 'guid-shared' && release.indexerId === 11,
+    );
+
+    expect(result.selectedRelease).toMatchObject({
+      guid: 'guid-shared',
+      indexerId: 12,
+    });
+    expect(failed?.status).toBe('previously-failed');
   });
 
   it('falls back to the persisted queued manual selection when the live Arr refresh fails', async () => {
@@ -204,13 +397,13 @@ describe('acquisition selection', () => {
 
     expect(arrFetch).toHaveBeenCalledTimes(1);
     expect(results.selectedGuid).toBe('guid-selected');
-    expect(results.summary).toBe('User selected American.History.X.1998.1080p.WEB-DL-NTb');
+    expect(results.summary).toBe('User selected Fixture.History.1998.1080p.WEB-DL-NTb');
     expect(results.releases).toEqual([
       expect.objectContaining({
         canSelect: false,
         guid: 'guid-selected',
         status: 'selected',
-        title: 'American.History.X.1998.1080p.WEB-DL-NTb',
+        title: 'Fixture.History.1998.1080p.WEB-DL-NTb',
       }),
     ]);
   });
@@ -228,8 +421,8 @@ describe('acquisition selection', () => {
         guid: 'guid-accepted',
         indexerId: 11,
         indexer: 'Indexer',
-        title: 'American.History.X.1998.1080p.BluRay-LEGi0N',
-        movieTitles: 'American History X',
+        title: 'Fixture.History.1998.1080p.BluRay-LEGi0N',
+        movieTitles: 'Fixture History',
         mappedMovieId: 603,
         languages: [{ name: 'English' }],
         qualityWeight: 50,
@@ -243,8 +436,8 @@ describe('acquisition selection', () => {
         guid: 'guid-rejected',
         indexerId: 12,
         indexer: 'Indexer',
-        title: 'American.History.X.1998.2160p.BluRay-BLOCKED',
-        movieTitles: 'American History X',
+        title: 'Fixture.History.1998.2160p.BluRay-BLOCKED',
+        movieTitles: 'Fixture History',
         mappedMovieId: 603,
         languages: [{ name: 'English' }],
         qualityWeight: 70,
@@ -275,8 +468,8 @@ describe('acquisition selection', () => {
         guid: 'guid-rejected',
         indexerId: 12,
         indexer: 'Indexer',
-        title: 'American.History.X.1998.2160p.BluRay-BLOCKED',
-        movieTitles: 'American History X',
+        title: 'Fixture.History.1998.2160p.BluRay-BLOCKED',
+        movieTitles: 'Fixture History',
         mappedMovieId: 603,
         languages: [{ name: 'English' }],
         qualityWeight: 70,
@@ -301,8 +494,8 @@ describe('acquisition selection', () => {
         guid: 'guid-rejected',
         indexerId: 12,
         indexer: 'Indexer',
-        title: 'American.History.X.1998.2160p.BluRay-BLOCKED',
-        movieTitles: 'American History X',
+        title: 'Fixture.History.1998.2160p.BluRay-BLOCKED',
+        movieTitles: 'Fixture History',
         mappedMovieId: 603,
         languages: [{ name: 'English' }],
         qualityWeight: 70,
@@ -326,7 +519,7 @@ describe('acquisition selection', () => {
     expect(result.selectedGuid).toBe('guid-rejected');
     expect(result.manualSelectionMode).toBe('override-arr-rejection');
     expect(result.selection.decision.reason).toContain(
-      'User overrode Arr rejection and selected American.History.X.1998.2160p.BluRay-BLOCKED:',
+      'User overrode Arr rejection and selected Fixture.History.1998.2160p.BluRay-BLOCKED:',
     );
     expect(result.manualResults[0]).toMatchObject({
       canSelect: false,
@@ -336,14 +529,61 @@ describe('acquisition selection', () => {
     });
   });
 
+  it('submits existing-file Arr rejections with override payload fields', async () => {
+    const arrFetch = vi.spyOn(arrClient, 'arrFetch').mockResolvedValue(undefined);
+
+    await submitSelectedRelease(job, {
+      decision: {
+        accepted: 1,
+        considered: 1,
+        reason: 'Picked Fixture.History.1998.1080p.WEB-DL-ALT',
+        selected: {
+          guid: 'guid-existing-file',
+          indexer: 'Indexer',
+          indexerId: 12,
+          languages: ['English'],
+          protocol: 'torrent',
+          reason:
+            'Arr marked this release as not downloadable; Not an upgrade for existing movie file.',
+          score: 500,
+          size: 1_000,
+          title: 'Fixture.History.1998.1080p.WEB-DL-ALT',
+        },
+      },
+      payload: {
+        downloadAllowed: false,
+        guid: 'guid-existing-file',
+        indexerId: 12,
+        mappedMovieId: 603,
+        quality: { quality: { id: 3, name: 'WEBDL-1080p' } },
+        rejected: true,
+        rejections: ['Not an upgrade for existing movie file.'],
+      },
+    });
+
+    expect(arrFetch).toHaveBeenCalledWith('radarr', '/api/v3/release', {
+      method: 'POST',
+      body: JSON.stringify({
+        downloadAllowed: false,
+        guid: 'guid-existing-file',
+        indexerId: 12,
+        mappedMovieId: 603,
+        quality: { quality: { id: 3, name: 'WEBDL-1080p' } },
+        rejected: true,
+        rejections: ['Not an upgrade for existing movie file.'],
+        shouldOverride: true,
+      }),
+    });
+  });
+
   it('marks scope-mismatched series releases as not selectable in manual results', async () => {
     vi.spyOn(arrClient, 'arrFetch').mockResolvedValue([
       {
         guid: 'guid-right-season',
         indexerId: 11,
         indexer: 'Indexer',
-        title: 'Andor.S01.1080p.WEB-DL-FLUX',
-        seriesTitles: 'Andor',
+        title: 'Fixture Series.S01.1080p.WEB-DL-FLUX',
+        seriesTitles: 'Fixture Series',
         mappedSeriesId: 83867,
         languages: [{ name: 'English' }],
         qualityWeight: 70,
@@ -357,8 +597,8 @@ describe('acquisition selection', () => {
         guid: 'guid-wrong-season',
         indexerId: 12,
         indexer: 'Indexer',
-        title: 'Andor.S02.1080p.WEB-DL-FLUX',
-        seriesTitles: 'Andor',
+        title: 'Fixture Series.S02.1080p.WEB-DL-FLUX',
+        seriesTitles: 'Fixture Series',
         mappedSeriesId: 83867,
         languages: [{ name: 'English' }],
         qualityWeight: 80,
@@ -390,8 +630,8 @@ describe('acquisition selection', () => {
         guid: 'guid-wrong-season',
         indexerId: 12,
         indexer: 'Indexer',
-        title: 'Andor.S02.1080p.WEB-DL-FLUX',
-        seriesTitles: 'Andor',
+        title: 'Fixture Series.S02.1080p.WEB-DL-FLUX',
+        seriesTitles: 'Fixture Series',
         mappedSeriesId: 83867,
         languages: [{ name: 'English' }],
         qualityWeight: 80,
@@ -414,8 +654,8 @@ describe('acquisition selection', () => {
         guid: 'guid-wrong-season',
         indexerId: 12,
         indexer: 'Indexer',
-        title: 'Andor.S02.1080p.WEB-DL-FLUX',
-        seriesTitles: 'Andor',
+        title: 'Fixture Series.S02.1080p.WEB-DL-FLUX',
+        seriesTitles: 'Fixture Series',
         mappedSeriesId: 83867,
         languages: [{ name: 'English' }],
         qualityWeight: 80,
@@ -440,8 +680,8 @@ describe('acquisition selection', () => {
         guid: 'guid-partial-target',
         indexerId: 13,
         indexer: 'Indexer',
-        title: 'Andor.S01E01.1080p.WEB-DL-FLUX',
-        seriesTitles: 'Andor',
+        title: 'Fixture Series.S01E01.1080p.WEB-DL-FLUX',
+        seriesTitles: 'Fixture Series',
         mappedSeriesId: 83867,
         episodeIds: [101],
         seasonNumbers: [1],
@@ -479,8 +719,8 @@ describe('acquisition selection', () => {
         guid: 'guid-partial-target',
         indexerId: 13,
         indexer: 'Indexer',
-        title: 'Andor.S01E01.1080p.WEB-DL-FLUX',
-        seriesTitles: 'Andor',
+        title: 'Fixture Series.S01E01.1080p.WEB-DL-FLUX',
+        seriesTitles: 'Fixture Series',
         mappedSeriesId: 83867,
         episodeIds: [101],
         seasonNumbers: [1],
@@ -505,8 +745,8 @@ describe('acquisition selection', () => {
         guid: 'guid-unknown-scope',
         indexerId: 14,
         indexer: 'Indexer',
-        title: 'Andor.1080p.WEB-DL-FLUX',
-        seriesTitles: 'Andor',
+        title: 'Fixture Series.1080p.WEB-DL-FLUX',
+        seriesTitles: 'Fixture Series',
         mappedSeriesId: 83867,
         languages: [{ name: 'English' }],
         qualityWeight: 90,

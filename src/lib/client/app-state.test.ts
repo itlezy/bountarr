@@ -109,7 +109,7 @@ const pageData: PageData = {
 const movieItem: MediaItem = {
   id: 'movie:603',
   kind: 'movie',
-  title: 'The Matrix',
+  title: 'Fixture Movie',
   year: 1999,
   rating: 8.7,
   poster: null,
@@ -133,7 +133,7 @@ const movieItem: MediaItem = {
 const seriesItem: MediaItem = {
   id: 'series:1399',
   kind: 'series',
-  title: 'Game of Thrones',
+  title: 'Fixture Realm',
   year: 2011,
   rating: 9.2,
   poster: null,
@@ -202,7 +202,7 @@ const manualReleaseResponse: ManualReleaseListResponse = {
   jobId: 'job-1',
   releases: [
     {
-      title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      title: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
       guid: 'guid-1',
       indexer: 'Indexer',
       indexerId: 11,
@@ -218,7 +218,7 @@ const manualReleaseResponse: ManualReleaseListResponse = {
       scopeStatus: 'not-applicable',
       explanation: {
         summary: 'matched proven releaser',
-        matchReasons: ['Structured movie title matched The Matrix'],
+        matchReasons: ['Structured movie title matched Fixture Movie'],
         warningReasons: [],
         arrReasons: [],
       },
@@ -446,7 +446,7 @@ describe('app state', () => {
         canAdd: false,
         status: 'Already in Arr',
       },
-      message: '"The Matrix" was added to Radarr. Acquisition started.',
+      message: '"Fixture Movie" was added to Radarr. Acquisition started.',
       releaseDecision: null,
       job: {
         id: 'job-1',
@@ -501,7 +501,7 @@ describe('app state', () => {
     expect(state.searchResults[0]?.inArr).toBe(true);
     expect(state.confirmAddItem).toBeNull();
     expect(state.guidedQueueJobId).toBe('job-1');
-    expect(state.queueGuidanceMessage).toContain('The Matrix');
+    expect(state.queueGuidanceMessage).toContain('Fixture Movie');
     expect(dependencies.api.fetchQueue).toHaveBeenCalledTimes(1);
     expect(dependencies.api.refreshDashboard).toHaveBeenCalledTimes(1);
   });
@@ -517,7 +517,7 @@ describe('app state', () => {
         canAdd: false,
         status: 'Already in Arr',
       },
-      message: '"The Matrix" was added to Radarr.',
+      message: '"Fixture Movie" was added to Radarr.',
       releaseDecision: null,
       job: {
         id: 'job-1',
@@ -590,7 +590,7 @@ describe('app state', () => {
         canAdd: false,
         status: 'Already in Arr',
       },
-      message: '"The Matrix" was added to Radarr.',
+      message: '"Fixture Movie" was added to Radarr.',
       releaseDecision: null,
       job: {
         id: 'job-1',
@@ -672,7 +672,7 @@ describe('app state', () => {
             canAdd: false,
             status: 'Already in Arr',
           },
-          message: '"Game of Thrones" was added to Sonarr.',
+          message: `"${seriesItem.title}" was added to Sonarr.`,
           releaseDecision: null,
           job: seriesJob,
         } satisfies GrabResponse),
@@ -750,7 +750,7 @@ describe('app state', () => {
         submitGrab: vi.fn().mockResolvedValue({
           existing: false,
           item: movieItem,
-          message: '"The Matrix" was grabbed.',
+          message: '"Fixture Movie" was grabbed.',
           releaseDecision: null,
           job: downloadOnlyJob,
         } satisfies GrabResponse),
@@ -807,7 +807,7 @@ describe('app state', () => {
         canAdd: false,
         status: 'Already in Arr',
       },
-      message: '"The Matrix" was added to Radarr.',
+      message: '"Fixture Movie" was added to Radarr.',
       releaseDecision: null,
       job: acquisitionJob,
     });
@@ -832,7 +832,7 @@ describe('app state', () => {
             canAdd: false,
             status: 'Already in Arr',
           },
-          message: '"The Matrix" was added to Radarr.',
+          message: '"Fixture Movie" was added to Radarr.',
           releaseDecision: null,
           job: null,
         } satisfies GrabResponse),
@@ -866,7 +866,7 @@ describe('app state', () => {
             canAdd: false,
             status: 'Already in Arr',
           },
-          message: '"The Matrix" was added to Radarr.',
+          message: '"Fixture Movie" was added to Radarr.',
           releaseDecision: null,
           job: null,
         } satisfies GrabResponse),
@@ -897,7 +897,7 @@ describe('app state', () => {
         canAdd: false,
         status: 'Already in Arr',
       },
-      message: '"The Matrix" was added to Radarr. Acquisition started.',
+      message: '"Fixture Movie" was added to Radarr. Acquisition started.',
       releaseDecision: null,
       job: null,
     };
@@ -1214,7 +1214,7 @@ describe('app state', () => {
       size: 4_000_000_000,
       sizeLeft: 1_200_000_000,
       queueId: 4,
-      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      detail: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
       episodeIds: null,
       seasonNumbers: null,
     };
@@ -1242,7 +1242,7 @@ describe('app state', () => {
       arrItemId: 603,
       canCancel: true,
       kind: 'movie',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
       year: 1999,
       poster: null,
       sourceService: 'radarr',
@@ -1253,7 +1253,7 @@ describe('app state', () => {
       size: 4_000_000_000,
       sizeLeft: 2_400_000_000,
       queueId: 9,
-      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      detail: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
       episodeIds: null,
       seasonNumbers: null,
     });
@@ -1281,7 +1281,7 @@ describe('app state', () => {
       arrItemId: 603,
       canCancel: true,
       kind: 'movie',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
       year: 1999,
       poster: null,
       sourceService: 'radarr',
@@ -1292,7 +1292,7 @@ describe('app state', () => {
       size: 4_000_000_000,
       sizeLeft: 1_200_000_000,
       queueId: 10,
-      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      detail: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
       episodeIds: null,
       seasonNumbers: null,
     });
@@ -1324,14 +1324,14 @@ describe('app state', () => {
   it('keeps the selected queue entry when the same download later gains a queue id', async () => {
     const managedEntry = buildManagedEntry(acquisitionJob);
     const stableExternalId =
-      'radarr:download:download-shared:radarr-603-the-matrix-1999-1080p-web-dl-flux-noscope';
+      'radarr:download:download-shared:radarr-603-the-Fixture-1999-1080p-web-dl-flux-noscope';
     const externalEntry = buildExternalEntry({
       id: stableExternalId,
       downloadId: 'download-shared',
       arrItemId: 603,
       canCancel: false,
       kind: 'movie',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
       year: 1999,
       poster: null,
       sourceService: 'radarr',
@@ -1342,7 +1342,7 @@ describe('app state', () => {
       size: 4_000_000_000,
       sizeLeft: 1_200_000_000,
       queueId: null,
-      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      detail: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
       episodeIds: null,
       seasonNumbers: null,
     });
@@ -1381,7 +1381,7 @@ describe('app state', () => {
       arrItemId: 603,
       canCancel: true,
       kind: 'movie',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
       year: 1999,
       poster: null,
       sourceService: 'radarr',
@@ -1392,7 +1392,7 @@ describe('app state', () => {
       size: 4_000_000_000,
       sizeLeft: 1_200_000_000,
       queueId: 10,
-      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      detail: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
       episodeIds: null,
       seasonNumbers: null,
     });
@@ -1400,7 +1400,7 @@ describe('app state', () => {
       ...externalEntry.item,
       id: 'radarr:queue:11',
       queueId: 11,
-      detail: 'The.Matrix.1999.1080p.BluRay-OLD',
+      detail: 'Fixture.Movie.1999.1080p.BluRay-OLD',
     });
     const fetchQueue = vi
       .fn()
@@ -1434,7 +1434,7 @@ describe('app state', () => {
         canAdd: false,
         status: 'Already in Arr',
       },
-      message: '"The Matrix" was added to Radarr. Acquisition started.',
+      message: '"Fixture Movie" was added to Radarr. Acquisition started.',
       releaseDecision: null,
       job: {
         ...acquisitionJob,
@@ -1490,7 +1490,7 @@ describe('app state', () => {
       arrItemId: 727,
       canCancel: true,
       kind: 'movie',
-      title: 'Dangerous Animals',
+      title: 'Fixture Queue',
       year: 2025,
       poster: null,
       sourceService: 'radarr',
@@ -1502,7 +1502,7 @@ describe('app state', () => {
       size: 7_845_710_150,
       sizeLeft: 0,
       queueId: 1996958567,
-      detail: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+      detail: 'Fixture.Queue.2025.1080p.WEB.H264-KBOX',
       episodeIds: null,
       seasonNumbers: null,
     });
@@ -1545,7 +1545,7 @@ describe('app state', () => {
     const staleResult: MediaItem = {
       ...movieItem,
       id: 'movie:40465',
-      title: 'Rambo: Last Blood',
+      title: 'Fixture Action: Last Case',
       year: 2019,
       canAdd: true,
       inPlex: false,
@@ -1554,7 +1554,7 @@ describe('app state', () => {
     const currentResult: MediaItem = {
       ...movieItem,
       id: 'movie:7555',
-      title: 'Rambo',
+      title: 'Fixture Action',
       year: 2008,
       canAdd: false,
       inPlex: true,
@@ -1573,8 +1573,8 @@ describe('app state', () => {
     });
     const state = new AppState(pageData, dependencies);
 
-    const staleRequest = state.loadSearch('Rambo: Last Blood 2019', 'movie', 'all');
-    const currentRequest = state.loadSearch('Rambo', 'movie', 'not-available-only');
+    const staleRequest = state.loadSearch('Fixture Action: Last Case 2019', 'movie', 'all');
+    const currentRequest = state.loadSearch('Fixture Action', 'movie', 'not-available-only');
 
     currentSearch.resolve([currentResult]);
     await currentRequest;
@@ -1603,7 +1603,7 @@ describe('app state', () => {
       {
         ...movieItem,
         id: 'movie:11',
-        title: 'Zulu',
+        title: 'Fixture Omega',
         year: 1964,
         rating: 7.7,
         requestPayload: { popularity: 12 },
@@ -1611,7 +1611,7 @@ describe('app state', () => {
       {
         ...movieItem,
         id: 'movie:12',
-        title: 'Alien',
+        title: 'Fixture Space',
         year: 1979,
         rating: 8.5,
         requestPayload: { popularity: 78 },
@@ -1619,7 +1619,7 @@ describe('app state', () => {
       {
         ...movieItem,
         id: 'movie:13',
-        title: 'Blade Runner',
+        title: 'Fixture Beta',
         year: 1982,
         rating: 8.1,
         requestPayload: { popularity: 50 },
@@ -1629,17 +1629,17 @@ describe('app state', () => {
     state.sortField = 'title';
     state.sortDirection = 'asc';
     expect(state.visibleSearchResults.map((item) => item.title)).toEqual([
-      'Alien',
-      'Blade Runner',
-      'Zulu',
+      'Fixture Beta',
+      'Fixture Omega',
+      'Fixture Space',
     ]);
 
     state.sortField = 'rating';
     state.sortDirection = 'desc';
     expect(state.visibleSearchResults.map((item) => item.title)).toEqual([
-      'Alien',
-      'Blade Runner',
-      'Zulu',
+      'Fixture Space',
+      'Fixture Beta',
+      'Fixture Omega',
     ]);
   });
 
@@ -1686,17 +1686,103 @@ describe('app state', () => {
     expect(state.auditVerifiedItems.map((item) => item.title)).toEqual(['Verified Item']);
   });
 
+  it('sorts download check groups by acquisition time newest first', () => {
+    const state = new AppState(
+      {
+        ...pageData,
+        recentPlex: [],
+      },
+      createDependencies(),
+    );
+    state.dashboard = {
+      ...dashboardResponse,
+      items: [
+        {
+          ...movieItem,
+          acquiredAt: null,
+          auditStatus: 'missing-language',
+          id: 'movie:missing-date-b',
+          title: 'Missing Date B',
+        },
+        {
+          ...movieItem,
+          acquiredAt: '2026-04-02T11:00:00.000Z',
+          auditStatus: 'missing-language',
+          id: 'movie:new-attention',
+          title: 'New Attention',
+        },
+        {
+          ...movieItem,
+          acquiredAt: '2026-04-02T10:00:00.000Z',
+          auditStatus: 'missing-language',
+          id: 'movie:old-attention',
+          title: 'Old Attention',
+        },
+        {
+          ...movieItem,
+          acquiredAt: null,
+          auditStatus: 'missing-language',
+          id: 'movie:missing-date-a',
+          title: 'Missing Date A',
+        },
+        {
+          ...movieItem,
+          acquiredAt: '2026-04-02T12:00:00.000Z',
+          auditStatus: 'pending',
+          id: 'movie:new-pending',
+          title: 'New Pending',
+        },
+        {
+          ...movieItem,
+          acquiredAt: '2026-04-02T09:00:00.000Z',
+          auditStatus: 'pending',
+          id: 'movie:old-pending',
+          title: 'Old Pending',
+        },
+        {
+          ...movieItem,
+          acquiredAt: '2026-04-02T13:00:00.000Z',
+          auditStatus: 'verified',
+          id: 'movie:new-verified',
+          title: 'New Verified',
+        },
+        {
+          ...movieItem,
+          acquiredAt: '2026-04-02T08:00:00.000Z',
+          auditStatus: 'verified',
+          id: 'movie:old-verified',
+          title: 'Old Verified',
+        },
+      ],
+    };
+
+    expect(state.auditAttentionItems.map((item) => item.title)).toEqual([
+      'New Attention',
+      'Old Attention',
+      'Missing Date A',
+      'Missing Date B',
+    ]);
+    expect(state.auditPendingItems.map((item) => item.title)).toEqual([
+      'New Pending',
+      'Old Pending',
+    ]);
+    expect(state.auditVerifiedItems.map((item) => item.title)).toEqual([
+      'New Verified',
+      'Old Verified',
+    ]);
+  });
+
   it('deletes Arr items after confirmation and refreshes search/dashboard state', async () => {
     const dependencies = createDependencies({
       api: {
         deleteArrItem: vi.fn().mockResolvedValue({
           itemId: movieItem.id,
-          message: 'The Matrix was deleted.',
+          message: 'Fixture Movie was deleted.',
         }),
       },
     });
     const state = new AppState(pageData, dependencies);
-    state.query = 'Matrix';
+    state.query = 'Fixture';
     state.kind = 'movie';
     state.availability = 'all';
 
@@ -1713,8 +1799,8 @@ describe('app state', () => {
     expect(dependencies.api.deleteArrItem).toHaveBeenCalledTimes(1);
     expect(dependencies.api.refreshDashboard).toHaveBeenCalledTimes(1);
     expect(dependencies.api.fetchQueue).toHaveBeenCalledTimes(1);
-    expect(dependencies.api.fetchSearchResults).toHaveBeenCalledWith('Matrix', 'movie', 'all');
-    expect(state.latestActionMessage).toBe('The Matrix was deleted.');
+    expect(dependencies.api.fetchSearchResults).toHaveBeenCalledWith('Fixture', 'movie', 'all');
+    expect(state.latestActionMessage).toBe('Fixture Movie was deleted.');
     expect(state.deletingItemId).toBeNull();
   });
 
@@ -1735,7 +1821,7 @@ describe('app state', () => {
         arrItemId: null,
         canCancel: false,
         kind: 'movie',
-        title: 'The Matrix',
+        title: 'Fixture Movie',
         year: 1999,
         poster: null,
         sourceService: 'radarr',
@@ -1749,7 +1835,7 @@ describe('app state', () => {
         size: 1_000,
         sizeLeft: 0,
         queueId: 1,
-        detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+        detail: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
         episodeIds: null,
         seasonNumbers: null,
       }),
@@ -1762,7 +1848,7 @@ describe('app state', () => {
       kind: 'movie',
       queueId: 1,
       sourceService: 'radarr',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
     });
   });
 
@@ -1784,7 +1870,7 @@ describe('app state', () => {
         arrItemId: null,
         canCancel: false,
         kind: 'movie',
-        title: 'The Matrix',
+        title: 'Fixture Movie',
         year: 1999,
         poster: null,
         sourceService: 'radarr',
@@ -1798,7 +1884,7 @@ describe('app state', () => {
         size: 1_000,
         sizeLeft: 0,
         queueId: null,
-        detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+        detail: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
         episodeIds: null,
         seasonNumbers: null,
       }),
@@ -1811,7 +1897,7 @@ describe('app state', () => {
       kind: 'movie',
       queueId: null,
       sourceService: 'radarr',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
     });
   });
 
@@ -1832,7 +1918,7 @@ describe('app state', () => {
         arrItemId: 727,
         canCancel: false,
         kind: 'movie',
-        title: 'Dangerous Animals',
+        title: 'Fixture Queue',
         year: 2025,
         poster: null,
         sourceService: 'radarr',
@@ -1846,7 +1932,7 @@ describe('app state', () => {
         size: 7_845_710_150,
         sizeLeft: 0,
         queueId: 1996958567,
-        detail: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+        detail: 'Fixture.Queue.2025.1080p.WEB.H264-KBOX',
         episodeIds: null,
         seasonNumbers: null,
       }),
@@ -1859,7 +1945,7 @@ describe('app state', () => {
       kind: 'movie',
       queueId: 1996958567,
       sourceService: 'radarr',
-      title: 'Dangerous Animals',
+      title: 'Fixture Queue',
     });
   });
 
@@ -1871,7 +1957,7 @@ describe('app state', () => {
       arrItemId: 603,
       canCancel: true,
       kind: 'movie',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
       year: 1999,
       poster: null,
       sourceService: 'radarr',
@@ -1882,7 +1968,7 @@ describe('app state', () => {
       size: 1_000_000_000,
       sizeLeft: 250_000_000,
       queueId: 7,
-      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      detail: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
       episodeIds: null,
       seasonNumbers: null,
     });
@@ -1920,7 +2006,7 @@ describe('app state', () => {
       arrItemId: 727,
       canCancel: false,
       kind: 'movie',
-      title: 'Dangerous Animals',
+      title: 'Fixture Queue',
       year: 2025,
       poster: null,
       sourceService: 'radarr',
@@ -1934,7 +2020,7 @@ describe('app state', () => {
       size: 7_845_710_150,
       sizeLeft: 0,
       queueId: 1996958567,
-      detail: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+      detail: 'Fixture.Queue.2025.1080p.WEB.H264-KBOX',
       episodeIds: null,
       seasonNumbers: null,
     });
@@ -1989,7 +2075,7 @@ describe('app state', () => {
     const state = new AppState(pageData, dependencies);
 
     state.mount();
-    state.query = 'Rambo';
+    state.query = 'Fixture Action';
     state.kind = 'movie';
     state.availability = 'all';
 
@@ -1997,7 +2083,7 @@ describe('app state', () => {
     await state.runSearchNow();
 
     expect(fetchSearchResults).toHaveBeenCalledTimes(1);
-    expect(fetchSearchResults).toHaveBeenCalledWith('Rambo', 'movie', 'all');
+    expect(fetchSearchResults).toHaveBeenCalledWith('Fixture Action', 'movie', 'all');
     expect(timerHandles.size).toBe(0);
   });
 });

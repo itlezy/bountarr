@@ -4,7 +4,7 @@ import type { AcquisitionJob, MediaItem } from '$lib/shared/types';
 const movieItem: MediaItem = {
   id: 'movie:603',
   kind: 'movie',
-  title: 'The Matrix',
+  title: 'Fixture Movie',
   year: 1999,
   rating: 8.7,
   poster: null,
@@ -33,7 +33,7 @@ const movieItem: MediaItem = {
 const seriesItem: MediaItem = {
   id: 'series:80',
   kind: 'series',
-  title: 'Andor',
+  title: 'Fixture Series',
   year: 2022,
   rating: 8.5,
   poster: null,
@@ -569,7 +569,7 @@ describe('acquisition grab service', () => {
           {
             id: 80,
             tvdbId: 393189,
-            title: 'Andor',
+            title: 'Fixture Series',
             year: 2022,
           },
         ];

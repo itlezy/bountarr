@@ -32,7 +32,7 @@ describe('normalizePlexRecentSectionResult', () => {
         ratingKey: 'episode-1',
         grandparentRatingKey: 'show-1',
         title: 'Chapter One',
-        grandparentTitle: 'Stranger Things',
+        grandparentTitle: 'Fixture Show',
         grandparentThumb: '/library/metadata/show-1/thumb/1',
         summary: 'Pilot',
         audienceRating: 7.7,
@@ -50,7 +50,7 @@ describe('normalizePlexRecentSectionResult', () => {
     expect(item).toMatchObject({
       id: 'plex:series:show-1',
       kind: 'series',
-      title: 'Stranger Things',
+      title: 'Fixture Show',
       rating: 7.7,
       detail: 'Chapter One',
       plexLibraries: ['TV Shows'],
@@ -68,7 +68,7 @@ describe('mergePlexResults', () => {
     const first: MediaItem = {
       id: 'plex:movie:1',
       kind: 'movie',
-      title: 'Dune',
+      title: 'Fixture Desert',
       year: 2021,
       rating: 8.3,
       poster: null,
@@ -113,7 +113,7 @@ describe('Arr/Plex merge keys', () => {
     const arrKeys = itemMatchKeys({
       id: 'movie:603',
       kind: 'movie',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
       year: 1999,
       rating: null,
       poster: null,
@@ -139,7 +139,7 @@ describe('Arr/Plex merge keys', () => {
     const plexKeys = itemMergeKeys({
       id: 'plex:movie:603',
       kind: 'movie',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
       year: 1999,
       rating: null,
       poster: null,

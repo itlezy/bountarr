@@ -59,15 +59,15 @@ describe('arr-client', () => {
       'radarr',
       '/api/v3/movie',
       {
-        body: JSON.stringify({ title: 'The Matrix' }),
+        body: JSON.stringify({ title: 'Fixture Movie' }),
         method: 'POST',
       },
-      { page: 2, term: 'matrix' },
+      { page: 2, term: 'Fixture' },
     );
 
     expect(result).toEqual({ ok: true });
     const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
-    expect(url.toString()).toBe('http://radarr.local/api/v3/movie?page=2&term=matrix');
+    expect(url.toString()).toBe('http://radarr.local/api/v3/movie?page=2&term=Fixture');
     const headers = new Headers(init.headers);
     expect(headers.get('Content-Type')).toBe('application/json');
     expect(headers.get('X-Api-Key')).toBe('radarr-key');

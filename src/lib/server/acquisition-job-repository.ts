@@ -4,13 +4,21 @@ import { queueCache } from '$lib/server/app-cache';
 import type {
   ArrService,
   PersistedAcquisitionJob,
+  PersistedAcquisitionReleaseCandidate,
   PersistedManualSelection,
 } from '$lib/server/acquisition-domain';
 import { canTransitionJobStatus, sortJobs } from '$lib/server/acquisition-domain';
 import type { AcquisitionReasonCode } from '$lib/shared/types';
 import { sanitizePreferredLanguage } from '$lib/shared/languages';
 import { asNumber, asPositiveNumber, asString } from '$lib/server/raw';
-import type { AcquisitionAttempt, ManualReleaseSelectionMode, MediaKind } from '$lib/shared/types';
+import type {
+  AcquisitionAttempt,
+  AcquisitionReleaseCandidateStatus,
+  ManualReleaseSelectionMode,
+  MediaKind,
+  ReleaseIdentityStatus,
+  ReleaseScopeStatus,
+} from '$lib/shared/types';
 
 type JobRow = {
   id: string;
@@ -35,6 +43,10 @@ type JobRow = {
   live_download_id: string | null;
   quality_profile_id: number | null;
   queued_manual_selection_json: string | null;
+  recovery_selection_json: string | null;
+  recovery_attempted: number | null;
+  recovery_status: PersistedAcquisitionJob['recoveryStatus'];
+  release_candidates_json: string | null;
   target_season_numbers_json: string | null;
   target_episode_ids_json: string | null;
   preferred_language: string;
@@ -49,6 +61,8 @@ type AttemptRow = {
   attempt: number;
   status: AcquisitionAttempt['status'];
   reason_code: AcquisitionReasonCode | null;
+  detected_audio_languages_json: string | null;
+  detected_subtitle_languages_json: string | null;
   release_title: string | null;
   releaser: string | null;
   reason: string | null;
@@ -102,6 +116,8 @@ export type UpdateAcquisitionJobPatch = Partial<
 
 export type UpsertAcquisitionAttemptInput = {
   attempt: number;
+  detectedAudioLanguages?: string[] | null;
+  detectedSubtitleLanguages?: string[] | null;
   finishedAt?: string | null;
   reasonCode?: AcquisitionReasonCode | null;
   reason?: string | null;
@@ -204,6 +220,124 @@ function serializeManualSelection(value: PersistedManualSelection | null): strin
   return value ? JSON.stringify(value) : null;
 }
 
+function releaseCandidateStatus(value: unknown): AcquisitionReleaseCandidateStatus {
+  return value === 'selected' || value === 'failed' ? value : 'available';
+}
+
+function releaseIdentityStatus(value: unknown): ReleaseIdentityStatus {
+  return value === 'weak-match' || value === 'mismatch' ? value : 'exact-match';
+}
+
+function releaseScopeStatus(value: unknown): ReleaseScopeStatus {
+  return value === 'exact' || value === 'partial' || value === 'mismatch' || value === 'unknown'
+    ? value
+    : 'not-applicable';
+}
+
+function parseStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === 'string')
+    : [];
+}
+
+function parseStringArrayJson(value: string | null | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+
+  try {
+    return parseStringArray(JSON.parse(value) as unknown);
+  } catch {
+    return [];
+  }
+}
+
+function serializeStringArray(value: string[] | null | undefined): string | null {
+  return value && value.length > 0 ? JSON.stringify([...new Set(value)]) : null;
+}
+
+function parseReleaseCandidatesJson(
+  value: string | null | undefined,
+): PersistedAcquisitionReleaseCandidate[] {
+  if (!value) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.flatMap((entry): PersistedAcquisitionReleaseCandidate[] => {
+      if (!entry || typeof entry !== 'object') {
+        return [];
+      }
+
+      const record = entry as Record<string, unknown>;
+      const guid = asString(record.guid);
+      const indexerId = asNumber(record.indexerId);
+      const title = asString(record.title);
+      const firstSeenAt = asString(record.firstSeenAt);
+      const lastSeenAt = asString(record.lastSeenAt);
+      const payload = record.payload;
+      if (!guid || indexerId === null || !title || !firstSeenAt || !lastSeenAt) {
+        return [];
+      }
+
+      return [
+        {
+          acceptedByLocalRules: record.acceptedByLocalRules === true,
+          arrRejected: record.arrRejected === true,
+          attempt: asNumber(record.attempt),
+          autoSelectable: record.autoSelectable === true,
+          detectedAudioLanguages: parseStringArray(record.detectedAudioLanguages),
+          detectedSubtitleLanguages: parseStringArray(record.detectedSubtitleLanguages),
+          failedAt: asString(record.failedAt),
+          failureReason: asString(record.failureReason),
+          firstSeenAt,
+          guid,
+          identityReason: asString(record.identityReason) ?? 'Release identity was not recorded',
+          identityStatus: releaseIdentityStatus(record.identityStatus),
+          indexer: asString(record.indexer) ?? 'Unknown',
+          indexerId,
+          languages: parseStringArray(record.languages),
+          lastSeenAt,
+          payload:
+            typeof payload === 'object' && payload !== null
+              ? (payload as Record<string, unknown>)
+              : {},
+          protocol: asString(record.protocol) ?? 'unknown',
+          reason: asString(record.reason) ?? 'Arr score only',
+          rejectionReasons: parseStringArray(record.rejectionReasons),
+          scopeReason: asString(record.scopeReason),
+          scopeStatus: releaseScopeStatus(record.scopeStatus),
+          score: asNumber(record.score) ?? 0,
+          selectionMode:
+            record.selectionMode === 'direct' || record.selectionMode === 'override-arr-rejection'
+              ? record.selectionMode
+              : null,
+          size: asNumber(record.size) ?? 0,
+          status: releaseCandidateStatus(record.status),
+          title,
+        },
+      ];
+    });
+  } catch {
+    return [];
+  }
+}
+
+function serializeReleaseCandidates(value: PersistedAcquisitionReleaseCandidate[]): string {
+  return JSON.stringify(value);
+}
+
+function normalizedReleaseCandidates(
+  value: PersistedAcquisitionReleaseCandidate[] | undefined,
+): PersistedAcquisitionReleaseCandidate[] {
+  return value ?? [];
+}
+
 function isUniqueConstraintError(error: unknown): boolean {
   return error instanceof Error && /UNIQUE constraint failed/iu.test(error.message);
 }
@@ -271,6 +405,8 @@ export class AcquisitionJobRepository {
         attempt: row.attempt,
         status: row.status,
         reasonCode: row.reason_code,
+        detectedAudioLanguages: parseStringArrayJson(row.detected_audio_languages_json),
+        detectedSubtitleLanguages: parseStringArrayJson(row.detected_subtitle_languages_json),
         releaseTitle: row.release_title,
         releaser: row.releaser,
         reason: row.reason,
@@ -315,6 +451,16 @@ export class AcquisitionJobRepository {
         liveDownloadId: asString(row.live_download_id),
         qualityProfileId: row.quality_profile_id,
         queuedManualSelection: parseManualSelectionJson(row.queued_manual_selection_json),
+        recoverySelection: parseManualSelectionJson(row.recovery_selection_json),
+        recoveryAttempted: row.recovery_attempted === 1,
+        recoveryStatus:
+          row.recovery_status === 'queued' ||
+          row.recovery_status === 'grabbing' ||
+          row.recovery_status === 'restored' ||
+          row.recovery_status === 'failed'
+            ? row.recovery_status
+            : null,
+        releaseCandidates: parseReleaseCandidatesJson(row.release_candidates_json),
         preferences: {
           preferredLanguage: sanitizePreferredLanguage(row.preferred_language),
           subtitleLanguage: sanitizePreferredLanguage(row.subtitle_language, 'Any'),
@@ -450,6 +596,10 @@ export class AcquisitionJobRepository {
       liveDownloadId: null,
       qualityProfileId: asPositiveNumber(input.qualityProfileId) ?? null,
       queuedManualSelection: null,
+      recoverySelection: null,
+      recoveryAttempted: false,
+      recoveryStatus: null,
+      releaseCandidates: [],
       preferences: input.preferences,
       targetSeasonNumbers: normalizeNumberArray(input.targetSeasonNumbers),
       targetEpisodeIds: normalizeNumberArray(input.targetEpisodeIds),
@@ -477,9 +627,10 @@ export class AcquisitionJobRepository {
               max_retries, current_release, selected_releaser, preferred_releaser,
               reason_code, failure_reason, validation_summary, auto_retrying, progress, queue_status,
               live_queue_id, live_download_id, quality_profile_id, queued_manual_selection_json,
+              recovery_selection_json, recovery_attempted, recovery_status, release_candidates_json,
               target_season_numbers_json, target_episode_ids_json,
               preferred_language, subtitle_language, started_at, updated_at, completed_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .run(
             job.id,
@@ -504,6 +655,10 @@ export class AcquisitionJobRepository {
             job.liveDownloadId ?? null,
             job.qualityProfileId ?? null,
             serializeManualSelection(job.queuedManualSelection),
+            serializeManualSelection(job.recoverySelection ?? null),
+            job.recoveryAttempted ? 1 : 0,
+            job.recoveryStatus ?? null,
+            serializeReleaseCandidates(normalizedReleaseCandidates(job.releaseCandidates)),
             serializeNumberArray(job.targetSeasonNumbers),
             serializeNumberArray(job.targetEpisodeIds),
             job.preferences.preferredLanguage,
@@ -574,7 +729,8 @@ export class AcquisitionJobRepository {
             status = ?, attempt = ?, current_release = ?, selected_releaser = ?,
             preferred_releaser = ?, reason_code = ?, failure_reason = ?, validation_summary = ?,
             auto_retrying = ?, progress = ?, queue_status = ?, live_queue_id = ?, live_download_id = ?,
-            queued_manual_selection_json = ?,
+            queued_manual_selection_json = ?, recovery_selection_json = ?, recovery_attempted = ?,
+            recovery_status = ?, release_candidates_json = ?,
             preferred_language = ?, subtitle_language = ?,
             updated_at = ?, completed_at = ?
            WHERE id = ?`,
@@ -594,6 +750,10 @@ export class AcquisitionJobRepository {
           next.liveQueueId ?? null,
           next.liveDownloadId ?? null,
           serializeManualSelection(next.queuedManualSelection),
+          serializeManualSelection(next.recoverySelection ?? null),
+          next.recoveryAttempted ? 1 : 0,
+          next.recoveryStatus ?? null,
+          serializeReleaseCandidates(normalizedReleaseCandidates(next.releaseCandidates)),
           next.preferences.preferredLanguage,
           next.preferences.subtitleLanguage,
           next.updatedAt,
@@ -658,7 +818,8 @@ export class AcquisitionJobRepository {
             status = ?, attempt = ?, current_release = ?, selected_releaser = ?,
             preferred_releaser = ?, reason_code = ?, failure_reason = ?, validation_summary = ?,
             auto_retrying = ?, progress = ?, queue_status = ?, live_queue_id = ?, live_download_id = ?,
-            queued_manual_selection_json = ?,
+            queued_manual_selection_json = ?, recovery_selection_json = ?, recovery_attempted = ?,
+            recovery_status = ?, release_candidates_json = ?,
             preferred_language = ?, subtitle_language = ?,
             updated_at = ?, completed_at = ?
            WHERE id = ?`,
@@ -678,6 +839,10 @@ export class AcquisitionJobRepository {
           next.liveQueueId ?? null,
           next.liveDownloadId ?? null,
           serializeManualSelection(next.queuedManualSelection),
+          serializeManualSelection(next.recoverySelection ?? null),
+          next.recoveryAttempted ? 1 : 0,
+          next.recoveryStatus ?? null,
+          serializeReleaseCandidates(normalizedReleaseCandidates(next.releaseCandidates)),
           next.preferences.preferredLanguage,
           next.preferences.subtitleLanguage,
           next.updatedAt,
@@ -709,6 +874,14 @@ export class AcquisitionJobRepository {
       attempt: input.attempt,
       status: input.status,
       reason_code: input.reasonCode ?? existing?.reason_code ?? null,
+      detected_audio_languages_json:
+        input.detectedAudioLanguages !== undefined
+          ? serializeStringArray(input.detectedAudioLanguages)
+          : (existing?.detected_audio_languages_json ?? null),
+      detected_subtitle_languages_json:
+        input.detectedSubtitleLanguages !== undefined
+          ? serializeStringArray(input.detectedSubtitleLanguages)
+          : (existing?.detected_subtitle_languages_json ?? null),
       release_title: input.releaseTitle ?? existing?.release_title ?? null,
       releaser: input.releaser ?? existing?.releaser ?? null,
       reason: input.reason ?? existing?.reason ?? null,
@@ -737,12 +910,15 @@ export class AcquisitionJobRepository {
       this.database
         .prepare(
           `INSERT INTO acquisition_attempts (
-            job_id, attempt, status, reason_code, release_title, releaser, reason, manual_selection_mode,
+            job_id, attempt, status, reason_code, detected_audio_languages_json,
+            detected_subtitle_languages_json, release_title, releaser, reason, manual_selection_mode,
             submitted_guid, submitted_indexer_id, submission_claimed_at, started_at, finished_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(job_id, attempt) DO UPDATE SET
             status = excluded.status,
             reason_code = excluded.reason_code,
+            detected_audio_languages_json = excluded.detected_audio_languages_json,
+            detected_subtitle_languages_json = excluded.detected_subtitle_languages_json,
             release_title = excluded.release_title,
             releaser = excluded.releaser,
             reason = excluded.reason,
@@ -758,6 +934,8 @@ export class AcquisitionJobRepository {
           row.attempt,
           row.status,
           row.reason_code,
+          row.detected_audio_languages_json,
+          row.detected_subtitle_languages_json,
           row.release_title,
           row.releaser,
           row.reason,
@@ -831,14 +1009,17 @@ export class AcquisitionJobRepository {
         this.database
           .prepare(
             `INSERT INTO acquisition_attempts (
-              job_id, attempt, status, reason_code, release_title, releaser, reason,
+              job_id, attempt, status, reason_code, detected_audio_languages_json,
+              detected_subtitle_languages_json, release_title, releaser, reason,
               submitted_guid, submitted_indexer_id, submission_claimed_at, started_at, finished_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .run(
             jobId,
             attempt,
             'searching',
+            null,
+            null,
             null,
             null,
             null,
@@ -868,6 +1049,7 @@ export class AcquisitionJobRepository {
         .prepare(
           `UPDATE acquisition_attempts
            SET status = ?, reason_code = NULL, release_title = NULL, releaser = NULL, reason = NULL,
+               detected_audio_languages_json = NULL, detected_subtitle_languages_json = NULL,
                submitted_guid = NULL, submitted_indexer_id = NULL, submission_claimed_at = NULL,
                started_at = ?, finished_at = NULL
            WHERE job_id = ? AND attempt = ?`,
@@ -893,6 +1075,94 @@ export class AcquisitionJobRepository {
     });
 
     this.invalidateQueueCache();
+  }
+
+  ensureRecoverySelection(
+    jobId: string,
+    recoverySelection: PersistedManualSelection,
+  ): PersistedAcquisitionJob | null {
+    const current = this.getJob(jobId);
+    if (!current) {
+      return null;
+    }
+
+    if (current.recoverySelection) {
+      return current;
+    }
+
+    return this.updateJob(jobId, { recoverySelection });
+  }
+
+  replaceReleaseCandidates(
+    jobId: string,
+    releaseCandidates: PersistedAcquisitionReleaseCandidate[],
+  ): PersistedAcquisitionJob | null {
+    if (!this.hasJob(jobId)) {
+      return null;
+    }
+
+    return this.updateJob(jobId, { releaseCandidates });
+  }
+
+  markReleaseCandidateSelected(
+    jobId: string,
+    guid: string,
+    indexerId: number,
+    attempt: number,
+  ): PersistedAcquisitionJob | null {
+    const current = this.getJob(jobId);
+    if (!current) {
+      return null;
+    }
+
+    const now = new Date().toISOString();
+    const releaseCandidates = normalizedReleaseCandidates(current.releaseCandidates).map(
+      (candidate) =>
+        candidate.guid === guid && candidate.indexerId === indexerId
+          ? {
+              ...candidate,
+              attempt,
+              lastSeenAt: now,
+              status: 'selected' as const,
+            }
+          : candidate,
+    );
+
+    return this.updateJob(jobId, { releaseCandidates });
+  }
+
+  markReleaseCandidateFailed(
+    jobId: string,
+    guid: string,
+    indexerId: number,
+    attempt: number,
+    failureReason: string,
+    detectedAudioLanguages: string[] = [],
+    detectedSubtitleLanguages: string[] = [],
+  ): PersistedAcquisitionJob | null {
+    const current = this.getJob(jobId);
+    if (!current) {
+      return null;
+    }
+
+    const now = new Date().toISOString();
+    const releaseCandidates = normalizedReleaseCandidates(current.releaseCandidates).map(
+      (candidate) =>
+        candidate.guid === guid && candidate.indexerId === indexerId
+          ? {
+              ...candidate,
+              attempt,
+              detectedAudioLanguages,
+              detectedSubtitleLanguages,
+              failedAt: now,
+              failureReason,
+              lastSeenAt: now,
+              status: 'failed' as const,
+            }
+          : candidate,
+    );
+
+    return this.updateJob(jobId, { releaseCandidates });
   }
 
   deleteJob(jobId: string): void {

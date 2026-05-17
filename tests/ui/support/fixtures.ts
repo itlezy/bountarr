@@ -124,11 +124,11 @@ export const emptyQueueResponse = {
 };
 
 export const acquisitionJobFixture: AcquisitionJob = {
-  id: 'job-series-andor',
+  id: 'job-series-Fixture Series',
   itemId: 'series:83867',
   arrItemId: 83867,
   kind: 'series',
-  title: 'Andor',
+  title: 'Fixture Series',
   sourceService: 'sonarr',
   status: 'searching',
   attempt: 2,
@@ -180,9 +180,9 @@ export const queueItemFixture: QueueItem = {
   arrItemId: 603,
   canCancel: true,
   kind: 'movie',
-  title: 'The Matrix',
+  title: 'Fixture Movie',
   year: 1999,
-  poster: 'https://img.example/matrix.jpg',
+  poster: 'https://img.example/Fixture.jpg',
   sourceService: 'radarr',
   status: 'Downloading',
   progress: 75,
@@ -191,7 +191,7 @@ export const queueItemFixture: QueueItem = {
   size: 1_000_000_000,
   sizeLeft: 250_000_000,
   queueId: 1,
-  detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+  detail: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
   episodeIds: null,
   seasonNumbers: null,
 };
@@ -221,6 +221,16 @@ function buildManagedLiveSummary(items: QueueItem[]): ManagedQueueLiveSummary | 
 
 function queueEntryId(item: QueueItem): string {
   return item.id;
+}
+
+function queueEntryAcquiredAt(entry: QueueEntry): number {
+  const value = entry.kind === 'managed' ? entry.job.startedAt : entry.item.addedAt;
+  const timestamp = value ? Date.parse(value) : 0;
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function queueEntryTitle(entry: QueueEntry): string {
+  return entry.kind === 'managed' ? entry.job.title : entry.item.title;
 }
 
 function buildQueueEntries(acquisitionJobs: AcquisitionJob[], items: QueueItem[]): QueueEntry[] {
@@ -270,7 +280,14 @@ function buildQueueEntries(acquisitionJobs: AcquisitionJob[], items: QueueItem[]
     item,
   }));
 
-  return [...managedEntries, ...externalEntries];
+  return [...managedEntries, ...externalEntries].sort((left, right) => {
+    const acquisitionSort = queueEntryAcquiredAt(right) - queueEntryAcquiredAt(left);
+    if (acquisitionSort !== 0) {
+      return acquisitionSort;
+    }
+
+    return queueEntryTitle(left).localeCompare(queueEntryTitle(right));
+  });
 }
 
 export function buildQueueResponse(
@@ -288,8 +305,8 @@ export function buildQueueResponse(
 export const queueWithActivityResponse = buildQueueResponse();
 
 export const manualReleaseFixture: ManualReleaseResult = {
-  title: 'Andor.S01.1080p.WEB-DL-FLUX',
-  guid: 'guid-andor-1',
+  title: 'Fixture Series.S01.1080p.WEB-DL-FLUX',
+  guid: 'guid-Fixture Series-1',
   indexer: 'Indexer One',
   indexerId: 11,
   protocol: 'torrent',
@@ -305,7 +322,7 @@ export const manualReleaseFixture: ManualReleaseResult = {
   explanation: {
     summary: 'Matched the preferred releaser.',
     matchReasons: [
-      'Structured series title matched Andor',
+      'Structured series title matched Fixture Series',
       'Release scope matches the targeted seasons exactly.',
     ],
     warningReasons: [],
@@ -315,8 +332,8 @@ export const manualReleaseFixture: ManualReleaseResult = {
 };
 
 export const manualReleaseRejectedFixture: ManualReleaseResult = {
-  title: 'Andor.S01.2160p.BluRay-BADGROUP',
-  guid: 'guid-andor-2',
+  title: 'Fixture Series.S01.2160p.BluRay-BADGROUP',
+  guid: 'guid-Fixture Series-2',
   indexer: 'Indexer Two',
   indexerId: 12,
   protocol: 'torrent',
@@ -331,7 +348,7 @@ export const manualReleaseRejectedFixture: ManualReleaseResult = {
   scopeStatus: 'not-applicable',
   explanation: {
     summary: 'Would otherwise be selectable, but Arr rejected this release.',
-    matchReasons: ['Structured series title matched Andor'],
+    matchReasons: ['Structured series title matched Fixture Series'],
     warningReasons: [],
     arrReasons: ['Custom format score too low'],
   },
@@ -358,10 +375,10 @@ export const movieSearchItem: MediaItem = {
   id: 'movie:603',
   arrItemId: null,
   kind: 'movie',
-  title: 'The Matrix',
+  title: 'Fixture Movie',
   year: 1999,
   rating: 8.7,
-  poster: 'https://img.example/matrix.jpg',
+  poster: 'https://img.example/Fixture.jpg',
   overview: 'A computer hacker learns about the true nature of reality.',
   status: 'Ready to add',
   isExisting: false,
@@ -379,7 +396,7 @@ export const movieSearchItem: MediaItem = {
   requestPayload: {
     id: 603,
     tmdbId: 603,
-    title: 'The Matrix',
+    title: 'Fixture Movie',
     year: 1999,
   },
 };
@@ -388,11 +405,11 @@ export const seriesSearchItem: MediaItem = {
   id: 'series:83867',
   arrItemId: null,
   kind: 'series',
-  title: 'Andor',
+  title: 'Fixture Series',
   year: 2022,
   rating: 8.4,
-  poster: 'https://img.example/andor.jpg',
-  overview: 'Cassian Andor begins the path toward rebellion.',
+  poster: 'https://img.example/Fixture Series.jpg',
+  overview: 'A fixture series begins the path toward a test scenario.',
   status: 'Ready to add',
   isExisting: false,
   isRequested: false,
@@ -409,7 +426,7 @@ export const seriesSearchItem: MediaItem = {
   requestPayload: {
     id: 83867,
     tvdbId: 361753,
-    title: 'Andor',
+    title: 'Fixture Series',
     year: 2022,
     seasons: [{ seasonNumber: 1 }, { seasonNumber: 2 }],
   },
@@ -417,11 +434,11 @@ export const seriesSearchItem: MediaItem = {
 
 export function searchResultsForQuery(query: string): unknown[] {
   const normalized = query.trim().toLowerCase();
-  if (normalized.includes('matrix')) {
+  if (normalized.includes('Fixture')) {
     return [movieSearchItem];
   }
 
-  if (normalized.includes('andor')) {
+  if (normalized.includes('Fixture Series')) {
     return [seriesSearchItem];
   }
 
@@ -543,6 +560,6 @@ export function buildSelectedJob(): AcquisitionJob {
 export function buildManualReleaseSelectionResponse(): AcquisitionJobActionResponse {
   return {
     job: buildSelectedJob(),
-    message: 'Manual release selected. Sending Andor to the downloader.',
+    message: 'Manual release selected. Sending Fixture Series to the downloader.',
   };
 }

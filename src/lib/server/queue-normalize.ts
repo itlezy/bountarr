@@ -192,6 +192,7 @@ export function normalizeQueueItem(service: ArrService, rawValue: unknown): Queu
     progress,
     timeLeft: asString(record.timeleft) ?? asString(record.timeLeft),
     estimatedCompletionTime: asString(record.estimatedCompletionTime),
+    addedAt: asString(record.added) ?? asString(record.addedAt) ?? asString(record.date) ?? null,
     size,
     sizeLeft,
     queueId,

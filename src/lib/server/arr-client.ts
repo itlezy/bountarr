@@ -112,8 +112,8 @@ export function acquisitionAttemptTimeoutMinutes(): number {
 }
 
 export function acquisitionMaxRetries(): number {
-  const value = Number(env.ACQUISITION_MAX_RETRIES ?? '4');
-  return Number.isFinite(value) && value > 0 ? value : 4;
+  const value = Number(env.ACQUISITION_MAX_RETRIES);
+  return Number.isFinite(value) && value > 0 ? value : 10_000;
 }
 
 export function acquisitionPollMs(): number {

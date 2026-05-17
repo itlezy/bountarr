@@ -15,12 +15,12 @@ describe('queue dashboard service', () => {
       itemId: 'movie:603',
       arrItemId: 603,
       kind: 'movie',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
       sourceService: 'radarr',
       status: 'validating',
       attempt: 1,
       maxRetries: 3,
-      currentRelease: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      currentRelease: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
       selectedReleaser: 'flux',
       preferredReleaser: 'flux',
       reasonCode: null,
@@ -45,7 +45,7 @@ describe('queue dashboard service', () => {
       arrItemId: 603,
       canCancel: true,
       kind: 'movie',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
       year: 1999,
       poster: null,
       sourceService: 'radarr',
@@ -56,7 +56,7 @@ describe('queue dashboard service', () => {
       size: 1_000_000_000,
       sizeLeft: 250_000_000,
       queueId: 1,
-      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      detail: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
       episodeIds: null,
       seasonNumbers: null,
     };
@@ -85,6 +85,76 @@ describe('queue dashboard service', () => {
     ]);
   });
 
+  it('sorts queue entries by acquisition time newest first', async () => {
+    const { composeQueueEntries } = await import('$lib/server/queue-dashboard-service');
+
+    const olderJob: AcquisitionJob = {
+      id: 'job-old',
+      itemId: 'movie:111',
+      arrItemId: 111,
+      kind: 'movie',
+      title: 'Older Managed Fixture',
+      sourceService: 'radarr',
+      status: 'validating',
+      attempt: 1,
+      maxRetries: 3,
+      currentRelease: null,
+      selectedReleaser: null,
+      preferredReleaser: null,
+      reasonCode: null,
+      failureReason: null,
+      validationSummary: null,
+      autoRetrying: false,
+      progress: 90,
+      queueStatus: 'Downloading',
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      targetSeasonNumbers: null,
+      targetEpisodeIds: null,
+      startedAt: '2026-04-13T12:00:00.000Z',
+      updatedAt: '2026-04-13T12:20:00.000Z',
+      completedAt: null,
+      attempts: [],
+    };
+    const newerJob: AcquisitionJob = {
+      ...olderJob,
+      id: 'job-new',
+      itemId: 'movie:222',
+      arrItemId: 222,
+      title: 'Newer Managed Fixture',
+      progress: 10,
+      startedAt: '2026-04-13T12:10:00.000Z',
+      updatedAt: '2026-04-13T12:10:00.000Z',
+    };
+    const externalItem: QueueItem = {
+      id: 'radarr:queue:333',
+      arrItemId: 333,
+      canCancel: true,
+      kind: 'movie',
+      title: 'Middle External Fixture',
+      year: 2026,
+      poster: null,
+      sourceService: 'radarr',
+      status: 'Downloading',
+      progress: 50,
+      timeLeft: '10m',
+      estimatedCompletionTime: '2026-04-13T12:15:00.000Z',
+      addedAt: '2026-04-13T12:05:00.000Z',
+      size: 1_000,
+      sizeLeft: 500,
+      queueId: 333,
+      detail: null,
+      episodeIds: null,
+      seasonNumbers: null,
+    };
+
+    const entries = composeQueueEntries([olderJob, newerJob], [externalItem]);
+
+    expect(entries.map((entry) => entry.id)).toEqual(['job-new', externalItem.id, 'job-old']);
+  });
+
   it('keeps stale sibling movie queue rows external after the current re-grab row is claimed', async () => {
     const { composeQueueEntries } = await import('$lib/server/queue-dashboard-service');
 
@@ -93,12 +163,12 @@ describe('queue dashboard service', () => {
       itemId: 'movie:603',
       arrItemId: 603,
       kind: 'movie',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
       sourceService: 'radarr',
       status: 'validating',
       attempt: 2,
       maxRetries: 4,
-      currentRelease: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      currentRelease: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
       liveQueueId: 22,
       liveDownloadId: 'radarr-download-2',
       selectedReleaser: 'flux',
@@ -126,7 +196,7 @@ describe('queue dashboard service', () => {
       arrItemId: 603,
       canCancel: true,
       kind: 'movie',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
       year: 1999,
       poster: null,
       sourceService: 'radarr',
@@ -137,7 +207,7 @@ describe('queue dashboard service', () => {
       size: 4_000_000_000,
       sizeLeft: 2_600_000_000,
       queueId: 21,
-      detail: 'The.Matrix.1999.1080p.BluRay-OLD',
+      detail: 'Fixture.Movie.1999.1080p.BluRay-OLD',
       episodeIds: null,
       seasonNumbers: null,
     };
@@ -150,7 +220,7 @@ describe('queue dashboard service', () => {
       estimatedCompletionTime: '2026-04-13T12:08:00.000Z',
       sizeLeft: 1_120_000_000,
       queueId: 22,
-      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      detail: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
     };
 
     const entries = composeQueueEntries([acquisitionJob], [staleQueueItem, currentQueueItem]);
@@ -177,12 +247,12 @@ describe('queue dashboard service', () => {
       itemId: 'movie:603',
       arrItemId: 603,
       kind: 'movie',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
       sourceService: 'radarr',
       status: 'validating',
       attempt: 1,
       maxRetries: 4,
-      currentRelease: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      currentRelease: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
       liveQueueId: null,
       liveDownloadId: null,
       selectedReleaser: 'flux',
@@ -210,7 +280,7 @@ describe('queue dashboard service', () => {
       arrItemId: 603,
       canCancel: true,
       kind: 'movie',
-      title: 'The.Matrix.1999.1080p.BluRay-OLD',
+      title: 'Fixture.Movie.1999.1080p.BluRay-OLD',
       year: 1999,
       poster: null,
       sourceService: 'radarr',
@@ -256,12 +326,12 @@ describe('queue dashboard service', () => {
       itemId: 'movie:727',
       arrItemId: 727,
       kind: 'movie',
-      title: 'Dangerous Animals',
+      title: 'Fixture Queue',
       sourceService: 'radarr',
       status: 'failed',
       attempt: 2,
       maxRetries: 4,
-      currentRelease: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+      currentRelease: 'Fixture.Queue.2025.1080p.WEB.H264-KBOX',
       liveQueueId: null,
       liveDownloadId: null,
       selectedReleaser: 'kbox',
@@ -290,7 +360,7 @@ describe('queue dashboard service', () => {
       arrItemId: 727,
       canCancel: true,
       kind: 'movie',
-      title: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+      title: 'Fixture.Queue.2025.1080p.WEB.H264-KBOX',
       year: 2025,
       poster: null,
       sourceService: 'radarr',
@@ -304,7 +374,7 @@ describe('queue dashboard service', () => {
       size: 7_845_710_150,
       sizeLeft: 0,
       queueId: 1996958567,
-      detail: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+      detail: 'Fixture.Queue.2025.1080p.WEB.H264-KBOX',
       episodeIds: null,
       seasonNumbers: null,
     };
@@ -326,8 +396,8 @@ describe('queue dashboard service', () => {
         id: staleQueueItem.id,
         item: {
           ...staleQueueItem,
-          title: 'Dangerous Animals',
-          detail: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+          title: 'Fixture Queue',
+          detail: 'Fixture.Queue.2025.1080p.WEB.H264-KBOX',
         },
         canCancel: false,
         canRemove: true,
@@ -344,7 +414,7 @@ describe('queue dashboard service', () => {
       arrItemId: 603,
       canCancel: true,
       kind: 'movie',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
       year: 1999,
       poster: null,
       sourceService: 'radarr',
@@ -358,7 +428,7 @@ describe('queue dashboard service', () => {
       size: 1_000_000_000,
       sizeLeft: 0,
       queueId: 44,
-      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      detail: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
       episodeIds: null,
       seasonNumbers: null,
     };
@@ -383,7 +453,7 @@ describe('queue dashboard service', () => {
       arrItemId: 603,
       canCancel: true,
       kind: 'movie',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
       year: 1999,
       poster: null,
       sourceService: 'radarr',
@@ -397,7 +467,7 @@ describe('queue dashboard service', () => {
       size: 1_000_000_000,
       sizeLeft: 0,
       queueId: 45,
-      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      detail: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
       episodeIds: null,
       seasonNumbers: null,
     };
@@ -422,7 +492,7 @@ describe('queue dashboard service', () => {
       arrItemId: 603,
       canCancel: false,
       kind: 'movie',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
       year: 1999,
       poster: null,
       sourceService: 'radarr',
@@ -433,7 +503,7 @@ describe('queue dashboard service', () => {
       size: 1_000_000_000,
       sizeLeft: 500_000_000,
       queueId: null,
-      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      detail: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
       episodeIds: null,
       seasonNumbers: null,
     };
@@ -457,12 +527,12 @@ describe('queue dashboard service', () => {
       itemId: 'movie:603',
       arrItemId: 603,
       kind: 'movie',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
       sourceService: 'radarr',
       status: 'grabbing',
       attempt: 1,
       maxRetries: 3,
-      currentRelease: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      currentRelease: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
       selectedReleaser: 'flux',
       preferredReleaser: 'flux',
       reasonCode: null,
@@ -490,7 +560,7 @@ describe('queue dashboard service', () => {
       arrItemId: 603,
       canCancel: false,
       kind: 'movie',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
       year: 1999,
       poster: null,
       sourceService: 'radarr',
@@ -501,7 +571,7 @@ describe('queue dashboard service', () => {
       size: 1_000_000_000,
       sizeLeft: 500_000_000,
       queueId: null,
-      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      detail: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
       episodeIds: null,
       seasonNumbers: null,
     };
@@ -526,7 +596,7 @@ describe('queue dashboard service', () => {
       arrItemId: 603,
       canCancel: false,
       kind: 'movie',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
       year: 1999,
       poster: null,
       sourceService: 'radarr',
@@ -540,7 +610,7 @@ describe('queue dashboard service', () => {
       size: 1_000_000_000,
       sizeLeft: 0,
       queueId: null,
-      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      detail: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
       episodeIds: null,
       seasonNumbers: null,
     };
@@ -560,12 +630,12 @@ describe('queue dashboard service', () => {
     const { composeQueueEntries } = await import('$lib/server/queue-dashboard-service');
 
     const firstQueueItem: QueueItem = {
-      id: 'sonarr:download:download-shared:sonarr-83867-andor-s01e01-1080p-web-dl-flux-episodes-101',
+      id: 'sonarr:download:download-shared:sonarr-83867-Fixture Series-s01e01-1080p-web-dl-flux-episodes-101',
       downloadId: 'download-shared',
       arrItemId: 83867,
       canCancel: false,
       kind: 'series',
-      title: 'Andor',
+      title: 'Fixture Series',
       year: 2022,
       poster: null,
       sourceService: 'sonarr',
@@ -576,14 +646,14 @@ describe('queue dashboard service', () => {
       size: 2_000_000_000,
       sizeLeft: 1_500_000_000,
       queueId: null,
-      detail: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+      detail: 'Fixture Series.S01E01.1080p.WEB-DL-FLUX',
       episodeIds: [101],
       seasonNumbers: [1],
     };
     const secondQueueItem: QueueItem = {
       ...firstQueueItem,
-      id: 'sonarr:download:download-shared:sonarr-83867-andor-s01e02-1080p-web-dl-flux-episodes-102',
-      detail: 'Andor.S01E02.1080p.WEB-DL-FLUX',
+      id: 'sonarr:download:download-shared:sonarr-83867-Fixture Series-s01e02-1080p-web-dl-flux-episodes-102',
+      detail: 'Fixture Series.S01E02.1080p.WEB-DL-FLUX',
       episodeIds: [102],
     };
 
@@ -614,7 +684,7 @@ describe('queue dashboard service', () => {
       arrItemId: 603,
       canCancel: true,
       kind: 'movie',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
       year: 1999,
       poster: null,
       sourceService: 'radarr',
@@ -628,7 +698,7 @@ describe('queue dashboard service', () => {
       size: 1_000_000_000,
       sizeLeft: 0,
       queueId: 46,
-      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      detail: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
       episodeIds: null,
       seasonNumbers: null,
     };
@@ -652,7 +722,7 @@ describe('queue dashboard service', () => {
       itemId: 'series:83867',
       arrItemId: 83867,
       kind: 'series',
-      title: 'Andor',
+      title: 'Fixture Series',
       sourceService: 'sonarr',
       status: 'searching',
       attempt: 1,
@@ -682,7 +752,7 @@ describe('queue dashboard service', () => {
       arrItemId: 83867,
       canCancel: true,
       kind: 'series',
-      title: 'Andor',
+      title: 'Fixture Series',
       year: 2022,
       poster: null,
       sourceService: 'sonarr',
@@ -693,7 +763,7 @@ describe('queue dashboard service', () => {
       size: 4_000_000_000,
       sizeLeft: 1_200_000_000,
       queueId: 2,
-      detail: 'Andor.S01.1080p.WEB-DL-FLUX',
+      detail: 'Fixture Series.S01.1080p.WEB-DL-FLUX',
       episodeIds: [101, 102],
       seasonNumbers: [1],
     };
@@ -702,7 +772,7 @@ describe('queue dashboard service', () => {
       arrItemId: 603,
       canCancel: true,
       kind: 'movie',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
       year: 1999,
       poster: null,
       sourceService: 'radarr',
@@ -713,7 +783,7 @@ describe('queue dashboard service', () => {
       size: 1_000_000_000,
       sizeLeft: 250_000_000,
       queueId: 1,
-      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      detail: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
       episodeIds: null,
       seasonNumbers: null,
     };
@@ -749,12 +819,12 @@ describe('queue dashboard service', () => {
       itemId: 'series:83867',
       arrItemId: 83867,
       kind: 'series',
-      title: 'Andor',
+      title: 'Fixture Series',
       sourceService: 'sonarr',
       status: 'grabbing',
       attempt: 2,
       maxRetries: 3,
-      currentRelease: 'Andor.S01.1080p.WEB-DL-FLUX',
+      currentRelease: 'Fixture Series.S01.1080p.WEB-DL-FLUX',
       selectedReleaser: 'flux',
       preferredReleaser: 'flux',
       reasonCode: null,
@@ -779,7 +849,7 @@ describe('queue dashboard service', () => {
       arrItemId: 83867,
       canCancel: true,
       kind: 'series',
-      title: 'Andor',
+      title: 'Fixture Series',
       year: 2022,
       poster: null,
       sourceService: 'sonarr',
@@ -790,7 +860,7 @@ describe('queue dashboard service', () => {
       size: 2_000_000_000,
       sizeLeft: 1_500_000_000,
       queueId: 2,
-      detail: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+      detail: 'Fixture Series.S01E01.1080p.WEB-DL-FLUX',
       episodeIds: [101],
       seasonNumbers: [1],
     };
@@ -803,7 +873,7 @@ describe('queue dashboard service', () => {
       estimatedCompletionTime: '2026-04-13T12:08:00.000Z',
       sizeLeft: 500_000_000,
       queueId: 3,
-      detail: 'Andor.S01E02.1080p.WEB-DL-FLUX',
+      detail: 'Fixture Series.S01E02.1080p.WEB-DL-FLUX',
     };
 
     const entries = composeQueueEntries([acquisitionJob], [firstQueueItem, secondQueueItem]);
@@ -833,12 +903,12 @@ describe('queue dashboard service', () => {
       itemId: 'series:83867',
       arrItemId: 83867,
       kind: 'series',
-      title: 'Andor',
+      title: 'Fixture Series',
       sourceService: 'sonarr',
       status: 'grabbing',
       attempt: 2,
       maxRetries: 3,
-      currentRelease: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+      currentRelease: 'Fixture Series.S01E01.1080p.WEB-DL-FLUX',
       selectedReleaser: 'flux',
       preferredReleaser: 'flux',
       reasonCode: null,
@@ -863,7 +933,7 @@ describe('queue dashboard service', () => {
       arrItemId: 83867,
       canCancel: true,
       kind: 'series',
-      title: 'Andor',
+      title: 'Fixture Series',
       year: 2022,
       poster: null,
       sourceService: 'sonarr',
@@ -874,7 +944,7 @@ describe('queue dashboard service', () => {
       size: 2_000_000_000,
       sizeLeft: 1_500_000_000,
       queueId: 2,
-      detail: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+      detail: 'Fixture Series.S01E01.1080p.WEB-DL-FLUX',
       episodeIds: [101],
       seasonNumbers: [1],
     };
@@ -882,7 +952,7 @@ describe('queue dashboard service', () => {
       ...matchingQueueItem,
       id: 'sonarr:queue:3',
       queueId: 3,
-      detail: 'Andor.S01E03.1080p.WEB-DL-FLUX',
+      detail: 'Fixture Series.S01E03.1080p.WEB-DL-FLUX',
       episodeIds: [103],
     };
 
@@ -903,12 +973,12 @@ describe('queue dashboard service', () => {
       itemId: 'series:83867',
       arrItemId: 83867,
       kind: 'series',
-      title: 'Andor',
+      title: 'Fixture Series',
       sourceService: 'sonarr',
       status: 'grabbing',
       attempt: 1,
       maxRetries: 3,
-      currentRelease: 'Andor.S01.1080p.WEB-DL-FLUX',
+      currentRelease: 'Fixture Series.S01.1080p.WEB-DL-FLUX',
       selectedReleaser: 'flux',
       preferredReleaser: 'flux',
       reasonCode: null,
@@ -933,7 +1003,7 @@ describe('queue dashboard service', () => {
       arrItemId: 83867,
       canCancel: true,
       kind: 'series',
-      title: 'Andor',
+      title: 'Fixture Series',
       year: 2022,
       poster: null,
       sourceService: 'sonarr',
@@ -944,7 +1014,7 @@ describe('queue dashboard service', () => {
       size: 8_000_000_000,
       sizeLeft: 3_120_000_000,
       queueId: 11,
-      detail: 'Andor.S01.1080p.WEB-DL-FLUX',
+      detail: 'Fixture Series.S01.1080p.WEB-DL-FLUX',
       episodeIds: null,
       seasonNumbers: [1],
     };
@@ -952,7 +1022,7 @@ describe('queue dashboard service', () => {
       ...seasonPackQueueItem,
       id: 'sonarr:queue:12',
       queueId: 12,
-      detail: 'Andor.S02.1080p.WEB-DL-FLUX',
+      detail: 'Fixture Series.S02.1080p.WEB-DL-FLUX',
       seasonNumbers: [2],
     };
 
@@ -987,12 +1057,12 @@ describe('queue dashboard service', () => {
       itemId: 'series:83867',
       arrItemId: 83867,
       kind: 'series',
-      title: 'Andor',
+      title: 'Fixture Series',
       sourceService: 'sonarr',
       status: 'grabbing',
       attempt: 1,
       maxRetries: 3,
-      currentRelease: 'Andor.S01.1080p.WEB-DL-FLUX',
+      currentRelease: 'Fixture Series.S01.1080p.WEB-DL-FLUX',
       selectedReleaser: 'flux',
       preferredReleaser: 'flux',
       reasonCode: null,
@@ -1017,7 +1087,7 @@ describe('queue dashboard service', () => {
       arrItemId: 83867,
       canCancel: true,
       kind: 'series',
-      title: 'Andor',
+      title: 'Fixture Series',
       year: 2022,
       poster: null,
       sourceService: 'sonarr',
@@ -1028,7 +1098,7 @@ describe('queue dashboard service', () => {
       size: 12_000_000_000,
       sizeLeft: 8_040_000_000,
       queueId: 13,
-      detail: 'Andor.S01-S02.1080p.WEB-DL-FLUX',
+      detail: 'Fixture Series.S01-S02.1080p.WEB-DL-FLUX',
       episodeIds: null,
       seasonNumbers: [1, 2],
     };
@@ -1059,12 +1129,12 @@ describe('queue dashboard service', () => {
       itemId: 'series:83867',
       arrItemId: 83867,
       kind: 'series',
-      title: 'Andor',
+      title: 'Fixture Series',
       sourceService: 'sonarr',
       status: 'grabbing',
       attempt: 1,
       maxRetries: 3,
-      currentRelease: 'Andor.S01.1080p.WEB-DL-FLUX',
+      currentRelease: 'Fixture Series.S01.1080p.WEB-DL-FLUX',
       selectedReleaser: 'flux',
       preferredReleaser: 'flux',
       reasonCode: null,
@@ -1090,7 +1160,7 @@ describe('queue dashboard service', () => {
       arrItemId: 83867,
       canCancel: true,
       kind: 'series',
-      title: 'Andor.Release.Old',
+      title: 'Fixture Series.Release.Old',
       year: 2022,
       poster: null,
       sourceService: 'sonarr',
@@ -1101,7 +1171,7 @@ describe('queue dashboard service', () => {
       size: 12_000_000_000,
       sizeLeft: 8_040_000_000,
       queueId: 13,
-      detail: 'Andor.S01E01.1080p.WEB-DL-OLD',
+      detail: 'Fixture Series.S01E01.1080p.WEB-DL-OLD',
       episodeIds: [101],
       seasonNumbers: [1],
     };
@@ -1132,12 +1202,12 @@ describe('queue dashboard service', () => {
       itemId: 'series:83867',
       arrItemId: 83867,
       kind: 'series',
-      title: 'Andor',
+      title: 'Fixture Series',
       sourceService: 'sonarr',
       status: 'grabbing',
       attempt: 1,
       maxRetries: 3,
-      currentRelease: 'Andor.S01.1080p.WEB-DL-FLUX',
+      currentRelease: 'Fixture Series.S01.1080p.WEB-DL-FLUX',
       selectedReleaser: 'flux',
       preferredReleaser: 'flux',
       reasonCode: null,
@@ -1164,7 +1234,7 @@ describe('queue dashboard service', () => {
       arrItemId: 83867,
       canCancel: true,
       kind: 'series',
-      title: 'Andor',
+      title: 'Fixture Series',
       year: 2022,
       poster: null,
       sourceService: 'sonarr',
@@ -1175,7 +1245,7 @@ describe('queue dashboard service', () => {
       size: 2_000_000_000,
       sizeLeft: 1_500_000_000,
       queueId: 21,
-      detail: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+      detail: 'Fixture Series.S01E01.1080p.WEB-DL-FLUX',
       episodeIds: [101],
       seasonNumbers: [1],
     };
@@ -1183,14 +1253,14 @@ describe('queue dashboard service', () => {
       ...matchingQueueItem,
       id: 'sonarr:queue:22',
       queueId: 22,
-      detail: 'Andor.S01E02.1080p.WEB-DL-FLUX',
+      detail: 'Fixture Series.S01E02.1080p.WEB-DL-FLUX',
       episodeIds: [102],
     };
     const unrelatedQueueItem: QueueItem = {
       ...matchingQueueItem,
       id: 'sonarr:queue:23',
       queueId: 23,
-      detail: 'Andor.S02E01.1080p.WEB-DL-FLUX',
+      detail: 'Fixture Series.S02E01.1080p.WEB-DL-FLUX',
       episodeIds: [201],
       seasonNumbers: [2],
     };
@@ -1223,12 +1293,12 @@ describe('queue dashboard service', () => {
       itemId: 'series:83867',
       arrItemId: 83867,
       kind: 'series',
-      title: 'Andor',
+      title: 'Fixture Series',
       sourceService: 'sonarr',
       status: 'validating',
       attempt: 2,
       maxRetries: 3,
-      currentRelease: 'Andor.S01.1080p.WEB-DL-FLUX',
+      currentRelease: 'Fixture Series.S01.1080p.WEB-DL-FLUX',
       liveQueueId: 21,
       liveDownloadId: 'download-shared',
       selectedReleaser: 'flux',
@@ -1256,7 +1326,7 @@ describe('queue dashboard service', () => {
       arrItemId: 83867,
       canCancel: true,
       kind: 'series',
-      title: 'Andor',
+      title: 'Fixture Series',
       year: 2022,
       poster: null,
       sourceService: 'sonarr',
@@ -1267,7 +1337,7 @@ describe('queue dashboard service', () => {
       size: 2_000_000_000,
       sizeLeft: 1_500_000_000,
       queueId: 21,
-      detail: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+      detail: 'Fixture Series.S01E01.1080p.WEB-DL-FLUX',
       episodeIds: [101],
       seasonNumbers: [1],
     };
@@ -1276,7 +1346,7 @@ describe('queue dashboard service', () => {
       id: 'sonarr:queue:22',
       downloadId: 'download-old',
       queueId: 22,
-      detail: 'Andor.S01E02.1080p.WEB-DL-OLD',
+      detail: 'Fixture Series.S01E02.1080p.WEB-DL-OLD',
       episodeIds: [102],
     };
 
@@ -1306,9 +1376,9 @@ describe('queue dashboard service', () => {
           records: [
             {
               movieId: 603,
-              sourceTitle: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+              sourceTitle: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
               movie: {
-                title: 'The Matrix',
+                title: 'Fixture Movie',
                 year: 1999,
                 status: 'missing',
               },
@@ -1360,8 +1430,81 @@ describe('queue dashboard service', () => {
       arrItemId: 603,
       canDeleteFromArr: true,
       inArr: true,
-      title: 'The Matrix',
+      title: 'Fixture Movie',
     });
+  });
+
+  it('sorts dashboard checks by acquisition time newest first', async () => {
+    const arrFetch = vi.fn().mockImplementation(async (_service: string, path: string) => {
+      if (path === '/api/v3/history') {
+        return {
+          records: [
+            {
+              date: '2026-04-13T12:00:00.000Z',
+              movieId: 111,
+              sourceTitle: 'Alpha.Fixture.2026.1080p.WEB-DL-OLD',
+              movie: {
+                title: 'Alpha Fixture',
+                year: 2026,
+              },
+            },
+            {
+              date: '2026-04-13T12:10:00.000Z',
+              movieId: 222,
+              sourceTitle: 'Beta.Fixture.2026.1080p.WEB-DL-NEW',
+              movie: {
+                title: 'Beta Fixture',
+                year: 2026,
+              },
+            },
+          ],
+        };
+      }
+
+      if (path === '/api/v3/queue') {
+        return {
+          records: [],
+        };
+      }
+
+      return {
+        records: [],
+      };
+    });
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/runtime', () => ({
+      getConfiguredServiceFlags: () => ({
+        configured: true,
+        plexConfigured: false,
+        radarrConfigured: true,
+        sonarrConfigured: false,
+      }),
+    }));
+    vi.doMock('$lib/server/lookup-service', () => ({
+      fetchExistingMovie: vi.fn().mockRejectedValue(new Error('missing from arr lookup')),
+      fetchExistingSeries: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-service', () => ({
+      ensureAcquisitionWorkers: vi.fn(),
+      getQueueAcquisitionJobs: () => [],
+    }));
+
+    const module = await import('$lib/server/queue-dashboard-service');
+    const dashboard = await module.getDashboard({
+      cardsView: 'rounded',
+      preferredLanguage: 'English',
+      subtitleLanguage: 'English',
+      theme: 'system',
+    });
+
+    expect(dashboard.items.map((item) => item.title)).toEqual(['Beta Fixture', 'Alpha Fixture']);
+    expect(dashboard.items.map((item) => item.acquiredAt)).toEqual([
+      '2026-04-13T12:10:00.000Z',
+      '2026-04-13T12:00:00.000Z',
+    ]);
   });
 
   it('keeps dashboard queue card ids stable when Arr later adds a queue id', async () => {
@@ -1436,10 +1579,10 @@ describe('queue dashboard service', () => {
           records: [
             {
               movieId: 933,
-              sourceTitle: 'Sharing.the.Secret.2000.1080p.AMZN.WEB-DL.DDP2.0.H.264-TEPES',
+              sourceTitle: 'Fixture.Secret.2000.1080p.AMZN.WEB-DL.DDP2.0.H.264-TEPES',
               movie: {
                 id: 933,
-                title: 'Sharing the Secret',
+                title: 'Fixture Secret',
                 year: 2000,
               },
             },
@@ -1470,7 +1613,7 @@ describe('queue dashboard service', () => {
         id: 'movie:933',
         arrItemId: 933,
         kind: 'movie',
-        title: 'Sharing the Secret',
+        title: 'Fixture Secret',
         year: 2000,
         rating: 6.2,
         poster: null,
@@ -1490,7 +1633,7 @@ describe('queue dashboard service', () => {
         canDeleteFromArr: true,
         detail: null,
         requestPayload: {
-          title: 'Sharing the Secret',
+          title: 'Fixture Secret',
           year: 2000,
           imdbId: 'tt0240894',
           tmdbId: 299024,
@@ -1504,7 +1647,7 @@ describe('queue dashboard service', () => {
           id: 'plex:movie:123861',
           arrItemId: null,
           kind: 'movie',
-          title: 'Sharing the Secret',
+          title: 'Fixture Secret',
           year: 2000,
           rating: 6.3,
           poster: null,
@@ -1524,7 +1667,7 @@ describe('queue dashboard service', () => {
           canDeleteFromArr: false,
           detail: null,
           requestPayload: {
-            title: 'Sharing the Secret',
+            title: 'Fixture Secret',
             year: 2000,
           },
         },
@@ -1545,7 +1688,7 @@ describe('queue dashboard service', () => {
     });
 
     expect(dashboard.items[0]).toMatchObject({
-      title: 'Sharing the Secret',
+      title: 'Fixture Secret',
       inArr: true,
       inPlex: true,
       origin: 'merged',
@@ -1560,11 +1703,10 @@ describe('queue dashboard service', () => {
           records: [
             {
               movieId: 727,
-              sourceTitle:
-                'Dangerous.Animals.2025.UHD.BluRay.2160p.DD.5.1.DV.HDR10Plus.x265-BHDStudio',
+              sourceTitle: 'Fixture.Queue.2025.UHD.BluRay.2160p.DD.5.1.DV.HDR10Plus.x265-BHDStudio',
               movie: {
                 id: 727,
-                title: 'Dangerous Animals',
+                title: 'Fixture Queue',
                 year: 2025,
               },
             },
@@ -1578,7 +1720,7 @@ describe('queue dashboard service', () => {
             {
               id: 1996958567,
               movieId: 727,
-              title: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+              title: 'Fixture.Queue.2025.1080p.WEB.H264-KBOX',
               status: 'completed',
               trackedDownloadStatus: 'warning',
               trackedDownloadState: 'importPending',
@@ -1606,7 +1748,7 @@ describe('queue dashboard service', () => {
         id: 'movie:727',
         arrItemId: 727,
         kind: 'movie',
-        title: 'Dangerous Animals',
+        title: 'Fixture Queue',
         year: 2025,
         rating: 6.4,
         poster: null,
@@ -1626,7 +1768,7 @@ describe('queue dashboard service', () => {
         canDeleteFromArr: true,
         detail: null,
         requestPayload: {
-          title: 'Dangerous Animals',
+          title: 'Fixture Queue',
           year: 2025,
           imdbId: 'tt32299316',
           tmdbId: 1285965,
@@ -1651,7 +1793,7 @@ describe('queue dashboard service', () => {
     expect(dashboard.items[0]).toMatchObject({
       arrItemId: 727,
       id: 'movie:727',
-      title: 'Dangerous Animals',
+      title: 'Fixture Queue',
     });
   });
 
@@ -1662,11 +1804,10 @@ describe('queue dashboard service', () => {
           records: [
             {
               movieId: 727,
-              sourceTitle:
-                'Dangerous.Animals.2025.UHD.BluRay.2160p.DD.5.1.DV.HDR10Plus.x265-BHDStudio',
+              sourceTitle: 'Fixture.Queue.2025.UHD.BluRay.2160p.DD.5.1.DV.HDR10Plus.x265-BHDStudio',
               movie: {
                 id: 727,
-                title: 'Dangerous Animals',
+                title: 'Fixture Queue',
                 year: 2025,
               },
             },
@@ -1697,7 +1838,7 @@ describe('queue dashboard service', () => {
         id: 'movie:727',
         arrItemId: 727,
         kind: 'movie',
-        title: 'Dangerous Animals',
+        title: 'Fixture Queue',
         year: 2025,
         rating: 6.4,
         poster: null,
@@ -1717,7 +1858,7 @@ describe('queue dashboard service', () => {
         canDeleteFromArr: true,
         detail: null,
         requestPayload: {
-          title: 'Dangerous Animals',
+          title: 'Fixture Queue',
           year: 2025,
           imdbId: 'tt32299316',
           tmdbId: 1285965,
@@ -1732,7 +1873,7 @@ describe('queue dashboard service', () => {
           id: 'plex:movie:727',
           arrItemId: null,
           kind: 'movie',
-          title: 'Dangerous Animals',
+          title: 'Fixture Queue',
           year: 2025,
           rating: 6.4,
           poster: null,
@@ -1752,7 +1893,7 @@ describe('queue dashboard service', () => {
           canDeleteFromArr: false,
           detail: null,
           requestPayload: {
-            title: 'Dangerous Animals',
+            title: 'Fixture Queue',
             year: 2025,
             imdbId: 'tt32299316',
             tmdbId: 1285965,
@@ -1774,7 +1915,7 @@ describe('queue dashboard service', () => {
     });
 
     expect(dashboard.items[0]).toMatchObject({
-      title: 'Dangerous Animals',
+      title: 'Fixture Queue',
       inArr: true,
       inPlex: true,
       origin: 'merged',
@@ -1789,11 +1930,10 @@ describe('queue dashboard service', () => {
           records: [
             {
               movieId: 727,
-              sourceTitle:
-                'Dangerous.Animals.2025.UHD.BluRay.2160p.DD.5.1.DV.HDR10Plus.x265-BHDStudio',
+              sourceTitle: 'Fixture.Queue.2025.UHD.BluRay.2160p.DD.5.1.DV.HDR10Plus.x265-BHDStudio',
               movie: {
                 id: 727,
-                title: 'Dangerous Animals',
+                title: 'Fixture Queue',
                 year: 2025,
               },
             },
@@ -1815,7 +1955,7 @@ describe('queue dashboard service', () => {
             id: 'plex:movie:727',
             arrItemId: null,
             kind: 'movie',
-            title: 'Dangerous Animals',
+            title: 'Fixture Queue',
             year: 2025,
             rating: 6.4,
             poster: null,
@@ -1860,7 +2000,7 @@ describe('queue dashboard service', () => {
         id: 'movie:727',
         arrItemId: 727,
         kind: 'movie',
-        title: 'Dangerous Animals',
+        title: 'Fixture Queue',
         year: 2025,
         rating: 6.4,
         poster: null,
@@ -1880,7 +2020,7 @@ describe('queue dashboard service', () => {
         canDeleteFromArr: true,
         detail: null,
         requestPayload: {
-          title: 'Dangerous Animals',
+          title: 'Fixture Queue',
           year: 2025,
           imdbId: 'tt32299316',
           tmdbId: 1285965,
@@ -1906,10 +2046,10 @@ describe('queue dashboard service', () => {
       theme: 'system',
     });
 
-    expect(searchPlex).toHaveBeenCalledWith('Dangerous Animals', 'movie');
+    expect(searchPlex).toHaveBeenCalledWith('Fixture Queue', 'movie');
     expect(searchPlex).toHaveBeenCalledWith('Animales Peligrosos', 'movie');
     expect(dashboard.items[0]).toMatchObject({
-      title: 'Dangerous Animals',
+      title: 'Fixture Queue',
       inArr: true,
       inPlex: true,
       origin: 'merged',

@@ -22,7 +22,12 @@ import {
   waitForAttemptOutcome,
   type WaitForAttemptOutcomeResult,
 } from '$lib/server/acquisition-validator';
-import type { ValidationProbe } from '$lib/server/acquisition-validator-shared';
+import { cleanupFailedImportForRetry } from '$lib/server/acquisition-import-cleanup';
+import type { FailedImportCleanupResult } from '$lib/server/acquisition-import-cleanup';
+import {
+  isExistingFileImportBlock,
+  type ValidationProbe,
+} from '$lib/server/acquisition-validator-shared';
 
 type AcquisitionRunnerDependencies = {
   findReleaseSelection: (job: PersistedAcquisitionJob) => Promise<ReleaseSelectionResult>;
@@ -34,6 +39,7 @@ type AcquisitionRunnerDependencies = {
     job: PersistedAcquisitionJob,
     selection: ReleaseSelectionResult['selection'],
   ) => Promise<void>;
+  cleanupFailedImportForRetry: (job: PersistedAcquisitionJob) => Promise<FailedImportCleanupResult>;
   waitForAttemptOutcome: (
     job: PersistedAcquisitionJob,
     attemptStartedAt: string,
@@ -48,6 +54,7 @@ type AcquisitionRunnerDependencies = {
 
 const defaultDependencies: AcquisitionRunnerDependencies = {
   findReleaseSelection,
+  cleanupFailedImportForRetry,
   probeAttempt,
   submitSelectedRelease,
   waitForAttemptOutcome,
@@ -66,15 +73,20 @@ export class AcquisitionRunner {
   constructor(
     jobs: AcquisitionJobRepository = getAcquisitionJobRepository(),
     lifecycle: AcquisitionLifecycle = getAcquisitionLifecycle(),
-    dependencies: AcquisitionRunnerDependencies = defaultDependencies,
+    dependencies: Partial<AcquisitionRunnerDependencies> = defaultDependencies,
   ) {
     this.jobs = jobs;
     this.lifecycle = lifecycle;
-    this.dependencies = dependencies;
+    this.dependencies = {
+      ...defaultDependencies,
+      ...dependencies,
+    };
   }
 
   private normalizeProbeResult(probe: ValidationProbe): WaitForAttemptOutcomeResult {
     return {
+      detectedAudioLanguages: probe.detectedAudioLanguages ?? [],
+      detectedSubtitleLanguages: probe.detectedSubtitleLanguages ?? [],
       outcome: probe.outcome === 'failure' ? 'failure' : 'success',
       preferredReleaser: probe.outcome === 'success' ? probe.preferredReleaser : null,
       progress: probe.progress,
@@ -92,6 +104,28 @@ export class AcquisitionRunner {
 
   private currentAttemptStartedAt(job: PersistedAcquisitionJob): string | null {
     return job.attempts.find((attempt) => attempt.attempt === job.attempt)?.startedAt ?? null;
+  }
+
+  private shouldCleanupBeforeRetry(
+    _job: PersistedAcquisitionJob,
+    waitResult: WaitForAttemptOutcomeResult,
+  ): boolean {
+    if (waitResult.outcome !== 'failure') {
+      return false;
+    }
+
+    return (
+      waitResult.reasonCode === 'missing-subs' ||
+      (waitResult.reasonCode === 'import-blocked' && isExistingFileImportBlock(waitResult.summary))
+    );
+  }
+
+  private recoveryImportWasRestored(waitResult: WaitForAttemptOutcomeResult): boolean {
+    return (
+      waitResult.outcome === 'success' ||
+      waitResult.reasonCode === 'missing-audio' ||
+      waitResult.reasonCode === 'missing-subs'
+    );
   }
 
   private async reconcileJob(jobId: string): Promise<boolean> {
@@ -131,6 +165,18 @@ export class AcquisitionRunner {
       this.lifecycle.startValidation(current);
     }
 
+    if (current.recoveryStatus === 'grabbing') {
+      const waitResult = this.normalizeProbeResult(probe);
+      if (this.recoveryImportWasRestored(waitResult)) {
+        this.lifecycle.completeRecoveryRestored(current, waitResult);
+      } else if (probe.outcome === 'failure') {
+        this.lifecycle.failRecovery(current, waitResult);
+      } else {
+        return false;
+      }
+      return true;
+    }
+
     if (probe.outcome === 'success') {
       this.lifecycle.completeJob(current, this.normalizeProbeResult(probe));
       return true;
@@ -157,6 +203,10 @@ export class AcquisitionRunner {
         job.queuedManualSelection
           ? restoreManualSelection(job.queuedManualSelection)
           : null;
+      const recoverySelection =
+        job.recoveryStatus === 'queued' && job.recoverySelection
+          ? restoreManualSelection(job.recoverySelection)
+          : null;
 
       try {
         if (
@@ -169,7 +219,22 @@ export class AcquisitionRunner {
         }
 
         let releaseSelection: ReleaseSelectionResult;
-        if (manualSelection) {
+        if (recoverySelection) {
+          const refreshedRecoveryJob = this.jobs.getJob(job.id);
+          if (!refreshedRecoveryJob || isTerminalJobStatus(refreshedRecoveryJob.status)) {
+            return;
+          }
+          if (
+            refreshedRecoveryJob.recoveryStatus !== 'queued' ||
+            !refreshedRecoveryJob.recoverySelection
+          ) {
+            job = refreshedRecoveryJob;
+            continue;
+          }
+
+          job = refreshedRecoveryJob;
+          releaseSelection = recoverySelection;
+        } else if (manualSelection) {
           const refreshedQueuedJob = this.jobs.getJob(job.id);
           if (!refreshedQueuedJob || isTerminalJobStatus(refreshedQueuedJob.status)) {
             return;
@@ -230,9 +295,11 @@ export class AcquisitionRunner {
           return;
         }
 
-        const chosen = manualSelection
-          ? this.lifecycle.chooseQueuedManualRelease(job, releaseSelection)
-          : this.lifecycle.chooseAutomaticRelease(job, releaseSelection);
+        const chosen = recoverySelection
+          ? this.lifecycle.chooseRecoveryRelease(job, releaseSelection)
+          : manualSelection
+            ? this.lifecycle.chooseQueuedManualRelease(job, releaseSelection)
+            : this.lifecycle.chooseAutomaticRelease(job, releaseSelection);
         if (!chosen) {
           return;
         }
@@ -289,7 +356,11 @@ export class AcquisitionRunner {
         job = refreshedJob;
 
         if (waitResult.outcome === 'success') {
-          this.lifecycle.completeJob(job, waitResult);
+          if (job.recoveryStatus === 'grabbing') {
+            this.lifecycle.completeRecoveryRestored(job, waitResult);
+          } else {
+            this.lifecycle.completeJob(job, waitResult);
+          }
           return;
         }
 
@@ -299,6 +370,24 @@ export class AcquisitionRunner {
             progress: job.progress,
             queueStatus: job.queueStatus,
           };
+        }
+
+        if (job.recoveryStatus === 'grabbing') {
+          if (this.recoveryImportWasRestored(waitResult)) {
+            this.lifecycle.completeRecoveryRestored(job, waitResult);
+          } else {
+            this.lifecycle.failRecovery(job, waitResult);
+          }
+          return;
+        }
+
+        if (this.shouldCleanupBeforeRetry(job, waitResult)) {
+          try {
+            await this.dependencies.cleanupFailedImportForRetry(job);
+          } catch (cleanupError) {
+            this.lifecycle.failCleanupBlocked(job, cleanupError, waitResult);
+            return;
+          }
         }
 
         job = this.lifecycle.handleFailedValidation(job, releaseSelection.selectedGuid, waitResult);

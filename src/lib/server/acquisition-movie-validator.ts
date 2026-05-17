@@ -6,6 +6,7 @@ import {
 import {
   fetchHistoryRecords,
   fetchQueueRecords,
+  disappearedDownloadProbe,
   historySince,
   queueImportBlock,
   type ValidationProbe,
@@ -46,6 +47,8 @@ export async function validateMovieAttempt(
   if (relevantHistory.length === 0) {
     if (importBlock) {
       return {
+        detectedAudioLanguages: [],
+        detectedSubtitleLanguages: [],
         outcome: 'failure',
         preferredReleaser: null,
         progress: 100,
@@ -59,6 +62,8 @@ export async function validateMovieAttempt(
 
     if (liveSummary) {
       return {
+        detectedAudioLanguages: [],
+        detectedSubtitleLanguages: [],
         outcome: 'pending',
         preferredReleaser: null,
         progress: liveSummary.progress,
@@ -70,7 +75,14 @@ export async function validateMovieAttempt(
       };
     }
 
+    const disappearedDownload = disappearedDownloadProbe(job);
+    if (disappearedDownload) {
+      return disappearedDownload;
+    }
+
     return {
+      detectedAudioLanguages: [],
+      detectedSubtitleLanguages: [],
       outcome: 'pending',
       preferredReleaser: null,
       progress: job.progress,
@@ -92,6 +104,8 @@ export async function validateMovieAttempt(
 
   if (item.auditStatus === 'verified') {
     return {
+      detectedAudioLanguages: item.audioLanguages,
+      detectedSubtitleLanguages: item.subtitleLanguages,
       outcome: 'success',
       preferredReleaser: job.selectedReleaser,
       progress: 100,
@@ -105,6 +119,8 @@ export async function validateMovieAttempt(
 
   if (item.auditStatus === 'missing-language' || item.auditStatus === 'no-subs') {
     return {
+      detectedAudioLanguages: item.audioLanguages,
+      detectedSubtitleLanguages: item.subtitleLanguages,
       outcome: 'failure',
       preferredReleaser: null,
       progress: 100,
@@ -117,6 +133,8 @@ export async function validateMovieAttempt(
   }
 
   return {
+    detectedAudioLanguages: item.audioLanguages,
+    detectedSubtitleLanguages: item.subtitleLanguages,
     outcome: 'pending',
     preferredReleaser: null,
     progress: liveSummary?.progress ?? job.progress,

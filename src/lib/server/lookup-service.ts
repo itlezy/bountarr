@@ -81,7 +81,7 @@ async function findSupplementalPlexItems(
     .filter((item) => !item.inPlex && item.requestPayload !== null)
     .filter((item) => itemMatchKeys(item).every((key) => !knownPlexKeys.has(key)))
     // Supplemental Plex lookups only need to cover items that can still appear in the
-    // final response. A smaller cutoff caused broad franchise searches like "rambo"
+    // final response. A smaller cutoff caused broad franchise-style searches
     // to miss older titles that still survived into the top result set.
     .slice(0, SEARCH_RESULT_LIMIT);
   const fallbackTitles = [

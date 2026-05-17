@@ -1,10 +1,14 @@
 import type {
   AcquisitionAttempt,
+  AcquisitionReleaseCandidate,
+  AcquisitionRecoveryStatus,
   AcquisitionJob,
   ManualReleaseResult,
   ManualReleaseSelectionMode,
   ReleaseDecision,
   ReleaseDecisionCandidate,
+  ReleaseIdentityStatus,
+  ReleaseScopeStatus,
 } from '$lib/shared/types';
 
 export type ArrService = 'radarr' | 'sonarr';
@@ -18,9 +22,24 @@ export type PersistedManualSelection = {
   selectedResult: ManualReleaseResult;
 };
 
-export type PersistedAcquisitionJob = AcquisitionJob & {
+export type PersistedAcquisitionReleaseCandidate = AcquisitionReleaseCandidate & {
+  acceptedByLocalRules: boolean;
+  autoSelectable: boolean;
+  identityReason: string;
+  identityStatus: ReleaseIdentityStatus;
+  payload: Record<string, unknown>;
+  rejectionReasons: string[];
+  scopeReason: string | null;
+  scopeStatus: ReleaseScopeStatus;
+};
+
+export type PersistedAcquisitionJob = Omit<AcquisitionJob, 'releaseCandidates'> & {
   failedGuids: string[];
   queuedManualSelection: PersistedManualSelection | null;
+  recoverySelection?: PersistedManualSelection | null;
+  recoveryAttempted?: boolean;
+  recoveryStatus?: AcquisitionRecoveryStatus | null;
+  releaseCandidates?: PersistedAcquisitionReleaseCandidate[];
 };
 
 export type GrabItemOptions = {
@@ -53,12 +72,30 @@ export function isAcquisitionGrabError(error: unknown): error is AcquisitionGrab
 }
 
 export function cloneJob(job: PersistedAcquisitionJob): AcquisitionJob {
+  const publicReleaseCandidates: AcquisitionReleaseCandidate[] = (job.releaseCandidates ?? []).map(
+    ({
+      acceptedByLocalRules: _acceptedByLocalRules,
+      autoSelectable: _autoSelectable,
+      identityReason: _identityReason,
+      identityStatus: _identityStatus,
+      payload: _payload,
+      rejectionReasons: _rejectionReasons,
+      scopeReason: _scopeReason,
+      scopeStatus: _scopeStatus,
+      ...candidate
+    }) => candidate,
+  );
   const {
     failedGuids: _failedGuids,
     queuedManualSelection: _queuedManualSelection,
+    recoverySelection: _recoverySelection,
     ...publicJob
   } = job;
-  return structuredClone(publicJob);
+
+  return structuredClone({
+    ...publicJob,
+    releaseCandidates: publicReleaseCandidates,
+  });
 }
 
 export function sortJobs(jobs: PersistedAcquisitionJob[]): PersistedAcquisitionJob[] {
@@ -79,7 +116,7 @@ const allowedStatusTransitions: Record<AcquisitionJob['status'], AcquisitionJob[
   failed: ['queued'],
   grabbing: ['cancelled', 'completed', 'failed', 'retrying', 'validating'],
   queued: ['cancelled', 'failed', 'grabbing', 'queued', 'searching'],
-  retrying: ['cancelled', 'failed', 'queued', 'searching'],
+  retrying: ['cancelled', 'failed', 'grabbing', 'queued', 'searching'],
   searching: ['cancelled', 'failed', 'grabbing', 'queued'],
   validating: ['cancelled', 'completed', 'failed', 'retrying', 'validating'],
 };

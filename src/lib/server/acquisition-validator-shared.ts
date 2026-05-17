@@ -19,6 +19,8 @@ export function lookupPageSize(): number {
 }
 
 export type ValidationProbe = {
+  detectedAudioLanguages?: string[];
+  detectedSubtitleLanguages?: string[];
   outcome: 'pending' | 'success' | 'failure';
   preferredReleaser: string | null;
   progress: number | null;
@@ -28,6 +30,27 @@ export type ValidationProbe = {
   reasonCode: AcquisitionReasonCode | null;
   summary: string | null;
 };
+
+export function disappearedDownloadProbe(job: PersistedAcquisitionJob): ValidationProbe | null {
+  const hadLiveIdentity = (job.liveQueueId ?? null) !== null || Boolean(job.liveDownloadId);
+  const progress = job.progress ?? 0;
+  if (!hadLiveIdentity || progress <= 0 || progress >= 100) {
+    return null;
+  }
+
+  return {
+    detectedAudioLanguages: [],
+    detectedSubtitleLanguages: [],
+    outcome: 'failure',
+    preferredReleaser: null,
+    progress: 100,
+    queueStatus: 'Download failed',
+    liveDownloadId: null,
+    liveQueueId: null,
+    reasonCode: 'download-failed',
+    summary: 'The selected download left the Arr queue before any import history was recorded.',
+  };
+}
 
 export type QueueImportBlock = {
   queueStatus: string;
@@ -216,15 +239,19 @@ function queueStatusMessages(record: Record<string, unknown>): string[] {
     .filter((value): value is string => value !== null);
 }
 
+export function isExistingFileImportBlock(message: string): boolean {
+  return (
+    /not an upgrade for existing .* file/i.test(message) ||
+    /not a custom format upgrade for existing .* file/i.test(message)
+  );
+}
+
 export function queueImportBlock(record: Record<string, unknown>): QueueImportBlock | null {
   const trackedDownloadState = asString(record.trackedDownloadState)?.toLowerCase() ?? null;
   const trackedDownloadStatus = asString(record.trackedDownloadStatus)?.toLowerCase() ?? null;
   const status = asString(record.status)?.toLowerCase() ?? null;
   const messages = queueStatusMessages(record);
-  const blockingMessage =
-    messages.find((message) => /not an upgrade for existing .* file/i.test(message)) ??
-    messages.find((message) => /not a custom format upgrade for existing .* file/i.test(message)) ??
-    null;
+  const blockingMessage = messages.find(isExistingFileImportBlock) ?? null;
 
   if (!blockingMessage) {
     return null;
@@ -262,6 +289,8 @@ export function validationSummary(item: MediaItem): string | null {
 }
 
 export type WaitForAttemptOutcomeResult = {
+  detectedAudioLanguages?: string[];
+  detectedSubtitleLanguages?: string[];
   outcome: 'success' | 'failure' | 'timeout';
   preferredReleaser: string | null;
   progress: number | null;

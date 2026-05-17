@@ -132,12 +132,12 @@ describe('API routes', () => {
 
     const response = await route.GET(
       createGetEvent(
-        'http://local.test/api/search?q=matrix&kind=movie&availability=available-only',
+        'http://local.test/api/search?q=Fixture&kind=movie&availability=available-only',
       ),
     );
     const payload = await readJson<(typeof mediaItemFixture)[]>(response);
 
-    expect(lookupItems).toHaveBeenCalledWith('matrix', 'movie', undefined, {
+    expect(lookupItems).toHaveBeenCalledWith('Fixture', 'movie', undefined, {
       availability: 'available-only',
     });
     expect(payload).toEqual([mediaItemFixture]);
@@ -153,9 +153,9 @@ describe('API routes', () => {
       }),
     });
 
-    await route.GET(createGetEvent('http://local.test/api/search?q=matrix&kind=movie'));
+    await route.GET(createGetEvent('http://local.test/api/search?q=Fixture&kind=movie'));
 
-    expect(lookupItems).toHaveBeenCalledWith('matrix', 'movie', undefined, {
+    expect(lookupItems).toHaveBeenCalledWith('Fixture', 'movie', undefined, {
       availability: 'not-available-only',
     });
   });
@@ -235,7 +235,7 @@ describe('API routes', () => {
 
     expect(getAcquisitionJobs).toHaveBeenCalledTimes(1);
     expect(payload.jobs).toHaveLength(1);
-    expect(payload.jobs[0]?.title).toBe('The Matrix');
+    expect(payload.jobs[0]?.title).toBe('Fixture Movie');
   });
 
   it('passes managed queue cancels through as job-id-only requests', async () => {
@@ -400,7 +400,7 @@ describe('API routes', () => {
         arrItemId: 727,
         queueId: 1996958567,
         sourceService: 'radarr',
-        title: 'Dangerous Animals',
+        title: 'Fixture Queue',
       }),
     );
 
@@ -415,7 +415,7 @@ describe('API routes', () => {
       queueId: 1996958567,
       downloadId: null,
       sourceService: 'radarr',
-      title: 'Dangerous Animals',
+      title: 'Fixture Queue',
     });
   });
 
@@ -440,7 +440,7 @@ describe('API routes', () => {
         queueId: null,
         downloadId: 'download-shared',
         sourceService: 'radarr',
-        title: 'The Matrix',
+        title: 'Fixture Movie',
       }),
     );
 
@@ -452,7 +452,7 @@ describe('API routes', () => {
       queueId: null,
       downloadId: 'download-shared',
       sourceService: 'radarr',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
     });
   });
 
@@ -645,7 +645,7 @@ describe('API routes', () => {
             id: 'series:80',
             kind: 'series',
             sourceService: 'sonarr',
-            title: 'Andor',
+            title: 'Fixture Series',
           },
         }),
       ),
@@ -789,7 +789,7 @@ describe('API routes', () => {
           id: 'movie:603',
           kind: 'movie',
           sourceService: 'radarr',
-          title: 'The Matrix',
+          title: 'Fixture Movie',
         }),
       ),
     ).rejects.toMatchObject({
@@ -817,7 +817,7 @@ describe('API routes', () => {
         id: 'movie:603',
         kind: 'movie',
         sourceService: 'radarr',
-        title: 'The Matrix',
+        title: 'Fixture Movie',
       }),
     );
     const payload = await readJson<{ itemId: string; message: string }>(response);
@@ -828,7 +828,7 @@ describe('API routes', () => {
       id: 'movie:603',
       kind: 'movie',
       sourceService: 'radarr',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
     });
     expect(payload.message).toBe('Deleted');
   });
@@ -853,7 +853,7 @@ describe('API routes', () => {
         kind: 'movie',
         queueId: 1,
         sourceService: 'radarr',
-        title: 'The Matrix',
+        title: 'Fixture Movie',
       }),
     );
     const payload = await readJson<{ itemId: string; message: string }>(response);
@@ -865,7 +865,7 @@ describe('API routes', () => {
       queueId: 1,
       downloadId: null,
       sourceService: 'radarr',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
     });
     expect(payload.itemId).toBe('radarr:queue:1');
   });
@@ -891,7 +891,7 @@ describe('API routes', () => {
         queueId: null,
         downloadId: 'download-shared',
         sourceService: 'radarr',
-        title: 'The Matrix',
+        title: 'Fixture Movie',
       }),
     );
     const payload = await readJson<{ itemId: string; message: string }>(response);
@@ -903,7 +903,7 @@ describe('API routes', () => {
       queueId: null,
       downloadId: 'download-shared',
       sourceService: 'radarr',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
     });
     expect(payload.itemId).toBe('radarr:download:download-shared');
   });
@@ -929,7 +929,7 @@ describe('API routes', () => {
         kind: 'movie',
         queueId: 1,
         sourceService: 'radarr',
-        title: 'The Matrix',
+        title: 'Fixture Movie',
       }),
     );
 
@@ -963,7 +963,7 @@ describe('API routes', () => {
         queueId: null,
         downloadId: 'download-shared',
         sourceService: 'radarr',
-        title: 'The Matrix',
+        title: 'Fixture Movie',
       }),
     );
 
@@ -996,7 +996,7 @@ describe('API routes', () => {
         id: 'movie:603',
         kind: 'movie',
         sourceService: 'radarr',
-        title: 'The Matrix',
+        title: 'Fixture Movie',
       }),
     );
 
@@ -1029,7 +1029,7 @@ describe('API routes', () => {
   it('preserves typed grab statuses for predictable grab failures', async () => {
     const grabItem = vi
       .fn()
-      .mockRejectedValue(new AcquisitionGrabError(409, 'The Matrix is already tracked in Arr'));
+      .mockRejectedValue(new AcquisitionGrabError(409, 'Fixture Movie is already tracked in Arr'));
     const route = await loadRouteModule<{
       POST: (event: { request: Request }) => Promise<Response>;
     }>('../../routes/api/grab/+server', {
@@ -1045,6 +1045,6 @@ describe('API routes', () => {
     );
 
     expect(response.status).toBe(409);
-    expect(await response.text()).toBe('The Matrix is already tracked in Arr');
+    expect(await response.text()).toBe('Fixture Movie is already tracked in Arr');
   });
 });

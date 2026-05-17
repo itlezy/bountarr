@@ -14,6 +14,10 @@ const releaseError = $derived(activeJobId ? state.manualReleaseError[activeJobId
 const selectionError = $derived(activeJobId ? state.manualSelectionError[activeJobId] : null);
 const isLoading = $derived(activeJobId ? state.manualReleaseLoading[activeJobId] === true : false);
 const targetScope = $derived(activeJob ? describeAcquisitionTarget(activeJob) : null);
+const activeReleaseCandidates = $derived(activeJob?.releaseCandidates ?? []);
+const failedCandidateCount = $derived(
+  activeReleaseCandidates.filter((candidate) => candidate.status === 'failed').length,
+);
 
 function manualReleaseActionLabel(
   release: ManualReleaseResult,
@@ -51,7 +55,7 @@ function manualReleaseActionLabel(
     onClose={() => state.closeManualReleaseList()}
     size="wide"
     title="Manual release options"
-    subtitle={activeJob ? `${activeJob.title} · attempt ${Math.min(activeJob.attempt, activeJob.maxRetries)}/${activeJob.maxRetries}` : 'Choose a release for this acquisition job.'}
+    subtitle={activeJob ? `${activeJob.title} · ${failedCandidateCount} failed releases` : 'Choose a release for this acquisition job.'}
   >
     {#snippet children()}
       <div class="space-y-4">
@@ -69,6 +73,14 @@ function manualReleaseActionLabel(
               <div class="min-w-0 rounded-[14px] border border-[var(--line)] bg-[var(--surface)] px-3 py-2 sm:col-span-2">
                 <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Scope</div>
                 <div class="mt-1 overflow-safe-text">{targetScope}</div>
+              </div>
+            {/if}
+            {#if activeReleaseCandidates.length > 0}
+              <div class="min-w-0 rounded-[14px] border border-[var(--line)] bg-[var(--surface)] px-3 py-2 sm:col-span-2">
+                <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Candidate progress</div>
+                <div class="mt-1 overflow-safe-text">
+                  {failedCandidateCount} failed · {activeReleaseCandidates.length - failedCandidateCount} untried
+                </div>
               </div>
             {/if}
           </div>

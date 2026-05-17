@@ -63,6 +63,8 @@ export async function waitForAttemptOutcome(
 
     if (validation.outcome === 'success') {
       return {
+        detectedAudioLanguages: validation.detectedAudioLanguages ?? [],
+        detectedSubtitleLanguages: validation.detectedSubtitleLanguages ?? [],
         outcome: 'success',
         preferredReleaser: validation.preferredReleaser,
         progress: validation.progress,
@@ -74,6 +76,8 @@ export async function waitForAttemptOutcome(
 
     if (validation.outcome === 'failure') {
       return {
+        detectedAudioLanguages: validation.detectedAudioLanguages ?? [],
+        detectedSubtitleLanguages: validation.detectedSubtitleLanguages ?? [],
         outcome: 'failure',
         preferredReleaser: null,
         progress: validation.progress,
@@ -87,6 +91,8 @@ export async function waitForAttemptOutcome(
   }
 
   return {
+    detectedAudioLanguages: [],
+    detectedSubtitleLanguages: [],
     outcome: 'timeout',
     preferredReleaser: null,
     progress: currentJob.progress,

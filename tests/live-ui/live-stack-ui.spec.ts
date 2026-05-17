@@ -300,7 +300,7 @@ async function waitForSingleTrackedMovie(
 }
 
 function preferredTrackedMovieTitles(): string[] {
-  return [...new Set(['Sharing the Secret', config.duplicateMovie.title])];
+  return [...new Set(config.trackedMovieCandidates)];
 }
 
 function matchingTrackedMovieQueueEntries(queue: QueueResponse, arrItemId: number) {
@@ -497,7 +497,7 @@ async function cleanupSeries(target = config.untrackedSeries): Promise<void> {
 }
 
 async function findLiveSeriesTarget(): Promise<{ title: string; year: number } | null> {
-  const candidates = [config.untrackedSeries.title, 'Andor', 'Chernobyl', 'Severance', 'Silo'];
+  const candidates = [...new Set(config.seriesCandidates)];
 
   for (const query of candidates) {
     const results = await getJson<SearchResultItem[]>(

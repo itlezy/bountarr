@@ -201,6 +201,12 @@ export function normalizeItem(
     canAdd,
     canDeleteFromArr,
     detail: fallback.detail ?? asString(raw.sourceTitle) ?? null,
+    acquiredAt:
+      fallback.acquiredAt ??
+      asString(raw.added) ??
+      asString(raw.addedAt) ??
+      asString(raw.date) ??
+      null,
     requestPayload: fallback.requestPayload ?? raw,
   };
 }
@@ -221,6 +227,7 @@ export function mergeItems(left: MediaItem, right: MediaItem): MediaItem {
     overview: arrItem?.overview || plexItem?.overview || left.overview,
     rating: arrItem?.rating ?? plexItem?.rating ?? left.rating,
     detail: arrItem?.detail ?? plexItem?.detail ?? left.detail,
+    acquiredAt: arrItem?.acquiredAt ?? left.acquiredAt ?? right.acquiredAt ?? null,
     sourceService,
     origin: inArr && inPlex ? 'merged' : inPlex ? 'plex' : 'arr',
     inArr,

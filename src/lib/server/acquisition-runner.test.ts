@@ -9,6 +9,7 @@ import {
   persistManualSelection,
   type ReleaseSelectionResult,
 } from '$lib/server/acquisition-selection';
+import type { PersistedAcquisitionReleaseCandidate } from '$lib/server/acquisition-domain';
 
 const databases: DatabaseSync[] = [];
 
@@ -55,6 +56,42 @@ function createSelectionResult(guid: string, title: string): ReleaseSelectionRes
       },
       payload: {},
     } as ReleaseSelectionResult['selection'],
+  };
+}
+
+function createReleaseCandidate(
+  guid: string,
+  title: string,
+  indexerId = 5,
+): PersistedAcquisitionReleaseCandidate {
+  return {
+    acceptedByLocalRules: true,
+    arrRejected: false,
+    attempt: null,
+    autoSelectable: true,
+    detectedAudioLanguages: [],
+    detectedSubtitleLanguages: [],
+    failedAt: null,
+    failureReason: null,
+    firstSeenAt: '2026-04-13T12:00:00.000Z',
+    guid,
+    identityReason: 'Release title matched Fixture Space',
+    identityStatus: 'exact-match',
+    indexer: 'Indexer',
+    indexerId,
+    languages: ['English'],
+    lastSeenAt: '2026-04-13T12:00:00.000Z',
+    payload: {},
+    protocol: 'torrent',
+    reason: 'matched proven releaser',
+    rejectionReasons: [],
+    scopeReason: null,
+    scopeStatus: 'not-applicable',
+    score: 500,
+    selectionMode: 'direct',
+    size: 1_000,
+    status: 'available',
+    title,
   };
 }
 
@@ -113,13 +150,13 @@ describe('AcquisitionRunner', () => {
         subtitleLanguage: 'English',
       },
       sourceService: 'radarr',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
     });
 
     const runner = new AcquisitionRunner(harness.jobs, harness.lifecycle, {
       findReleaseSelection: vi
         .fn()
-        .mockResolvedValue(createSelectionResult('guid-1', 'The.Matrix.1999.1080p.WEB-DL-FLUX')),
+        .mockResolvedValue(createSelectionResult('guid-1', 'Fixture.Movie.1999.1080p.WEB-DL-FLUX')),
       probeAttempt: vi.fn(),
       submitSelectedRelease: vi.fn().mockResolvedValue(undefined),
       waitForAttemptOutcome: vi.fn().mockResolvedValue({
@@ -168,13 +205,104 @@ describe('AcquisitionRunner', () => {
         subtitleLanguage: 'English',
       },
       sourceService: 'radarr',
-      title: 'Alien',
+      title: 'Fixture Space',
     });
 
     const findReleaseSelection = vi
       .fn()
-      .mockResolvedValueOnce(createSelectionResult('guid-1', 'Alien.1979.1080p.WEB-DL-GROUPA'))
-      .mockResolvedValueOnce(createSelectionResult('guid-2', 'Alien.1979.1080p.WEB-DL-GROUPB'));
+      .mockResolvedValueOnce(
+        createSelectionResult('guid-1', 'Fixture Space.1979.1080p.WEB-DL-GROUPA'),
+      )
+      .mockResolvedValueOnce(
+        createSelectionResult('guid-2', 'Fixture Space.1979.1080p.WEB-DL-GROUPB'),
+      );
+    const waitForAttemptOutcome = vi
+      .fn()
+      .mockResolvedValueOnce({
+        outcome: 'failure',
+        preferredReleaser: null,
+        progress: 100,
+        queueStatus: 'Imported',
+        reasonCode: 'missing-subs',
+        summary: 'Imported release failed validation',
+      })
+      .mockResolvedValueOnce({
+        outcome: 'success',
+        preferredReleaser: 'groupb',
+        progress: 100,
+        queueStatus: 'Imported',
+        reasonCode: 'validated',
+        summary: 'Imported and validated',
+      });
+    const cleanupFailedImportForRetry = vi.fn().mockResolvedValue({
+      deletedFileIds: [444],
+      skipped: false,
+    });
+
+    const runner = new AcquisitionRunner(harness.jobs, harness.lifecycle, {
+      cleanupFailedImportForRetry,
+      findReleaseSelection,
+      probeAttempt: vi.fn(),
+      submitSelectedRelease: vi.fn().mockResolvedValue(undefined),
+      waitForAttemptOutcome,
+    });
+
+    runner.enqueue(job.id);
+
+    await vi.waitFor(() => {
+      expect(harness.jobs.getJob(job.id)?.status).toBe('completed');
+    });
+
+    const completed = harness.jobs.getJob(job.id);
+
+    expect(findReleaseSelection).toHaveBeenCalledTimes(2);
+    expect(cleanupFailedImportForRetry).toHaveBeenCalledTimes(1);
+    expect(cleanupFailedImportForRetry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: job.id,
+        currentRelease: 'Fixture Space.1979.1080p.WEB-DL-GROUPA',
+      }),
+    );
+    expect(waitForAttemptOutcome).toHaveBeenCalledTimes(2);
+    expect(completed?.attempt).toBe(2);
+    expect(completed?.failedGuids).toContain('guid-1');
+    expect(completed?.reasonCode).toBe('validated');
+    expect(completed?.attempts).toHaveLength(2);
+    expect(completed?.attempts[0]?.reasonCode).toBe('missing-subs');
+    expect(completed?.attempts[0]?.status).toBe('retrying');
+    expect(completed?.attempts[1]?.reasonCode).toBe('validated');
+    expect(completed?.attempts[1]?.status).toBe('completed');
+    expect(completed?.recoverySelection?.decision.selected.guid).toBe('guid-1');
+  });
+
+  it('continues past maxRetries when untried release candidates remain', async () => {
+    const harness = createHarness();
+    const job = harness.jobs.createJob({
+      arrItemId: 223,
+      itemId: 'movie:223',
+      kind: 'movie',
+      maxRetries: 1,
+      preferredReleaser: null,
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      sourceService: 'radarr',
+      title: 'Fixture Space',
+    });
+    harness.jobs.replaceReleaseCandidates(job.id, [
+      createReleaseCandidate('guid-1', 'Fixture Space.1979.1080p.WEB-DL-GROUPA'),
+      createReleaseCandidate('guid-2', 'Fixture Space.1979.1080p.WEB-DL-GROUPB'),
+    ]);
+
+    const findReleaseSelection = vi
+      .fn()
+      .mockResolvedValueOnce(
+        createSelectionResult('guid-1', 'Fixture Space.1979.1080p.WEB-DL-GROUPA'),
+      )
+      .mockResolvedValueOnce(
+        createSelectionResult('guid-2', 'Fixture Space.1979.1080p.WEB-DL-GROUPB'),
+      );
     const waitForAttemptOutcome = vi
       .fn()
       .mockResolvedValueOnce({
@@ -195,6 +323,10 @@ describe('AcquisitionRunner', () => {
       });
 
     const runner = new AcquisitionRunner(harness.jobs, harness.lifecycle, {
+      cleanupFailedImportForRetry: vi.fn().mockResolvedValue({
+        deletedFileIds: [444],
+        skipped: false,
+      }),
       findReleaseSelection,
       probeAttempt: vi.fn(),
       submitSelectedRelease: vi.fn().mockResolvedValue(undefined),
@@ -208,17 +340,255 @@ describe('AcquisitionRunner', () => {
     });
 
     const completed = harness.jobs.getJob(job.id);
-
-    expect(findReleaseSelection).toHaveBeenCalledTimes(2);
-    expect(waitForAttemptOutcome).toHaveBeenCalledTimes(2);
     expect(completed?.attempt).toBe(2);
-    expect(completed?.failedGuids).toContain('guid-1');
-    expect(completed?.reasonCode).toBe('validated');
-    expect(completed?.attempts).toHaveLength(2);
-    expect(completed?.attempts[0]?.reasonCode).toBe('missing-subs');
-    expect(completed?.attempts[0]?.status).toBe('retrying');
-    expect(completed?.attempts[1]?.reasonCode).toBe('validated');
-    expect(completed?.attempts[1]?.status).toBe('completed');
+    expect(
+      completed?.releaseCandidates?.find((candidate) => candidate.guid === 'guid-1'),
+    ).toMatchObject({
+      status: 'failed',
+    });
+    expect(
+      completed?.releaseCandidates?.find((candidate) => candidate.guid === 'guid-2'),
+    ).toMatchObject({
+      status: 'selected',
+    });
+  });
+
+  it('restores the first submitted release when all alternatives fail validation', async () => {
+    const harness = createHarness();
+    const job = harness.jobs.createJob({
+      arrItemId: 225,
+      itemId: 'movie:225',
+      kind: 'movie',
+      maxRetries: 1,
+      preferredReleaser: null,
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      sourceService: 'radarr',
+      title: 'Fixture Restore',
+    });
+    harness.jobs.replaceReleaseCandidates(job.id, [
+      createReleaseCandidate('guid-1', 'Fixture Restore.2026.1080p.WEB-DL-GROUPA'),
+      createReleaseCandidate('guid-2', 'Fixture Restore.2026.1080p.WEB-DL-GROUPB'),
+    ]);
+
+    const findReleaseSelection = vi
+      .fn()
+      .mockResolvedValueOnce(
+        createSelectionResult('guid-1', 'Fixture Restore.2026.1080p.WEB-DL-GROUPA'),
+      )
+      .mockResolvedValueOnce(
+        createSelectionResult('guid-2', 'Fixture Restore.2026.1080p.WEB-DL-GROUPB'),
+      );
+    const submitSelectedRelease = vi.fn().mockResolvedValue(undefined);
+    const waitForAttemptOutcome = vi
+      .fn()
+      .mockResolvedValueOnce({
+        detectedAudioLanguages: ['English'],
+        detectedSubtitleLanguages: [],
+        outcome: 'failure',
+        preferredReleaser: null,
+        progress: 100,
+        queueStatus: 'Imported',
+        reasonCode: 'missing-subs',
+        summary: 'Imported release is missing English subtitles',
+      })
+      .mockResolvedValueOnce({
+        detectedAudioLanguages: ['English'],
+        detectedSubtitleLanguages: [],
+        outcome: 'failure',
+        preferredReleaser: null,
+        progress: 100,
+        queueStatus: 'Imported',
+        reasonCode: 'missing-subs',
+        summary: 'Alternative release is missing English subtitles',
+      })
+      .mockResolvedValueOnce({
+        detectedAudioLanguages: ['English'],
+        detectedSubtitleLanguages: [],
+        outcome: 'failure',
+        preferredReleaser: null,
+        progress: 100,
+        queueStatus: 'Imported',
+        reasonCode: 'missing-subs',
+        summary: 'Initial release is restored but still missing English subtitles',
+      });
+
+    const runner = new AcquisitionRunner(harness.jobs, harness.lifecycle, {
+      cleanupFailedImportForRetry: vi.fn().mockResolvedValue({
+        deletedFileIds: [444],
+        skipped: false,
+      }),
+      findReleaseSelection,
+      probeAttempt: vi.fn(),
+      submitSelectedRelease,
+      waitForAttemptOutcome,
+    });
+
+    runner.enqueue(job.id);
+
+    await vi.waitFor(() => {
+      expect(harness.jobs.getJob(job.id)?.recoveryStatus).toBe('restored');
+    });
+
+    const failed = harness.jobs.getJob(job.id);
+    expect(failed?.status).toBe('failed');
+    expect(failed?.recoveryAttempted).toBe(true);
+    expect(failed?.queueStatus).toBe('Initial release restored');
+    expect(failed?.failureReason).toContain('initial release was restored');
+    expect(failed?.attempt).toBe(3);
+    expect(findReleaseSelection).toHaveBeenCalledTimes(2);
+    expect(submitSelectedRelease).toHaveBeenCalledTimes(3);
+    expect(submitSelectedRelease.mock.calls[2]?.[1].decision.selected?.guid).toBe('guid-1');
+    expect(failed?.recoverySelection?.decision.selected.guid).toBe('guid-1');
+    expect(
+      failed?.releaseCandidates?.find((candidate) => candidate.guid === 'guid-1'),
+    ).toMatchObject({
+      status: 'failed',
+    });
+    expect(
+      failed?.releaseCandidates?.find((candidate) => candidate.guid === 'guid-2'),
+    ).toMatchObject({
+      status: 'failed',
+    });
+  });
+
+  it('fails explicitly when the initial release recovery attempt cannot be restored', async () => {
+    const harness = createHarness();
+    const job = harness.jobs.createJob({
+      arrItemId: 226,
+      itemId: 'movie:226',
+      kind: 'movie',
+      maxRetries: 1,
+      preferredReleaser: null,
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      sourceService: 'radarr',
+      title: 'Fixture Rollback',
+    });
+    harness.jobs.replaceReleaseCandidates(job.id, [
+      createReleaseCandidate('guid-1', 'Fixture Rollback.2026.1080p.WEB-DL-GROUPA'),
+      createReleaseCandidate('guid-2', 'Fixture Rollback.2026.1080p.WEB-DL-GROUPB'),
+    ]);
+
+    const runner = new AcquisitionRunner(harness.jobs, harness.lifecycle, {
+      cleanupFailedImportForRetry: vi.fn().mockResolvedValue({
+        deletedFileIds: [444],
+        skipped: false,
+      }),
+      findReleaseSelection: vi
+        .fn()
+        .mockResolvedValueOnce(
+          createSelectionResult('guid-1', 'Fixture Rollback.2026.1080p.WEB-DL-GROUPA'),
+        )
+        .mockResolvedValueOnce(
+          createSelectionResult('guid-2', 'Fixture Rollback.2026.1080p.WEB-DL-GROUPB'),
+        ),
+      probeAttempt: vi.fn(),
+      submitSelectedRelease: vi.fn().mockResolvedValue(undefined),
+      waitForAttemptOutcome: vi
+        .fn()
+        .mockResolvedValueOnce({
+          outcome: 'failure',
+          preferredReleaser: null,
+          progress: 100,
+          queueStatus: 'Imported',
+          reasonCode: 'missing-subs',
+          summary: 'Imported release is missing English subtitles',
+        })
+        .mockResolvedValueOnce({
+          outcome: 'failure',
+          preferredReleaser: null,
+          progress: 100,
+          queueStatus: 'Imported',
+          reasonCode: 'missing-subs',
+          summary: 'Alternative release is missing English subtitles',
+        })
+        .mockResolvedValueOnce({
+          outcome: 'timeout',
+          preferredReleaser: null,
+          progress: 67,
+          queueStatus: 'Downloading',
+          reasonCode: 'import-timeout',
+          summary: 'Timed out restoring the initial release',
+        }),
+    });
+
+    runner.enqueue(job.id);
+
+    await vi.waitFor(() => {
+      expect(harness.jobs.getJob(job.id)?.recoveryStatus).toBe('failed');
+    });
+
+    const failed = harness.jobs.getJob(job.id);
+    expect(failed?.status).toBe('failed');
+    expect(failed?.queueStatus).toBe('Initial release recovery failed');
+    expect(failed?.failureReason).toContain('could not be restored');
+    expect(failed?.failureReason).toContain('Timed out restoring the initial release');
+  });
+
+  it('fails explicitly when failed-import cleanup blocks the next candidate', async () => {
+    const harness = createHarness();
+    const job = harness.jobs.createJob({
+      arrItemId: 224,
+      itemId: 'movie:224',
+      kind: 'movie',
+      maxRetries: 3,
+      preferredReleaser: null,
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      sourceService: 'radarr',
+      title: 'Fixture Cleanup',
+    });
+    harness.jobs.replaceReleaseCandidates(job.id, [
+      createReleaseCandidate('guid-1', 'Fixture Cleanup.2026.1080p.WEB-DL-GROUPA'),
+      createReleaseCandidate('guid-2', 'Fixture Cleanup.2026.1080p.WEB-DL-GROUPB'),
+    ]);
+
+    const runner = new AcquisitionRunner(harness.jobs, harness.lifecycle, {
+      cleanupFailedImportForRetry: vi
+        .fn()
+        .mockRejectedValue(new Error('Radarr refused file delete')),
+      findReleaseSelection: vi
+        .fn()
+        .mockResolvedValue(
+          createSelectionResult('guid-1', 'Fixture Cleanup.2026.1080p.WEB-DL-GROUPA'),
+        ),
+      probeAttempt: vi.fn(),
+      submitSelectedRelease: vi.fn().mockResolvedValue(undefined),
+      waitForAttemptOutcome: vi.fn().mockResolvedValue({
+        detectedAudioLanguages: ['English'],
+        detectedSubtitleLanguages: [],
+        outcome: 'failure',
+        preferredReleaser: null,
+        progress: 100,
+        queueStatus: 'Imported',
+        reasonCode: 'missing-subs',
+        summary: 'Imported release failed validation',
+      }),
+    });
+
+    runner.enqueue(job.id);
+
+    await vi.waitFor(() => {
+      expect(harness.jobs.getJob(job.id)?.status).toBe('failed');
+    });
+
+    const failed = harness.jobs.getJob(job.id);
+    expect(failed?.reasonCode).toBe('import-blocked');
+    expect(failed?.queueStatus).toBe('Cleanup blocked');
+    expect(failed?.failureReason).toContain('Radarr refused file delete');
+    expect(
+      failed?.releaseCandidates?.find((candidate) => candidate.guid === 'guid-1'),
+    ).toMatchObject({
+      detectedAudioLanguages: ['English'],
+      status: 'failed',
+    });
   });
 
   it('suppresses duplicate enqueue calls for the same running job', async () => {
@@ -234,14 +604,14 @@ describe('AcquisitionRunner', () => {
         subtitleLanguage: 'English',
       },
       sourceService: 'sonarr',
-      title: 'Andor',
+      title: 'Fixture Series',
     });
 
     let releaseSelectionCalls = 0;
     const runner = new AcquisitionRunner(harness.jobs, harness.lifecycle, {
       findReleaseSelection: vi.fn().mockImplementation(async () => {
         releaseSelectionCalls += 1;
-        return createSelectionResult('guid-1', 'Andor.S01E01.1080p.WEB-DL-GROUP');
+        return createSelectionResult('guid-1', 'Fixture Series.S01E01.1080p.WEB-DL-GROUP');
       }),
       probeAttempt: vi.fn(),
       submitSelectedRelease: vi.fn().mockResolvedValue(undefined),
@@ -812,7 +1182,7 @@ describe('AcquisitionRunner', () => {
     });
   });
 
-  it('stops immediately without retrying when Arr blocks import after download completion', async () => {
+  it('retries an existing-file import block and succeeds with the next release', async () => {
     const harness = createHarness();
     const job = harness.jobs.createJob({
       arrItemId: 901,
@@ -831,34 +1201,140 @@ describe('AcquisitionRunner', () => {
     const runner = new AcquisitionRunner(harness.jobs, harness.lifecycle, {
       findReleaseSelection: vi
         .fn()
-        .mockResolvedValue(
+        .mockResolvedValueOnce(
           createSelectionResult('guid-blocked', 'Blocked.Import.Title.2026.1080p.WEB-DL-GROUP'),
+        )
+        .mockResolvedValueOnce(
+          createSelectionResult('guid-next', 'Blocked.Import.Title.2026.1080p.WEB-DL-NEXT'),
         ),
       probeAttempt: vi.fn(),
       submitSelectedRelease: vi.fn().mockResolvedValue(undefined),
-      waitForAttemptOutcome: vi.fn().mockResolvedValue({
-        outcome: 'failure',
-        preferredReleaser: null,
-        progress: 100,
-        queueStatus: 'Import blocked',
-        reasonCode: 'import-blocked',
-        summary: 'Arr refused to import the release: Not an upgrade for existing movie file.',
+      cleanupFailedImportForRetry: vi.fn().mockResolvedValue({
+        deletedFileIds: [9010],
+        skipped: false,
       }),
+      waitForAttemptOutcome: vi
+        .fn()
+        .mockResolvedValueOnce({
+          outcome: 'failure',
+          preferredReleaser: null,
+          progress: 100,
+          queueStatus: 'Import blocked',
+          reasonCode: 'import-blocked',
+          summary: 'Arr refused to import the release: Not an upgrade for existing movie file.',
+        })
+        .mockResolvedValueOnce({
+          outcome: 'success',
+          preferredReleaser: 'next',
+          progress: 100,
+          queueStatus: 'Imported',
+          reasonCode: 'validated',
+          summary: 'Imported and validated',
+        }),
     });
 
     runner.enqueue(job.id);
 
     await vi.waitFor(() => {
-      expect(harness.jobs.getJob(job.id)?.status).toBe('failed');
+      expect(harness.jobs.getJob(job.id)?.status).toBe('completed');
     });
 
-    const failed = harness.jobs.getJob(job.id);
-    expect(failed?.autoRetrying).toBe(false);
-    expect(failed?.attempt).toBe(1);
-    expect(failed?.reasonCode).toBe('import-blocked');
-    expect(failed?.queueStatus).toBe('Import blocked');
-    expect(failed?.attempts[0]?.status).toBe('failed');
-    expect(failed?.attempts[0]?.reasonCode).toBe('import-blocked');
+    const completed = harness.jobs.getJob(job.id);
+    expect(completed?.autoRetrying).toBe(false);
+    expect(completed?.attempt).toBe(2);
+    expect(completed?.failedGuids).toContain('guid-blocked');
+    expect(completed?.reasonCode).toBe('validated');
+    expect(completed?.attempts[0]?.status).toBe('retrying');
+    expect(completed?.attempts[0]?.reasonCode).toBe('import-blocked');
+    expect(completed?.attempts[1]?.status).toBe('completed');
+  });
+
+  it('cleans up an existing-file import block after a manual override before retrying', async () => {
+    const harness = createHarness();
+    const job = harness.jobs.createJob({
+      arrItemId: 947,
+      itemId: 'movie:947',
+      kind: 'movie',
+      maxRetries: 4,
+      preferredReleaser: null,
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      sourceService: 'radarr',
+      title: 'Fixture Conversation',
+    });
+    const manualSelection = {
+      ...createSelectionResult('guid-override', 'Fixture.Conversation.2011.1080p.WEB-DL-OVERRIDE'),
+      manualSelectionMode: 'override-arr-rejection' as const,
+    };
+    harness.jobs.updateJob(job.id, {
+      queuedManualSelection: persistManualSelection(manualSelection),
+      queueStatus: manualSelectionQueuedStatus,
+      status: 'queued',
+      validationSummary: 'User selected Fixture.Conversation.2011.1080p.WEB-DL-OVERRIDE',
+    });
+
+    const findReleaseSelection = vi
+      .fn()
+      .mockResolvedValue(
+        createSelectionResult('guid-next', 'Fixture.Conversation.2011.1080p.BluRay-NEXT'),
+      );
+    const cleanupFailedImportForRetry = vi.fn().mockResolvedValue({
+      deletedFileIds: [9470],
+      skipped: false,
+    });
+    const submitSelectedRelease = vi.fn().mockResolvedValue(undefined);
+    const runner = new AcquisitionRunner(harness.jobs, harness.lifecycle, {
+      cleanupFailedImportForRetry,
+      findReleaseSelection,
+      probeAttempt: vi.fn(),
+      submitSelectedRelease,
+      waitForAttemptOutcome: vi
+        .fn()
+        .mockResolvedValueOnce({
+          outcome: 'failure',
+          preferredReleaser: null,
+          progress: 100,
+          queueStatus: 'Import blocked',
+          reasonCode: 'import-blocked',
+          summary:
+            'Arr refused to import the release: Not an upgrade for existing movie file. Existing quality: Bluray-1080p. New Quality WEBDL-1080p.',
+        })
+        .mockResolvedValueOnce({
+          outcome: 'success',
+          preferredReleaser: 'next',
+          progress: 100,
+          queueStatus: 'Imported',
+          reasonCode: 'validated',
+          summary: 'Imported and validated',
+        }),
+    });
+
+    runner.enqueue(job.id);
+
+    await vi.waitFor(() => {
+      expect(harness.jobs.getJob(job.id)?.status).toBe('completed');
+    });
+
+    const completed = harness.jobs.getJob(job.id);
+    expect(cleanupFailedImportForRetry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        currentRelease: 'Fixture.Conversation.2011.1080p.WEB-DL-OVERRIDE',
+        id: job.id,
+      }),
+    );
+    expect(findReleaseSelection).toHaveBeenCalledTimes(1);
+    expect(submitSelectedRelease).toHaveBeenCalledTimes(2);
+    expect(completed?.attempt).toBe(2);
+    expect(completed?.failedGuids).toContain('guid-override');
+    expect(completed?.attempts[0]?.manualSelectionMode).toBe('override-arr-rejection');
+    expect(completed?.attempts[0]?.reasonCode).toBe('import-blocked');
+    expect(completed?.attempts[0]?.status).toBe('retrying');
+    expect(completed?.attempts[1]?.releaseTitle).toBe(
+      'Fixture.Conversation.2011.1080p.BluRay-NEXT',
+    );
+    expect(completed?.reasonCode).toBe('validated');
   });
 
   it('prefers a manual selection that arrives while auto-search results are being processed', async () => {

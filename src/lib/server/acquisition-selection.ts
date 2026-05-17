@@ -1,14 +1,18 @@
 import {
   evaluateReleaseCandidates,
+  isExistingFileArrRejection,
+  releaseRejectionReasons,
   selectBestEvaluatedRelease,
   type EvaluatedRelease,
 } from '$lib/server/release-score';
 import { arrFetch, isArrFetchError } from '$lib/server/arr-client';
 import {
   manualSelectionQueuedStatus,
+  type PersistedAcquisitionReleaseCandidate,
   type PersistedAcquisitionJob,
   type PersistedManualSelection,
 } from '$lib/server/acquisition-domain';
+import { getAcquisitionJobRepository } from '$lib/server/acquisition-job-repository';
 import { extractReleaser } from '$lib/server/media-identity';
 import { asNumber, asRecord } from '$lib/server/raw';
 import { createAreaLogger, toErrorLogContext } from '$lib/server/logger';
@@ -128,11 +132,14 @@ export function queuedManualReleaseResults(
 
 function manualReleaseResultsFromInventory(
   inventory: ReleaseInventory,
-  failedGuids: string[],
+  failedReleaseKeys: string[],
   selectedGuid: string | null,
+  selectedIndexerId: number | null,
 ): ManualReleaseResult[] {
   return orderManualReleaseResults(
-    inventory.evaluated.map((release) => toManualReleaseResult(release, selectedGuid, failedGuids)),
+    inventory.evaluated.map((release) =>
+      toManualReleaseResult(release, selectedGuid, selectedIndexerId, failedReleaseKeys),
+    ),
   );
 }
 
@@ -169,10 +176,111 @@ type ReleaseInventory = {
   releasesFound: number;
 };
 
-function releaseOptions(job: PersistedAcquisitionJob) {
+function releaseKey(guid: string, indexerId: number): string {
+  return `${guid}:${indexerId}`;
+}
+
+function releaseKeyFromCandidate(candidate: Pick<ReleaseDecisionCandidate, 'guid' | 'indexerId'>) {
+  return releaseKey(candidate.guid, candidate.indexerId);
+}
+
+function releaseKeyFromEvaluated(release: EvaluatedRelease): string {
+  return releaseKeyFromCandidate(release.candidate);
+}
+
+function failedCandidateKeys(job: PersistedAcquisitionJob): string[] {
+  return (job.releaseCandidates ?? [])
+    .filter((candidate) => candidate.status === 'failed')
+    .map(releaseKeyFromCandidate);
+}
+
+function manualSelectionModeFromArrRejected(arrRejected: boolean): ManualReleaseSelectionMode {
+  return arrRejected ? 'override-arr-rejection' : 'direct';
+}
+
+function mergeReleaseCandidatePool(
+  existing: PersistedAcquisitionReleaseCandidate[],
+  evaluated: EvaluatedRelease[],
+): PersistedAcquisitionReleaseCandidate[] {
+  const now = new Date().toISOString();
+  const byKey = new Map(
+    existing.map((candidate) => [releaseKeyFromCandidate(candidate), candidate]),
+  );
+
+  for (const release of evaluated) {
+    const key = releaseKeyFromEvaluated(release);
+    const current = byKey.get(key);
+    byKey.set(key, {
+      ...release.candidate,
+      acceptedByLocalRules: release.acceptedByLocalRules,
+      arrRejected: release.arrRejected,
+      attempt: current?.attempt ?? null,
+      autoSelectable: release.autoSelectable,
+      detectedAudioLanguages: current?.detectedAudioLanguages ?? [],
+      detectedSubtitleLanguages: current?.detectedSubtitleLanguages ?? [],
+      failedAt: current?.failedAt ?? null,
+      failureReason: current?.failureReason ?? null,
+      firstSeenAt: current?.firstSeenAt ?? now,
+      identityReason: release.identityReason,
+      identityStatus: release.identityStatus,
+      lastSeenAt: now,
+      payload: release.payload,
+      rejectionReasons: release.rejectionReasons,
+      scopeReason: release.scopeReason,
+      scopeStatus: release.scopeStatus,
+      selectionMode: manualSelectionModeFromArrRejected(release.arrRejected),
+      status:
+        current?.status === 'failed' || current?.status === 'selected'
+          ? current.status
+          : 'available',
+    });
+  }
+
+  return [...byKey.values()].sort((left, right) => {
+    if (left.status !== right.status) {
+      const rank = { selected: 0, available: 1, failed: 2 };
+      return rank[left.status] - rank[right.status];
+    }
+
+    if (left.score !== right.score) {
+      return right.score - left.score;
+    }
+
+    return left.title.localeCompare(right.title);
+  });
+}
+
+function evaluatedFromPersisted(candidate: PersistedAcquisitionReleaseCandidate): EvaluatedRelease {
   return {
+    acceptedByLocalRules: candidate.acceptedByLocalRules,
+    arrRejected: candidate.arrRejected,
+    autoSelectable: candidate.autoSelectable,
+    candidate,
+    identityReason: candidate.identityReason,
+    identityStatus: candidate.identityStatus,
+    payload: candidate.payload,
+    rejectionReasons: candidate.rejectionReasons,
+    scopeReason: candidate.scopeReason,
+    scopeStatus: candidate.scopeStatus,
+  };
+}
+
+function releaseOptions(job: PersistedAcquisitionJob) {
+  const failedCandidates = (job.releaseCandidates ?? []).filter(
+    (candidate) => candidate.status === 'failed',
+  );
+  return {
+    failedIndexerIds: [...new Set(failedCandidates.map((candidate) => candidate.indexerId))],
+    failedReleasers: [
+      ...new Set(
+        failedCandidates
+          .map((candidate) => extractReleaser(candidate.title))
+          .filter((releaser): releaser is string => releaser !== null),
+      ),
+    ],
     kind: job.kind,
     preferredReleaser: job.preferredReleaser,
+    retryReasonCode: job.reasonCode,
     targetEpisodeIds: job.targetEpisodeIds,
     targetSeasonNumbers: job.targetSeasonNumbers,
     targetTitle: job.title,
@@ -209,13 +317,17 @@ function mapManualReleaseStatus(
   release: EvaluatedRelease,
   blockReason: ManualReleaseBlockReason | null,
   selectedGuid: string | null,
-  failedGuids: string[],
+  selectedIndexerId: number | null,
+  failedReleaseKeys: string[],
 ): ManualReleaseResult['status'] {
-  if (release.candidate.guid === selectedGuid) {
+  if (
+    release.candidate.guid === selectedGuid &&
+    release.candidate.indexerId === selectedIndexerId
+  ) {
     return 'selected';
   }
 
-  if (failedGuids.includes(release.candidate.guid)) {
+  if (failedReleaseKeys.includes(releaseKeyFromCandidate(release.candidate))) {
     return 'previously-failed';
   }
 
@@ -278,10 +390,11 @@ function manualSelectionMatchReasons(release: EvaluatedRelease): string[] {
 function toManualReleaseResult(
   release: EvaluatedRelease,
   selectedGuid: string | null,
-  failedGuids: string[],
+  selectedIndexerId: number | null,
+  failedReleaseKeys: string[],
 ): ManualReleaseResult {
   const blockReason =
-    release.candidate.guid === selectedGuid
+    release.candidate.guid === selectedGuid && release.candidate.indexerId === selectedIndexerId
       ? 'already-selected'
       : manualSelectionBlockReason(release);
   const canSelect = blockReason === null;
@@ -299,7 +412,13 @@ function toManualReleaseResult(
       warningReasons: manualSelectionWarningReasons(release),
       arrReasons: [...release.rejectionReasons],
     },
-    status: mapManualReleaseStatus(release, blockReason, selectedGuid, failedGuids),
+    status: mapManualReleaseStatus(
+      release,
+      blockReason,
+      selectedGuid,
+      selectedIndexerId,
+      failedReleaseKeys,
+    ),
   };
 }
 
@@ -340,17 +459,54 @@ function orderManualReleaseResults(releases: ManualReleaseResult[]): ManualRelea
 export async function findReleaseSelection(
   job: PersistedAcquisitionJob,
 ): Promise<ReleaseSelectionResult> {
-  const inventory = await fetchReleaseInventory(job);
-  const autoCandidates = inventory.evaluated.filter(
-    (release) => !job.failedGuids.includes(release.candidate.guid),
+  const jobs = getAcquisitionJobRepository();
+  const currentJob = jobs.getJob(job.id) ?? job;
+  const inventory = await fetchReleaseInventory(currentJob);
+  const releaseCandidates = mergeReleaseCandidatePool(
+    currentJob.releaseCandidates ?? [],
+    inventory.evaluated,
   );
+  const persistedJob = jobs.replaceReleaseCandidates(job.id, releaseCandidates) ?? {
+    ...currentJob,
+    releaseCandidates,
+  };
+  const persistedReleaseCandidates = persistedJob.releaseCandidates ?? [];
+  const failedReleaseKeys = failedCandidateKeys(persistedJob);
+  const failedReleaseKeySet = new Set(failedReleaseKeys);
+  const legacyFailedGuidSet = new Set(
+    failedReleaseKeys.length === 0 ? persistedJob.failedGuids : [],
+  );
+  const autoCandidates = persistedReleaseCandidates
+    .filter((candidate) => candidate.status === 'available')
+    .filter(
+      (candidate) =>
+        !failedReleaseKeySet.has(releaseKeyFromCandidate(candidate)) &&
+        !legacyFailedGuidSet.has(candidate.guid),
+    )
+    .map(evaluatedFromPersisted)
+    .filter((release) => release.autoSelectable);
   const selection = selectBestEvaluatedRelease(autoCandidates, inventory.mappedReleases);
+  if (
+    !selection.decision.selected &&
+    persistedReleaseCandidates.length > 0 &&
+    persistedReleaseCandidates.every((candidate) => candidate.status === 'failed')
+  ) {
+    selection.decision.reason = 'No untried release candidates remain for this acquisition job';
+  }
   const selectedGuid = selection.decision.selected?.guid ?? null;
+  const selectedIndexerId = selection.decision.selected?.indexerId ?? null;
 
   return {
     manualResults: orderManualReleaseResults(
-      inventory.evaluated.map((release) =>
-        toManualReleaseResult(release, selectedGuid, job.failedGuids),
+      persistedReleaseCandidates.map((release) =>
+        toManualReleaseResult(
+          evaluatedFromPersisted(release),
+          selectedGuid,
+          selectedIndexerId,
+          legacyFailedGuidSet.has(release.guid)
+            ? [...failedReleaseKeys, releaseKeyFromCandidate(release)]
+            : failedReleaseKeys,
+        ),
       ),
     ),
     manualSelectionMode: null,
@@ -372,7 +528,14 @@ export async function getManualReleaseResults(
       return {
         jobId: job.id,
         releases: mergeQueuedManualResult(
-          manualReleaseResultsFromInventory(inventory, job.failedGuids, selectedGuid),
+          manualReleaseResultsFromInventory(
+            inventory,
+            (job.releaseCandidates ?? [])
+              .filter((candidate) => candidate.status === 'failed')
+              .map(releaseKeyFromCandidate),
+            selectedGuid,
+            job.queuedManualSelection.decision.selected.indexerId,
+          ),
           job.queuedManualSelection,
         ),
         selectedGuid,
@@ -470,7 +633,14 @@ export async function findManualReleaseSelection(
   return {
     manualResults: orderManualReleaseResults(
       inventory.evaluated.map((release) =>
-        toManualReleaseResult(release, matched.candidate.guid, job.failedGuids),
+        toManualReleaseResult(
+          release,
+          matched.candidate.guid,
+          matched.candidate.indexerId,
+          (job.releaseCandidates ?? [])
+            .filter((candidate) => candidate.status === 'failed')
+            .map(releaseKeyFromCandidate),
+        ),
       ),
     ),
     manualSelectionMode: requiredSelectionMode,
@@ -490,12 +660,25 @@ export async function submitSelectedRelease(
     return;
   }
 
+  const overrideArrRejection = isExistingFileArrRejection(
+    releaseRejectionReasons(selection.payload),
+  );
+
   await arrFetch<unknown>(job.sourceService, '/api/v3/release', {
     method: 'POST',
-    body: JSON.stringify({
-      guid: selection.decision.selected.guid,
-      indexerId: selection.decision.selected.indexerId,
-    }),
+    body: JSON.stringify(
+      overrideArrRejection
+        ? {
+            ...selection.payload,
+            guid: selection.decision.selected.guid,
+            indexerId: selection.decision.selected.indexerId,
+            shouldOverride: true,
+          }
+        : {
+            guid: selection.decision.selected.guid,
+            indexerId: selection.decision.selected.indexerId,
+          },
+    ),
   });
 }
 

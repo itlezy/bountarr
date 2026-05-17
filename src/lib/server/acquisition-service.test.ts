@@ -6,12 +6,12 @@ const job: AcquisitionJob = {
   itemId: 'movie:603',
   arrItemId: 603,
   kind: 'movie',
-  title: 'The Matrix',
+  title: 'Fixture Movie',
   sourceService: 'radarr',
   status: 'validating',
   attempt: 1,
   maxRetries: 4,
-  currentRelease: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+  currentRelease: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
   selectedReleaser: 'flux',
   preferredReleaser: 'flux',
   reasonCode: null,
@@ -82,10 +82,10 @@ describe('acquisition service', () => {
         {
           id: 7,
           movieId: 603,
-          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          title: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
           movie: {
             id: 603,
-            title: 'The Matrix',
+            title: 'Fixture Movie',
             year: 1999,
           },
         },
@@ -116,7 +116,7 @@ describe('acquisition service', () => {
       id: 'radarr:queue:7',
       queueId: 7,
       sourceService: 'radarr',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
     };
     const queueCache = new Map([
       [
@@ -162,13 +162,13 @@ describe('acquisition service', () => {
         {
           id: 7,
           movieId: 603,
-          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          title: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
           status: 'downloading',
           trackedDownloadStatus: 'ok',
           trackedDownloadState: 'downloading',
           movie: {
             id: 603,
-            title: 'The Matrix',
+            title: 'Fixture Movie',
             year: 1999,
           },
         },
@@ -185,7 +185,7 @@ describe('acquisition service', () => {
     const result = await module.cancelQueueEntry(queueEntry);
 
     expect(result.itemId).toBe('radarr:queue:7');
-    expect(result.message).toBe('"The Matrix" download was cancelled.');
+    expect(result.message).toBe('"Fixture Movie" download was cancelled.');
     expect(queueCache.has('queue')).toBe(false);
   });
 
@@ -197,7 +197,7 @@ describe('acquisition service', () => {
       id: 'radarr:queue:7',
       queueId: 7,
       sourceService: 'radarr',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
     };
 
     vi.doMock('$lib/server/arr-client', () => ({
@@ -230,13 +230,13 @@ describe('acquisition service', () => {
         {
           id: 7,
           movieId: 603,
-          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          title: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
           status: 'downloading',
           trackedDownloadStatus: 'ok',
           trackedDownloadState: 'downloading',
           movie: {
             id: 603,
-            title: 'The Matrix',
+            title: 'Fixture Movie',
             year: 1999,
           },
         },
@@ -254,7 +254,7 @@ describe('acquisition service', () => {
 
     expect(result).toEqual({
       itemId: 'radarr:queue:7',
-      message: '"The Matrix" download was cancelled.',
+      message: '"Fixture Movie" download was cancelled.',
     });
     expect(arrFetch).toHaveBeenCalledTimes(1);
     expect(arrFetch).toHaveBeenCalledWith(
@@ -280,7 +280,7 @@ describe('acquisition service', () => {
       id: 'radarr:download:radarr-download-7',
       queueId: null,
       sourceService: 'radarr',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
     };
 
     vi.doMock('$lib/server/arr-client', () => ({
@@ -314,13 +314,13 @@ describe('acquisition service', () => {
           id: 11,
           downloadId: 'radarr-download-7',
           movieId: 603,
-          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          title: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
           status: 'downloading',
           trackedDownloadStatus: 'ok',
           trackedDownloadState: 'downloading',
           movie: {
             id: 603,
-            title: 'The Matrix',
+            title: 'Fixture Movie',
             year: 1999,
           },
         },
@@ -338,7 +338,7 @@ describe('acquisition service', () => {
 
     expect(result).toEqual({
       itemId: 'radarr:download:radarr-download-7',
-      message: '"The Matrix" download was cancelled.',
+      message: '"Fixture Movie" download was cancelled.',
     });
     expect(arrFetch).toHaveBeenCalledWith(
       'radarr',
@@ -363,7 +363,7 @@ describe('acquisition service', () => {
       id: 'radarr:download:radarr-download-7',
       queueId: null,
       sourceService: 'radarr',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
     };
 
     vi.doMock('$lib/server/arr-client', () => ({
@@ -396,13 +396,13 @@ describe('acquisition service', () => {
         {
           downloadId: 'radarr-download-7',
           movieId: 603,
-          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          title: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
           status: 'downloading',
           trackedDownloadStatus: 'ok',
           trackedDownloadState: 'downloading',
           movie: {
             id: 603,
-            title: 'The Matrix',
+            title: 'Fixture Movie',
             year: 1999,
           },
         },
@@ -429,10 +429,10 @@ describe('acquisition service', () => {
       kind: 'external',
       arrItemId: 83867,
       downloadId: 'download-shared',
-      id: 'sonarr:download:download-shared:sonarr-83867-andor-s01e02-1080p-web-dl-flux-episodes-102',
+      id: 'sonarr:download:download-shared:sonarr-83867-fixture-series-s01e02-1080p-web-dl-flux-episodes-102',
       queueId: null,
       sourceService: 'sonarr',
-      title: 'Andor',
+      title: 'Fixture Series',
     };
 
     vi.doMock('$lib/server/arr-client', () => ({
@@ -465,13 +465,13 @@ describe('acquisition service', () => {
         {
           downloadId: 'download-shared',
           seriesId: 83867,
-          title: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+          title: 'Fixture Series.S01E01.1080p.WEB-DL-FLUX',
           status: 'downloading',
           trackedDownloadStatus: 'ok',
           trackedDownloadState: 'downloading',
           series: {
             id: 83867,
-            title: 'Andor',
+            title: 'Fixture Series',
             year: 2022,
           },
           episodeIds: [101],
@@ -479,7 +479,7 @@ describe('acquisition service', () => {
         {
           downloadId: 'download-shared',
           seriesId: 83867,
-          title: 'Andor.S01E02.1080p.WEB-DL-FLUX',
+          title: 'Fixture Series.S01E02.1080p.WEB-DL-FLUX',
           status: 'completed',
           trackedDownloadStatus: 'warning',
           trackedDownloadState: 'importPending',
@@ -491,7 +491,7 @@ describe('acquisition service', () => {
           ],
           series: {
             id: 83867,
-            title: 'Andor',
+            title: 'Fixture Series',
             year: 2022,
           },
           episodeIds: [102],
@@ -519,7 +519,7 @@ describe('acquisition service', () => {
       id: 'radarr:queue:1996958567',
       queueId: 1996958567,
       sourceService: 'radarr',
-      title: 'Dangerous Animals',
+      title: 'Fixture Queue',
     };
 
     vi.doMock('$lib/server/arr-client', () => ({
@@ -552,7 +552,7 @@ describe('acquisition service', () => {
         {
           id: 1996958567,
           movieId: 727,
-          title: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+          title: 'Fixture.Queue.2025.1080p.WEB.H264-KBOX',
           status: 'completed',
           trackedDownloadStatus: 'warning',
           trackedDownloadState: 'importPending',
@@ -564,7 +564,7 @@ describe('acquisition service', () => {
           ],
           movie: {
             id: 727,
-            title: 'Dangerous Animals',
+            title: 'Fixture Queue',
             year: 2025,
           },
         },
@@ -593,7 +593,7 @@ describe('acquisition service', () => {
       id: 'radarr:queue:9',
       queueId: 9,
       sourceService: 'radarr',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
     };
 
     vi.doMock('$lib/server/arr-client', () => ({
@@ -626,7 +626,7 @@ describe('acquisition service', () => {
         {
           id: 9,
           movieId: 603,
-          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          title: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
           status: 'completed',
           trackedDownloadStatus: 'warning',
           trackedDownloadState: 'importPending',
@@ -638,7 +638,7 @@ describe('acquisition service', () => {
           ],
           movie: {
             id: 603,
-            title: 'The Matrix',
+            title: 'Fixture Movie',
             year: 1999,
           },
         },
@@ -667,7 +667,7 @@ describe('acquisition service', () => {
       id: 'radarr:queue:10',
       queueId: 10,
       sourceService: 'radarr',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
     };
 
     vi.doMock('$lib/server/arr-client', () => ({
@@ -700,7 +700,7 @@ describe('acquisition service', () => {
         {
           id: 10,
           movieId: 603,
-          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          title: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
           status: 'completed',
           trackedDownloadStatus: 'warning',
           trackedDownloadState: 'importPending',
@@ -712,7 +712,7 @@ describe('acquisition service', () => {
           ],
           movie: {
             id: 603,
-            title: 'The Matrix',
+            title: 'Fixture Movie',
             year: 1999,
           },
         },
@@ -730,7 +730,7 @@ describe('acquisition service', () => {
 
     expect(result).toEqual({
       itemId: 'radarr:queue:10',
-      message: '"The Matrix" download was cancelled.',
+      message: '"Fixture Movie" download was cancelled.',
     });
     expect(arrFetch).toHaveBeenCalledWith(
       'radarr',
@@ -785,20 +785,20 @@ describe('acquisition service', () => {
         {
           id: 7,
           movieId: 603,
-          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          title: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
           movie: {
             id: 603,
-            title: 'The Matrix',
+            title: 'Fixture Movie',
             year: 1999,
           },
         },
         {
           id: 8,
           movieId: 603,
-          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          title: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
           movie: {
             id: 603,
-            title: 'The Matrix',
+            title: 'Fixture Movie',
             year: 1999,
           },
         },
@@ -816,7 +816,7 @@ describe('acquisition service', () => {
     const module = await import('$lib/server/acquisition-service');
     const result = await module.cancelAcquisitionJob(job.id);
 
-    expect(result.message).toBe('"The Matrix" download was cancelled and unmonitored.');
+    expect(result.message).toBe('"Fixture Movie" download was cancelled and unmonitored.');
     expect(cancelJob).toHaveBeenCalledWith(job);
     expect(arrFetch).toHaveBeenCalledTimes(4);
     expect(arrFetch.mock.calls[0]?.[1]).toBe('/api/v3/queue/7');
@@ -873,10 +873,10 @@ describe('acquisition service', () => {
           id: 7,
           downloadId: 'radarr-download-7',
           movieId: 603,
-          title: 'The.Matrix.1999.1080p.BluRay-OLD',
+          title: 'Fixture.Movie.1999.1080p.BluRay-OLD',
           movie: {
             id: 603,
-            title: 'The Matrix',
+            title: 'Fixture Movie',
             year: 1999,
           },
         },
@@ -884,10 +884,10 @@ describe('acquisition service', () => {
           id: 8,
           downloadId: 'radarr-download-8',
           movieId: 603,
-          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          title: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
           movie: {
             id: 603,
-            title: 'The Matrix',
+            title: 'Fixture Movie',
             year: 1999,
           },
         },
@@ -905,7 +905,7 @@ describe('acquisition service', () => {
     const module = await import('$lib/server/acquisition-service');
     const result = await module.cancelAcquisitionJob(identityTrackedJob.id);
 
-    expect(result.message).toBe('"The Matrix" download was cancelled and unmonitored.');
+    expect(result.message).toBe('"Fixture Movie" download was cancelled and unmonitored.');
     expect(cancelJob).toHaveBeenCalledWith(identityTrackedJob);
     expect(arrFetch).toHaveBeenCalledTimes(3);
     expect(arrFetch.mock.calls[0]?.[1]).toBe('/api/v3/queue/8');
@@ -949,10 +949,10 @@ describe('acquisition service', () => {
         {
           downloadId: 'radarr-download-8',
           movieId: 603,
-          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          title: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
           movie: {
             id: 603,
-            title: 'The Matrix',
+            title: 'Fixture Movie',
             year: 1999,
           },
         },
@@ -1010,20 +1010,20 @@ describe('acquisition service', () => {
         {
           id: 7,
           movieId: 603,
-          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          title: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
           movie: {
             id: 603,
-            title: 'The Matrix',
+            title: 'Fixture Movie',
             year: 1999,
           },
         },
         {
           id: 8,
           movieId: 603,
-          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          title: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
           movie: {
             id: 603,
-            title: 'The Matrix',
+            title: 'Fixture Movie',
             year: 1999,
           },
         },
@@ -1104,9 +1104,9 @@ describe('acquisition service', () => {
       itemId: 'series:83867',
       arrItemId: 83867,
       kind: 'series',
-      title: 'Andor',
+      title: 'Fixture Series',
       sourceService: 'sonarr',
-      currentRelease: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+      currentRelease: 'Fixture Series.S01E01.1080p.WEB-DL-FLUX',
       targetSeasonNumbers: [1],
       targetEpisodeIds: [101, 102],
     };
@@ -1166,11 +1166,11 @@ describe('acquisition service', () => {
           id: 7,
           series: {
             id: 83867,
-            title: 'Andor',
+            title: 'Fixture Series',
             year: 2022,
           },
           seriesId: 83867,
-          title: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+          title: 'Fixture Series.S01E01.1080p.WEB-DL-FLUX',
         },
         {
           episode: {
@@ -1181,11 +1181,11 @@ describe('acquisition service', () => {
           id: 8,
           series: {
             id: 83867,
-            title: 'Andor',
+            title: 'Fixture Series',
             year: 2022,
           },
           seriesId: 83867,
-          title: 'Andor.S02E01.1080p.WEB-DL-FLUX',
+          title: 'Fixture Series.S02E01.1080p.WEB-DL-FLUX',
         },
       ]),
       queueRecordArrItemId: vi.fn(),
@@ -1199,7 +1199,7 @@ describe('acquisition service', () => {
     const module = await import('$lib/server/acquisition-service');
     const result = await module.cancelAcquisitionJob(seriesJob.id);
 
-    expect(result.message).toBe('"Andor" download was cancelled and unmonitored.');
+    expect(result.message).toBe('"Fixture Series" download was cancelled and unmonitored.');
     expect(cancelJob).toHaveBeenCalledWith(seriesJob);
     expect(arrFetch).toHaveBeenCalledTimes(3);
     expect(arrFetch.mock.calls[0]?.[1]).toBe('/api/v3/queue/7');
@@ -1214,9 +1214,9 @@ describe('acquisition service', () => {
       itemId: 'series:83867',
       arrItemId: 83867,
       kind: 'series',
-      title: 'Andor',
+      title: 'Fixture Series',
       sourceService: 'sonarr',
-      currentRelease: 'Andor.S01.1080p.WEB-DL-FLUX',
+      currentRelease: 'Fixture Series.S01.1080p.WEB-DL-FLUX',
       targetSeasonNumbers: [1],
       targetEpisodeIds: [101, 102],
     };
@@ -1271,21 +1271,21 @@ describe('acquisition service', () => {
           id: 9,
           series: {
             id: 83867,
-            title: 'Andor',
+            title: 'Fixture Series',
             year: 2022,
           },
           seriesId: 83867,
-          title: 'Andor.S01.1080p.WEB-DL-FLUX',
+          title: 'Fixture Series.S01.1080p.WEB-DL-FLUX',
         },
         {
           id: 10,
           series: {
             id: 83867,
-            title: 'Andor',
+            title: 'Fixture Series',
             year: 2022,
           },
           seriesId: 83867,
-          title: 'Andor.S02.1080p.WEB-DL-FLUX',
+          title: 'Fixture Series.S02.1080p.WEB-DL-FLUX',
         },
       ]),
       queueRecordArrItemId: vi.fn(),
@@ -1299,7 +1299,7 @@ describe('acquisition service', () => {
     const module = await import('$lib/server/acquisition-service');
     const result = await module.cancelAcquisitionJob(seriesJob.id);
 
-    expect(result.message).toBe('"Andor" download was cancelled and unmonitored.');
+    expect(result.message).toBe('"Fixture Series" download was cancelled and unmonitored.');
     expect(cancelJob).toHaveBeenCalledWith(seriesJob);
     expect(arrFetch).toHaveBeenCalledTimes(3);
     expect(arrFetch.mock.calls[0]?.[1]).toBe('/api/v3/queue/9');
@@ -1314,9 +1314,9 @@ describe('acquisition service', () => {
       itemId: 'series:83867',
       arrItemId: 83867,
       kind: 'series',
-      title: 'Andor',
+      title: 'Fixture Series',
       sourceService: 'sonarr',
-      currentRelease: 'Andor.S01.1080p.WEB-DL-FLUX',
+      currentRelease: 'Fixture Series.S01.1080p.WEB-DL-FLUX',
       targetSeasonNumbers: [1],
       targetEpisodeIds: [101, 102],
     };
@@ -1370,12 +1370,12 @@ describe('acquisition service', () => {
           id: 10,
           series: {
             id: 83867,
-            title: 'Andor',
+            title: 'Fixture Series',
             year: 2022,
           },
           seriesId: 83867,
           seasonNumbers: [1, 2],
-          title: 'Andor.S01-S02.1080p.WEB-DL-FLUX',
+          title: 'Fixture Series.S01-S02.1080p.WEB-DL-FLUX',
         },
       ]),
       queueRecordArrItemId: vi.fn(),
@@ -1390,7 +1390,7 @@ describe('acquisition service', () => {
     const result = await module.cancelAcquisitionJob(seriesJob.id);
 
     expect(result.message).toBe(
-      '"Andor" grab was cancelled and unmonitored, but no matching Arr queue rows were found. Refresh the queue if a live download is still running.',
+      '"Fixture Series" grab was cancelled and unmonitored, but no matching Arr queue rows were found. Refresh the queue if a live download is still running.',
     );
     expect(cancelJob).toHaveBeenCalledWith(seriesJob);
     expect(arrFetch).toHaveBeenCalledTimes(2);
@@ -1405,7 +1405,7 @@ describe('acquisition service', () => {
       itemId: 'series:83867',
       arrItemId: 83867,
       kind: 'series',
-      title: 'Andor',
+      title: 'Fixture Series',
       sourceService: 'sonarr',
       status: 'queued',
       queueStatus: 'Queued',
@@ -1471,7 +1471,7 @@ describe('acquisition service', () => {
     const result = await module.cancelAcquisitionJob(queuedSeriesJob.id);
 
     expect(result.message).toBe(
-      '"Andor" grab was cancelled and unmonitored before Arr created a live queue entry.',
+      '"Fixture Series" grab was cancelled and unmonitored before Arr created a live queue entry.',
     );
     expect(cancelJob).toHaveBeenCalledWith(queuedSeriesJob);
     expect(arrFetch).toHaveBeenCalledTimes(2);
@@ -1484,11 +1484,11 @@ describe('acquisition service', () => {
       itemId: 'series:83867',
       arrItemId: 83867,
       kind: 'series',
-      title: 'Andor',
+      title: 'Fixture Series',
       sourceService: 'sonarr',
       status: 'grabbing',
       queueStatus: 'Downloading',
-      currentRelease: 'Andor.S01.1080p.WEB-DL-FLUX',
+      currentRelease: 'Fixture Series.S01.1080p.WEB-DL-FLUX',
       targetSeasonNumbers: [1],
       targetEpisodeIds: [101, 102],
     };
@@ -1542,11 +1542,11 @@ describe('acquisition service', () => {
           id: 11,
           series: {
             id: 83867,
-            title: 'Andor',
+            title: 'Fixture Series',
             year: 2022,
           },
           seriesId: 83867,
-          title: 'Andor.Release.Alpha.2026-REPACK',
+          title: 'Fixture Series.Release.Alpha.2026-REPACK',
         },
       ]),
       queueRecordArrItemId: vi.fn(),
@@ -1561,7 +1561,7 @@ describe('acquisition service', () => {
     const result = await module.cancelAcquisitionJob(activeSeriesJob.id);
 
     expect(result.message).toBe(
-      '"Andor" grab was cancelled and unmonitored, but no matching Arr queue rows were found. Refresh the queue if a live download is still running.',
+      '"Fixture Series" grab was cancelled and unmonitored, but no matching Arr queue rows were found. Refresh the queue if a live download is still running.',
     );
     expect(cancelJob).toHaveBeenCalledWith(activeSeriesJob);
     expect(arrFetch).toHaveBeenCalledTimes(2);
@@ -1611,7 +1611,7 @@ describe('acquisition service', () => {
       id: 'movie:603',
       kind: 'movie',
       sourceService: 'radarr',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
     });
 
     expect(deleteJobsByArrItem).toHaveBeenCalledWith(603, 'movie', 'radarr');
@@ -1651,7 +1651,7 @@ describe('acquisition service', () => {
         {
           downloadId: 'radarr-download-7',
           movieId: 603,
-          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          title: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
           status: 'completed',
           trackedDownloadStatus: 'warning',
           trackedDownloadState: 'importPending',
@@ -1663,7 +1663,7 @@ describe('acquisition service', () => {
           ],
           movie: {
             id: 603,
-            title: 'The Matrix',
+            title: 'Fixture Movie',
             year: 1999,
           },
         },
@@ -1683,7 +1683,7 @@ describe('acquisition service', () => {
         id: 'movie:603',
         kind: 'movie',
         sourceService: 'radarr',
-        title: 'The Matrix',
+        title: 'Fixture Movie',
       }),
     ).rejects.toThrow(
       'This live Arr queue row cannot be cleared because Arr did not expose a queue id. Refresh the queue and stop it directly in Arr if it is still running.',
@@ -1735,13 +1735,13 @@ describe('acquisition service', () => {
         {
           id: 7,
           movieId: 603,
-          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          title: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
           status: 'downloading',
           trackedDownloadStatus: 'ok',
           trackedDownloadState: 'downloading',
           movie: {
             id: 603,
-            title: 'The Matrix',
+            title: 'Fixture Movie',
             year: 1999,
           },
         },
@@ -1763,7 +1763,7 @@ describe('acquisition service', () => {
         id: 'movie:603',
         kind: 'movie',
         sourceService: 'radarr',
-        title: 'The Matrix',
+        title: 'Fixture Movie',
       }),
     ).rejects.toThrow('500 Internal Server Error');
 
@@ -1805,7 +1805,7 @@ describe('acquisition service', () => {
         {
           id: 7,
           movieId: 603,
-          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          title: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
           status: 'completed',
           trackedDownloadStatus: 'warning',
           trackedDownloadState: 'importPending',
@@ -1817,7 +1817,7 @@ describe('acquisition service', () => {
           ],
           movie: {
             id: 603,
-            title: 'The Matrix',
+            title: 'Fixture Movie',
             year: 1999,
           },
         },
@@ -1837,12 +1837,12 @@ describe('acquisition service', () => {
       kind: 'movie',
       queueId: 7,
       sourceService: 'radarr',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
     });
 
     expect(result).toEqual({
       itemId: 'radarr:queue:7',
-      message: '"The Matrix" stale queue entry was removed from Radarr.',
+      message: '"Fixture Movie" stale queue entry was removed from Radarr.',
     });
     expect(arrFetch).toHaveBeenCalledTimes(1);
     expect(arrFetch).toHaveBeenCalledWith(
@@ -1890,13 +1890,13 @@ describe('acquisition service', () => {
         {
           id: 7,
           movieId: 603,
-          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          title: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
           status: 'downloading',
           trackedDownloadStatus: 'ok',
           trackedDownloadState: 'downloading',
           movie: {
             id: 603,
-            title: 'The Matrix',
+            title: 'Fixture Movie',
             year: 1999,
           },
         },
@@ -1918,7 +1918,7 @@ describe('acquisition service', () => {
         kind: 'movie',
         queueId: 7,
         sourceService: 'radarr',
-        title: 'The Matrix',
+        title: 'Fixture Movie',
       }),
     ).rejects.toThrow('This queue entry is still active. Cancel the download instead.');
     expect(arrFetch).not.toHaveBeenCalled();
@@ -1955,7 +1955,7 @@ describe('acquisition service', () => {
         {
           id: 9,
           movieId: 603,
-          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          title: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
           status: 'completed',
           trackedDownloadStatus: 'warning',
           trackedDownloadState: 'importPending',
@@ -1967,7 +1967,7 @@ describe('acquisition service', () => {
           ],
           movie: {
             id: 603,
-            title: 'The Matrix',
+            title: 'Fixture Movie',
             year: 1999,
           },
         },
@@ -1987,12 +1987,12 @@ describe('acquisition service', () => {
       kind: 'movie',
       queueId: 9,
       sourceService: 'radarr',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
     });
 
     expect(result).toEqual({
       itemId: 'radarr:queue:9',
-      message: '"The Matrix" stale queue entry was removed from Radarr.',
+      message: '"Fixture Movie" stale queue entry was removed from Radarr.',
     });
     expect(arrFetch).toHaveBeenCalledTimes(1);
     expect(arrFetch).toHaveBeenCalledWith(
@@ -2041,7 +2041,7 @@ describe('acquisition service', () => {
           id: 12,
           downloadId: 'radarr-download-12',
           movieId: 603,
-          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          title: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
           status: 'completed',
           trackedDownloadStatus: 'warning',
           trackedDownloadState: 'importPending',
@@ -2053,7 +2053,7 @@ describe('acquisition service', () => {
           ],
           movie: {
             id: 603,
-            title: 'The Matrix',
+            title: 'Fixture Movie',
             year: 1999,
           },
         },
@@ -2074,12 +2074,12 @@ describe('acquisition service', () => {
       kind: 'movie',
       queueId: null,
       sourceService: 'radarr',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
     });
 
     expect(result).toEqual({
       itemId: 'radarr:download:radarr-download-12',
-      message: '"The Matrix" stale queue entry was removed from Radarr.',
+      message: '"Fixture Movie" stale queue entry was removed from Radarr.',
     });
     expect(arrFetch).toHaveBeenCalledWith(
       'radarr',
@@ -2126,20 +2126,20 @@ describe('acquisition service', () => {
         {
           downloadId: 'download-shared',
           movieId: 603,
-          title: 'The.Matrix.1999.1080p.BluRay-OLD',
+          title: 'Fixture.Movie.1999.1080p.BluRay-OLD',
           status: 'downloading',
           trackedDownloadStatus: 'ok',
           trackedDownloadState: 'downloading',
           movie: {
             id: 603,
-            title: 'The Matrix',
+            title: 'Fixture Movie',
             year: 1999,
           },
         },
         {
           downloadId: 'download-shared',
           movieId: 603,
-          title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+          title: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
           status: 'completed',
           trackedDownloadStatus: 'warning',
           trackedDownloadState: 'importPending',
@@ -2151,7 +2151,7 @@ describe('acquisition service', () => {
           ],
           movie: {
             id: 603,
-            title: 'The Matrix',
+            title: 'Fixture Movie',
             year: 1999,
           },
         },
@@ -2168,11 +2168,11 @@ describe('acquisition service', () => {
       module.deleteArrItem({
         deleteMode: 'queue-entry',
         downloadId: 'download-shared',
-        id: 'radarr:download:download-shared:radarr-603-the-matrix-1999-1080p-web-dl-flux-noscope',
+        id: 'radarr:download:download-shared:radarr-603-fixture-movie-1999-1080p-web-dl-flux-noscope',
         kind: 'movie',
         queueId: null,
         sourceService: 'radarr',
-        title: 'The Matrix',
+        title: 'Fixture Movie',
       }),
     ).rejects.toThrow(
       'This live Arr queue row cannot be cleared because Arr did not expose a queue id. Refresh the queue and stop it directly in Arr if it is still running.',
@@ -2229,17 +2229,17 @@ describe('acquisition service', () => {
         decision: {
           accepted: 1,
           considered: 1,
-          reason: 'User selected The.Matrix.1999.1080p.WEB-DL-ALT',
+          reason: 'User selected Fixture.Movie.1999.1080p.WEB-DL-ALT',
           selected: {
             guid: 'guid-2',
             indexer: 'Indexer',
             indexerId: 12,
             languages: ['English'],
             protocol: 'torrent',
-            reason: 'User selected The.Matrix.1999.1080p.WEB-DL-ALT',
+            reason: 'User selected Fixture.Movie.1999.1080p.WEB-DL-ALT',
             score: 520,
             size: 1_200,
-            title: 'The.Matrix.1999.1080p.WEB-DL-ALT',
+            title: 'Fixture.Movie.1999.1080p.WEB-DL-ALT',
           },
         },
         payload: {
@@ -2257,22 +2257,22 @@ describe('acquisition service', () => {
           indexerId: 12,
           languages: ['English'],
           protocol: 'torrent',
-          reason: 'User selected The.Matrix.1999.1080p.WEB-DL-ALT',
+          reason: 'User selected Fixture.Movie.1999.1080p.WEB-DL-ALT',
           scopeStatus: 'not-applicable',
           explanation: {
-            summary: 'User selected The.Matrix.1999.1080p.WEB-DL-ALT',
-            matchReasons: ['Release title matched The Matrix'],
+            summary: 'User selected Fixture.Movie.1999.1080p.WEB-DL-ALT',
+            matchReasons: ['Release title matched Fixture Movie'],
             warningReasons: [],
             arrReasons: [],
           },
           score: 520,
           size: 1_200,
           status: 'selected',
-          title: 'The.Matrix.1999.1080p.WEB-DL-ALT',
+          title: 'Fixture.Movie.1999.1080p.WEB-DL-ALT',
         },
       },
       status: 'queued',
-      validationSummary: 'User selected The.Matrix.1999.1080p.WEB-DL-ALT',
+      validationSummary: 'User selected Fixture.Movie.1999.1080p.WEB-DL-ALT',
     };
     const updateJobIfStatus = vi.fn().mockReturnValue({
       updated: true,
@@ -2312,17 +2312,17 @@ describe('acquisition service', () => {
             decision: {
               accepted: 1,
               considered: 1,
-              reason: 'User selected The.Matrix.1999.1080p.WEB-DL-FLUX',
+              reason: 'User selected Fixture.Movie.1999.1080p.WEB-DL-FLUX',
               selected: {
                 guid: 'guid-selected',
                 indexer: 'Indexer',
                 indexerId: 11,
                 languages: ['English'],
                 protocol: 'torrent',
-                reason: 'User selected The.Matrix.1999.1080p.WEB-DL-FLUX',
+                reason: 'User selected Fixture.Movie.1999.1080p.WEB-DL-FLUX',
                 score: 500,
                 size: 1_000,
-                title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+                title: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
               },
             },
             payload: {
@@ -2340,18 +2340,18 @@ describe('acquisition service', () => {
               indexerId: 11,
               languages: ['English'],
               protocol: 'torrent',
-              reason: 'User selected The.Matrix.1999.1080p.WEB-DL-FLUX',
+              reason: 'User selected Fixture.Movie.1999.1080p.WEB-DL-FLUX',
               scopeStatus: 'not-applicable',
               explanation: {
-                summary: 'User selected The.Matrix.1999.1080p.WEB-DL-FLUX',
-                matchReasons: ['Release title matched The Matrix'],
+                summary: 'User selected Fixture.Movie.1999.1080p.WEB-DL-FLUX',
+                matchReasons: ['Release title matched Fixture Movie'],
                 warningReasons: [],
                 arrReasons: [],
               },
               score: 500,
               size: 1_000,
               status: 'selected',
-              title: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+              title: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
             },
           },
           status: 'queued',
@@ -2394,11 +2394,11 @@ describe('acquisition service', () => {
       expect.objectContaining({
         queueStatus: 'Manual selection queued',
         status: 'queued',
-        validationSummary: 'User selected The.Matrix.1999.1080p.WEB-DL-ALT',
+        validationSummary: 'User selected Fixture.Movie.1999.1080p.WEB-DL-ALT',
       }),
     );
     expect(enqueue).toHaveBeenCalledWith(job.id);
-    expect(result.message).toBe('Updated manual release The.Matrix.1999.1080p.WEB-DL-ALT.');
+    expect(result.message).toBe('Updated manual release Fixture.Movie.1999.1080p.WEB-DL-ALT.');
   });
 
   it('passes Arr-rejection overrides through manual selection', async () => {
@@ -2409,7 +2409,7 @@ describe('acquisition service', () => {
       queuedManualSelection: null,
       status: 'queued',
       validationSummary:
-        'User overrode Arr rejection and selected The.Matrix.1999.2160p.WEB-DL-BLOCKED',
+        'User overrode Arr rejection and selected Fixture.Movie.1999.2160p.WEB-DL-BLOCKED',
     };
     const updateJobIfStatus = vi.fn().mockReturnValue({
       updated: true,
@@ -2431,14 +2431,14 @@ describe('acquisition service', () => {
           scopeStatus: 'not-applicable',
           explanation: {
             summary: 'Would normally score highest, but Arr rejected it.',
-            matchReasons: ['Release title matched The Matrix'],
+            matchReasons: ['Release title matched Fixture Movie'],
             warningReasons: [],
             arrReasons: ['Rejected by Arr custom format rules'],
           },
           score: 610,
           size: 1_500,
           status: 'selected' as const,
-          title: 'The.Matrix.1999.2160p.WEB-DL-BLOCKED',
+          title: 'Fixture.Movie.1999.2160p.WEB-DL-BLOCKED',
         },
       ],
       mappedReleases: 1,
@@ -2454,13 +2454,14 @@ describe('acquisition service', () => {
         reason: 'Would normally score highest, but Arr rejected it.',
         score: 610,
         size: 1_500,
-        title: 'The.Matrix.1999.2160p.WEB-DL-BLOCKED',
+        title: 'Fixture.Movie.1999.2160p.WEB-DL-BLOCKED',
       },
       selection: {
         decision: {
           accepted: 0,
           considered: 1,
-          reason: 'User overrode Arr rejection and selected The.Matrix.1999.2160p.WEB-DL-BLOCKED',
+          reason:
+            'User overrode Arr rejection and selected Fixture.Movie.1999.2160p.WEB-DL-BLOCKED',
           selected: {
             guid: 'guid-override',
             indexer: 'Indexer',
@@ -2470,7 +2471,7 @@ describe('acquisition service', () => {
             reason: 'Would normally score highest, but Arr rejected it.',
             score: 610,
             size: 1_500,
-            title: 'The.Matrix.1999.2160p.WEB-DL-BLOCKED',
+            title: 'Fixture.Movie.1999.2160p.WEB-DL-BLOCKED',
           },
         },
         payload: {
@@ -2539,7 +2540,7 @@ describe('acquisition service', () => {
       expect.objectContaining({
         attempt: 2,
         validationSummary:
-          'User overrode Arr rejection and selected The.Matrix.1999.2160p.WEB-DL-BLOCKED',
+          'User overrode Arr rejection and selected Fixture.Movie.1999.2160p.WEB-DL-BLOCKED',
       }),
     );
   });

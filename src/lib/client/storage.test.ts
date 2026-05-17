@@ -27,7 +27,7 @@ describe('search storage', () => {
       getItem: vi.fn().mockReturnValue(
         JSON.stringify({
           activeView: 'search',
-          query: 'Rambo',
+          query: 'Fixture Action',
           kind: 'movie',
           includeAvailable: true,
         }),
@@ -37,7 +37,7 @@ describe('search storage', () => {
 
     expect(loadSearchState()).toEqual({
       activeView: 'search',
-      query: 'Rambo',
+      query: 'Fixture Action',
       kind: 'movie',
       availability: 'not-available-only',
       sortField: 'popularity',

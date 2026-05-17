@@ -2,6 +2,7 @@ import { jobStatusLabel } from '$lib/server/acquisition-domain';
 import {
   fetchHistoryRecords,
   fetchQueueRecords,
+  disappearedDownloadProbe,
   historySince,
   queueImportBlock,
   type ValidationProbe,
@@ -103,6 +104,8 @@ export async function validateSeriesAttempt(
 
   if (targetEpisodes.length === 0) {
     return {
+      detectedAudioLanguages: [],
+      detectedSubtitleLanguages: [],
       outcome: 'pending',
       preferredReleaser: null,
       progress: progress.progress,
@@ -116,6 +119,8 @@ export async function validateSeriesAttempt(
 
   if (blockingImport && importedTargetEpisodes.length < targetEpisodes.length) {
     return {
+      detectedAudioLanguages: [],
+      detectedSubtitleLanguages: [],
       outcome: 'failure',
       preferredReleaser: null,
       progress: 100,
@@ -128,7 +133,16 @@ export async function validateSeriesAttempt(
   }
 
   if (importedTargetEpisodes.length < targetEpisodes.length) {
+    if (queueItems.length === 0) {
+      const disappearedDownload = disappearedDownloadProbe(job);
+      if (disappearedDownload) {
+        return disappearedDownload;
+      }
+    }
+
     return {
+      detectedAudioLanguages: [],
+      detectedSubtitleLanguages: [],
       outcome: 'pending',
       preferredReleaser: null,
       progress: progress.progress,
@@ -182,6 +196,8 @@ export async function validateSeriesAttempt(
 
   if (validations.some((entry) => entry.auditStatus === 'unknown')) {
     return {
+      detectedAudioLanguages: validations.flatMap((entry) => entry.audioLanguages),
+      detectedSubtitleLanguages: validations.flatMap((entry) => entry.subtitleLanguages),
       outcome: 'pending',
       preferredReleaser: null,
       progress: progress.progress,
@@ -199,6 +215,8 @@ export async function validateSeriesAttempt(
 
   if (failed) {
     return {
+      detectedAudioLanguages: failed.audioLanguages,
+      detectedSubtitleLanguages: failed.subtitleLanguages,
       outcome: 'failure',
       preferredReleaser: null,
       progress: 100,
@@ -214,6 +232,10 @@ export async function validateSeriesAttempt(
   }
 
   return {
+    detectedAudioLanguages: [...new Set(validations.flatMap((entry) => entry.audioLanguages))],
+    detectedSubtitleLanguages: [
+      ...new Set(validations.flatMap((entry) => entry.subtitleLanguages)),
+    ],
     outcome: 'success',
     preferredReleaser: job.selectedReleaser,
     progress: 100,

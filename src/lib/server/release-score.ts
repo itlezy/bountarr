@@ -1,4 +1,4 @@
-import { languageMatchesPreferred } from '$lib/shared/languages';
+import { languageMatchesPreferred, preferredLanguageMatchers } from '$lib/shared/languages';
 import {
   classifySeriesScopeMatch,
   extractSeriesScope,
@@ -7,6 +7,7 @@ import {
 } from '$lib/server/series-scope';
 import type {
   Preferences,
+  AcquisitionReasonCode,
   ReleaseDecision,
   ReleaseDecisionCandidate,
   ReleaseIdentityStatus,
@@ -32,16 +33,22 @@ export type EvaluatedRelease = {
 };
 
 type ReleaseSelectionOptions = {
+  failedIndexerIds?: readonly number[] | null;
+  failedReleasers?: readonly string[] | null;
   kind: 'movie' | 'series';
   preferredReleaser?: string | null;
+  retryReasonCode?: AcquisitionReasonCode | null;
   targetEpisodeIds?: number[] | null;
   targetSeasonNumbers?: number[] | null;
   targetTitle: string;
 };
 
 type ReleaseSignals = {
-  subtitleHint: boolean;
+  genericSubtitleHint: boolean;
   multiLanguageHint: boolean;
+  preferredAudioTitleHint: boolean;
+  subtitleLanguageMetadataMatch: boolean;
+  subtitleLanguageTitleHint: boolean;
   x265Hint: boolean;
   sourceMatch: (typeof sourceWeights)[number] | null;
 };
@@ -153,31 +160,86 @@ function asNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
-function normalizeToken(value: string): string {
+function normalizeHintText(value: string): string {
   return value
     .normalize('NFKD')
-    .replace(/[^\w\s-]/g, '')
-    .trim()
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
 }
 
 function parseLanguages(value: unknown): string[] {
   const languages = new Set<string>();
+  const direct = asString(value);
+  if (direct) {
+    for (const entry of direct.split(/[/,;|]+/)) {
+      const candidate = entry.trim();
+      if (candidate.length > 0) {
+        languages.add(candidate);
+      }
+    }
+  }
 
   for (const entry of asArray(value)) {
     const record = asRecord(entry);
-    const candidate =
+    const languageRecord = asRecord(record.language);
+    const candidates = [
       asString(record.name) ??
-      asString(record.displayName) ??
-      asString(record.value) ??
-      asString(entry);
+        asString(record.displayName) ??
+        asString(record.value) ??
+        asString(record.language) ??
+        asString(languageRecord.name) ??
+        asString(languageRecord.displayName) ??
+        asString(languageRecord.value) ??
+        asString(entry),
+    ];
 
-    if (candidate) {
-      languages.add(candidate);
+    for (const candidate of candidates) {
+      if (!candidate) {
+        continue;
+      }
+
+      for (const part of candidate.split(/[/,;|]+/)) {
+        const language = part.trim();
+        if (language.length > 0) {
+          languages.add(language);
+        }
+      }
     }
   }
 
   return [...languages];
+}
+
+function titleHintTokens(value: string): string[] {
+  return normalizeHintText(value)
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter((token) => token.length > 0);
+}
+
+function titleHasLanguageHint(title: string, language: Preferences['preferredLanguage']): boolean {
+  if (language === 'Any') {
+    return false;
+  }
+
+  const tokens = titleHintTokens(title);
+  const tokenSet = new Set(tokens);
+  const normalizedTitle = ` ${tokens.join(' ')} `;
+  return preferredLanguageMatchers(language).some(
+    (matcher) => tokenSet.has(matcher) || normalizedTitle.includes(` ${matcher} `),
+  );
+}
+
+function parseSubtitleLanguages(release: Record<string, unknown>): string[] {
+  return [
+    ...new Set([
+      ...parseLanguages(release.subtitleLanguages),
+      ...parseLanguages(release.subtitles),
+      ...parseLanguages(release.subtitleLanguage),
+      ...parseLanguages(release.subs),
+    ]),
+  ];
 }
 
 function normalizeIdentityText(value: string): string {
@@ -436,19 +498,44 @@ function classifyIdentity(
 }
 
 function titleSignals(title: string, preferences: Preferences): ReleaseSignals {
-  const normalized = normalizeToken(title);
+  const titleTokens = titleHintTokens(title);
+  const titleTokenSet = new Set(titleTokens);
+  const adjacentTokens = (left: string, right: string) =>
+    titleTokens.some((token, index) => token === left && titleTokens[index + 1] === right);
+  const subtitleLanguageTitleHint = titleHasLanguageHint(title, preferences.subtitleLanguage);
+  const genericSubtitleHint =
+    titleTokenSet.has('sub') ||
+    titleTokenSet.has('subs') ||
+    titleTokenSet.has('subbed') ||
+    titleTokenSet.has('softsub') ||
+    titleTokenSet.has('softsubs') ||
+    titleTokenSet.has('multisub') ||
+    titleTokenSet.has('multisubs') ||
+    titleTokenSet.has('vost') ||
+    titleTokenSet.has('vostfr') ||
+    adjacentTokens('multi', 'sub') ||
+    adjacentTokens('multi', 'subs') ||
+    adjacentTokens('soft', 'sub') ||
+    adjacentTokens('soft', 'subs');
+  const multiLanguageHint =
+    titleTokenSet.has('multi') ||
+    titleTokenSet.has('multilang') ||
+    titleTokenSet.has('multilanguage') ||
+    titleTokenSet.has('dualaudio') ||
+    adjacentTokens('dual', 'audio');
 
   return {
-    subtitleHint:
-      preferences.subtitleLanguage !== 'Any' &&
-      /(sub|subs|subbed|multisub|multi sub|multi-sub|vostfr|softsub)/.test(normalized),
-    multiLanguageHint: /(multi|dual audio|dual-audio)/.test(normalized),
+    genericSubtitleHint: preferences.subtitleLanguage !== 'Any' && genericSubtitleHint,
+    multiLanguageHint,
+    preferredAudioTitleHint: titleHasLanguageHint(title, preferences.preferredLanguage),
+    subtitleLanguageMetadataMatch: false,
+    subtitleLanguageTitleHint,
     x265Hint: /\bx265\b|\bhevc\b/i.test(title),
     sourceMatch: sourceWeights.find((entry) => entry.pattern.test(title)) ?? null,
   };
 }
 
-function rejectionReasons(release: Record<string, unknown>): string[] {
+export function releaseRejectionReasons(release: Record<string, unknown>): string[] {
   const reasons: string[] = [];
 
   if (release.downloadAllowed !== true) {
@@ -465,18 +552,26 @@ function rejectionReasons(release: Record<string, unknown>): string[] {
   return reasons;
 }
 
+export function isExistingFileArrRejection(reasons: string[]): boolean {
+  return (
+    reasons.some(
+      (reason) =>
+        /not an upgrade for existing .* file/i.test(reason) ||
+        /not a custom format upgrade for existing .* file/i.test(reason),
+    ) &&
+    reasons.every(
+      (reason) =>
+        reason === 'Arr marked this release as not downloadable' ||
+        /not an upgrade for existing .* file/i.test(reason) ||
+        /not a custom format upgrade for existing .* file/i.test(reason),
+    )
+  );
+}
+
 function extractReleaser(title: string): string | null {
   const trimmed = title.trim();
   const candidate = trimmed.split('-').at(-1)?.trim() ?? '';
   return /^[A-Za-z0-9][A-Za-z0-9._-]{1,}$/.test(candidate) ? candidate.toLowerCase() : null;
-}
-
-function includesEnglish(languages: string[], title: string): boolean {
-  if (languageMatchesPreferred(languages, 'English')) {
-    return true;
-  }
-
-  return /\beng\b|\benglish\b/i.test(title);
 }
 
 function createScoreState(release: Record<string, unknown>): CandidateScoreState {
@@ -501,23 +596,21 @@ function awardCandidate(state: CandidateScoreState, score: number, reason: strin
 
 function applyAvailabilityRules(
   state: CandidateScoreState,
-  release: Record<string, unknown>,
+  releaseRejectionReasons: string[],
   title: string,
-  hasEnglish: boolean,
-  preferredLanguageMatch: boolean,
-  enforceAudioRules: boolean,
-  isMultiAudio: boolean,
 ): void {
-  for (const rejection of rejectionReasons(release)) {
-    rejectCandidate(state, rejection);
+  if (releaseRejectionReasons.length > 0) {
+    if (isExistingFileArrRejection(releaseRejectionReasons)) {
+      state.reasons.push(...releaseRejectionReasons);
+    } else {
+      for (const rejection of releaseRejectionReasons) {
+        rejectCandidate(state, rejection);
+      }
+    }
   }
 
   if (hardRejectPatterns.some((pattern) => pattern.test(title))) {
     rejectCandidate(state, 'blocked releaser or source pattern');
-  }
-
-  if (enforceAudioRules && (!hasEnglish || (!preferredLanguageMatch && !isMultiAudio))) {
-    rejectCandidate(state, 'missing English audio');
   }
 }
 
@@ -530,8 +623,20 @@ function applyPreferenceBonuses(
   preferredLanguageMatch: boolean,
   releaser: string | null,
 ): void {
-  if (preferredLanguageMatch) {
-    awardCandidate(state, 120, `preferred audio ${preferences.preferredLanguage}`);
+  if (preferences.preferredLanguage !== 'Any') {
+    if (preferredLanguageMatch) {
+      awardCandidate(state, 140, `preferred audio ${preferences.preferredLanguage} metadata`);
+    } else if (signals.preferredAudioTitleHint) {
+      awardCandidate(state, 110, `${preferences.preferredLanguage} audio hint in title`);
+    } else if (signals.multiLanguageHint) {
+      awardCandidate(
+        state,
+        70,
+        `multi-language audio may include ${preferences.preferredLanguage}`,
+      );
+    } else {
+      state.reasons.push(`no clear ${preferences.preferredLanguage} audio evidence`);
+    }
   }
 
   if (signals.multiLanguageHint) {
@@ -558,15 +663,79 @@ function applyPreferenceBonuses(
     awardCandidate(state, 220, `matched proven releaser ${options.preferredReleaser}`);
   }
 
-  if (signals.subtitleHint) {
-    awardCandidate(state, 16, `${preferences.subtitleLanguage} subtitle hint in title`);
-  } else if (preferences.subtitleLanguage !== 'Any') {
-    state.reasons.push(`no ${preferences.subtitleLanguage} subtitle hint`);
+  if (releaser && options.failedReleasers?.includes(releaser)) {
+    awardCandidate(state, -180, `penalized previously failed releaser ${releaser}`);
+  }
+
+  if (options.failedIndexerIds?.includes(asNumber(release.indexerId) ?? Number.NaN)) {
+    awardCandidate(state, -90, 'penalized previously failed indexer');
+  }
+
+  if (preferences.subtitleLanguage !== 'Any') {
+    if (signals.subtitleLanguageMetadataMatch) {
+      awardCandidate(state, 110, `${preferences.subtitleLanguage} subtitle metadata`);
+    } else if (signals.genericSubtitleHint && signals.subtitleLanguageTitleHint) {
+      awardCandidate(state, 100, `${preferences.subtitleLanguage} subtitle hint in title`);
+    } else if (signals.genericSubtitleHint) {
+      awardCandidate(state, 55, 'subtitle hint in title');
+    } else if (signals.subtitleLanguageTitleHint) {
+      awardCandidate(state, 35, `${preferences.subtitleLanguage} language hint in title`);
+    } else {
+      state.reasons.push(`no clear ${preferences.subtitleLanguage} subtitle evidence`);
+    }
   }
 
   const protocol = asString(release.protocol) ?? 'unknown';
   if (protocol.toLowerCase() === 'usenet') {
     awardCandidate(state, 4, 'usenet');
+  }
+}
+
+function applyRetryBonuses(
+  state: CandidateScoreState,
+  preferences: Preferences,
+  options: ReleaseSelectionOptions,
+  signals: ReleaseSignals,
+  preferredLanguageMatch: boolean,
+): void {
+  if (options.retryReasonCode === 'missing-audio' && preferences.preferredLanguage !== 'Any') {
+    if (preferredLanguageMatch) {
+      awardCandidate(state, 220, `retry prefers ${preferences.preferredLanguage} audio metadata`);
+    } else if (signals.preferredAudioTitleHint) {
+      awardCandidate(state, 170, `retry prefers ${preferences.preferredLanguage} audio title hint`);
+    } else if (signals.multiLanguageHint) {
+      awardCandidate(
+        state,
+        120,
+        `retry prefers multi-language audio for ${preferences.preferredLanguage}`,
+      );
+    } else {
+      awardCandidate(
+        state,
+        -90,
+        `retry penalty: no ${preferences.preferredLanguage} audio evidence`,
+      );
+    }
+  }
+
+  if (options.retryReasonCode === 'missing-subs' && preferences.subtitleLanguage !== 'Any') {
+    if (signals.subtitleLanguageMetadataMatch) {
+      awardCandidate(state, 240, `retry prefers ${preferences.subtitleLanguage} subtitle metadata`);
+    } else if (signals.genericSubtitleHint && signals.subtitleLanguageTitleHint) {
+      awardCandidate(
+        state,
+        200,
+        `retry prefers ${preferences.subtitleLanguage} subtitle title hint`,
+      );
+    } else if (signals.genericSubtitleHint) {
+      awardCandidate(state, 140, 'retry prefers subtitle title hint');
+    } else {
+      awardCandidate(
+        state,
+        -90,
+        `retry penalty: no ${preferences.subtitleLanguage} subtitle evidence`,
+      );
+    }
   }
 }
 
@@ -585,23 +754,17 @@ function buildCandidate(
 
   const languages = parseLanguages(release.languages);
   const signals = titleSignals(title, preferences);
+  signals.subtitleLanguageMetadataMatch = languageMatchesPreferred(
+    parseSubtitleLanguages(release),
+    preferences.subtitleLanguage,
+  );
   const preferredLanguageMatch = languageMatchesPreferred(languages, preferences.preferredLanguage);
-  const enforceAudioRules = preferences.preferredLanguage !== 'Any';
   const releaser = extractReleaser(title);
-  const isMultiAudio = signals.multiLanguageHint || /\bmulti\b|\bdual[ .-]?audio\b/i.test(title);
-  const hasEnglish = includesEnglish(languages, title);
   const state = createScoreState(release);
   const identity = classifyIdentity(release, options);
+  const arrRejectionReasons = releaseRejectionReasons(release);
 
-  applyAvailabilityRules(
-    state,
-    release,
-    title,
-    hasEnglish,
-    preferredLanguageMatch,
-    enforceAudioRules,
-    isMultiAudio,
-  );
+  applyAvailabilityRules(state, arrRejectionReasons, title);
   applyPreferenceBonuses(
     state,
     preferences,
@@ -611,15 +774,15 @@ function buildCandidate(
     preferredLanguageMatch,
     releaser,
   );
+  applyRetryBonuses(state, preferences, options, signals, preferredLanguageMatch);
 
-  const releaseRejectionReasons = rejectionReasons(release);
   const acceptedByLocalRules = state.score > ACCEPTED_SCORE_FLOOR;
   // Manual selection may still allow mismatches, but auto-selection must never promote them.
   const autoSelectable = acceptedByLocalRules && identity.autoSelectable;
 
   return {
     acceptedByLocalRules,
-    arrRejected: releaseRejectionReasons.length > 0,
+    arrRejected: arrRejectionReasons.length > 0,
     autoSelectable,
     candidate: {
       title,
@@ -635,7 +798,7 @@ function buildCandidate(
     identityReason: identity.reason,
     identityStatus: identity.status,
     payload: release,
-    rejectionReasons: releaseRejectionReasons,
+    rejectionReasons: arrRejectionReasons,
     scopeReason: identity.scopeReason,
     scopeStatus: identity.scopeStatus,
   };

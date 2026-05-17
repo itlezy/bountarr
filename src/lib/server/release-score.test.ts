@@ -33,7 +33,10 @@ describe('selectBestRelease', () => {
           downloadAllowed: true,
         },
       ],
-      defaultPreferences,
+      {
+        ...defaultPreferences,
+        subtitleLanguage: 'English',
+      },
       {
         kind: 'movie',
         targetTitle: 'Movie',
@@ -41,6 +44,516 @@ describe('selectBestRelease', () => {
     );
 
     expect(result.decision.selected?.guid).toBe('b');
+  });
+
+  it('does not hard-reject releases without preferred audio evidence before download', () => {
+    const result = selectBestRelease(
+      [
+        {
+          guid: 'uncertain',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Movie.2024.1080p.WEB-DL-GROUP',
+          languages: [{ name: 'French' }],
+          qualityWeight: 50,
+          releaseWeight: 30,
+          customFormatScore: 0,
+          size: 1_000,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+      ],
+      {
+        ...defaultPreferences,
+        subtitleLanguage: 'English',
+      },
+      {
+        kind: 'movie',
+        targetTitle: 'Movie',
+      },
+    );
+
+    expect(result.decision.selected?.guid).toBe('uncertain');
+    expect(result.decision.reason).toContain('no clear English audio evidence');
+  });
+
+  it('uses the configured preferred audio language instead of hard-coded English', () => {
+    const result = selectBestRelease(
+      [
+        {
+          guid: 'english',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Movie.2024.1080p.WEB-DL.ENG-GROUP',
+          languages: [{ name: 'English' }],
+          qualityWeight: 70,
+          releaseWeight: 40,
+          customFormatScore: 0,
+          size: 1_000,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+        {
+          guid: 'spanish',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Movie.2024.1080p.WEB-DL.SPA-GROUP',
+          languages: [{ name: 'Spanish' }],
+          qualityWeight: 70,
+          releaseWeight: 40,
+          customFormatScore: 0,
+          size: 900,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+      ],
+      {
+        ...defaultPreferences,
+        preferredLanguage: 'Spanish',
+      },
+      {
+        kind: 'movie',
+        targetTitle: 'Movie',
+      },
+    );
+
+    expect(result.decision.selected?.guid).toBe('spanish');
+    expect(result.decision.reason).toContain('preferred audio Spanish metadata');
+  });
+
+  it('uses nested Arr language metadata when scoring preferred audio', () => {
+    const result = selectBestRelease(
+      [
+        {
+          guid: 'english',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Movie.2024.1080p.WEB-DL.ENG-GROUP',
+          languages: [{ language: { name: 'English' } }],
+          qualityWeight: 80,
+          releaseWeight: 40,
+          customFormatScore: 0,
+          size: 1_000,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+        {
+          guid: 'spanish',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Movie.2024.1080p.WEB-DL.SPA-GROUP',
+          languages: [{ language: { name: 'Spanish' } }],
+          qualityWeight: 80,
+          releaseWeight: 40,
+          customFormatScore: 0,
+          size: 900,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+      ],
+      {
+        ...defaultPreferences,
+        preferredLanguage: 'Spanish',
+      },
+      {
+        kind: 'movie',
+        targetTitle: 'Movie',
+      },
+    );
+
+    expect(result.decision.selected?.guid).toBe('spanish');
+    expect(result.decision.reason).toContain('preferred audio Spanish metadata');
+  });
+
+  it('uses accent-insensitive title hints for preferred audio', () => {
+    const result = selectBestRelease(
+      [
+        {
+          guid: 'unknown',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Movie.2024.1080p.WEB-DL-GROUP',
+          languages: [],
+          qualityWeight: 80,
+          releaseWeight: 40,
+          customFormatScore: 0,
+          size: 1_000,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+        {
+          guid: 'spanish-title',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Movie.2024.1080p.WEB-DL.ESPAÑOL-GROUP',
+          languages: [],
+          qualityWeight: 80,
+          releaseWeight: 40,
+          customFormatScore: 0,
+          size: 900,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+      ],
+      {
+        ...defaultPreferences,
+        preferredLanguage: 'Spanish',
+      },
+      {
+        kind: 'movie',
+        targetTitle: 'Movie',
+      },
+    );
+
+    expect(result.decision.selected?.guid).toBe('spanish-title');
+    expect(result.decision.reason).toContain('Spanish audio hint in title');
+  });
+
+  it('allows multi-language title evidence to outrank otherwise unknown audio', () => {
+    const result = selectBestRelease(
+      [
+        {
+          guid: 'unknown',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Movie.2024.1080p.WEB-DL-GROUP',
+          languages: [],
+          qualityWeight: 80,
+          releaseWeight: 40,
+          customFormatScore: 0,
+          size: 1_000,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+        {
+          guid: 'multi',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Movie.2024.1080p.WEB-DL.MULTI-GROUP',
+          languages: [],
+          qualityWeight: 80,
+          releaseWeight: 40,
+          customFormatScore: 0,
+          size: 900,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+      ],
+      {
+        ...defaultPreferences,
+        subtitleLanguage: 'English',
+      },
+      {
+        kind: 'movie',
+        targetTitle: 'Movie',
+      },
+    );
+
+    expect(result.decision.selected?.guid).toBe('multi');
+    expect(result.decision.reason).toContain('multi-language audio may include English');
+  });
+
+  it('recognizes punctuation-separated dual-audio title hints', () => {
+    const result = selectBestRelease(
+      [
+        {
+          guid: 'unknown',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Movie.2024.1080p.WEB-DL-GROUP',
+          languages: [],
+          qualityWeight: 80,
+          releaseWeight: 40,
+          customFormatScore: 0,
+          size: 1_000,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+        {
+          guid: 'dual-audio',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Movie.2024.1080p.WEB-DL.DUAL.AUDIO-GROUP',
+          languages: [],
+          qualityWeight: 80,
+          releaseWeight: 40,
+          customFormatScore: 0,
+          size: 900,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+      ],
+      {
+        ...defaultPreferences,
+        subtitleLanguage: 'English',
+      },
+      {
+        kind: 'movie',
+        targetTitle: 'Movie',
+      },
+    );
+
+    expect(result.decision.selected?.guid).toBe('dual-audio');
+    expect(result.decision.reason).toContain('multi-language audio may include English');
+  });
+
+  it('boosts subtitle evidence without requiring it before download', () => {
+    const result = selectBestRelease(
+      [
+        {
+          guid: 'no-sub-hint',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Movie.2024.1080p.WEB-DL.ENG-GROUP',
+          languages: [{ name: 'English' }],
+          qualityWeight: 80,
+          releaseWeight: 40,
+          customFormatScore: 0,
+          size: 1_000,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+        {
+          guid: 'sub-hint',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Movie.2024.1080p.WEB-DL.ENG.SUBS-GROUP',
+          languages: [{ name: 'English' }],
+          qualityWeight: 80,
+          releaseWeight: 40,
+          customFormatScore: 0,
+          size: 900,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+      ],
+      {
+        ...defaultPreferences,
+        subtitleLanguage: 'English',
+      },
+      {
+        kind: 'movie',
+        targetTitle: 'Movie',
+      },
+    );
+
+    expect(result.decision.selected?.guid).toBe('sub-hint');
+    expect(result.decision.reason).toContain('subtitle hint in title');
+  });
+
+  it('uses nested subtitle metadata ahead of generic title hints', () => {
+    const result = selectBestRelease(
+      [
+        {
+          guid: 'generic-subtitle-title',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Movie.2024.1080p.WEB-DL.ENG.SUBS-GROUP',
+          languages: [{ name: 'English' }],
+          qualityWeight: 80,
+          releaseWeight: 40,
+          customFormatScore: 0,
+          size: 1_000,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+        {
+          guid: 'subtitle-metadata',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Movie.2024.1080p.WEB-DL.ENG-GROUP',
+          languages: [{ name: 'English' }],
+          subtitles: [{ language: { name: 'English' } }],
+          qualityWeight: 80,
+          releaseWeight: 40,
+          customFormatScore: 0,
+          size: 900,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+      ],
+      {
+        ...defaultPreferences,
+        subtitleLanguage: 'English',
+      },
+      {
+        kind: 'movie',
+        targetTitle: 'Movie',
+      },
+    );
+
+    expect(result.decision.selected?.guid).toBe('subtitle-metadata');
+    expect(result.decision.reason).toContain('English subtitle metadata');
+  });
+
+  it('uses retry context to prefer stronger subtitle evidence after missing-subs', () => {
+    const result = selectBestRelease(
+      [
+        {
+          guid: 'higher-weight-no-subs',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Movie.2024.1080p.WEB-DL.ENG-GROUP',
+          languages: [{ name: 'English' }],
+          qualityWeight: 160,
+          releaseWeight: 40,
+          customFormatScore: 0,
+          size: 1_000,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+        {
+          guid: 'lower-weight-subs',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Movie.2024.1080p.WEB-DL.ENG.SUBS-GROUP',
+          languages: [{ name: 'English' }],
+          qualityWeight: 80,
+          releaseWeight: 40,
+          customFormatScore: 0,
+          size: 900,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+      ],
+      {
+        ...defaultPreferences,
+        subtitleLanguage: 'English',
+      },
+      {
+        kind: 'movie',
+        retryReasonCode: 'missing-subs',
+        targetTitle: 'Movie',
+      },
+    );
+
+    expect(result.decision.selected?.guid).toBe('lower-weight-subs');
+    expect(result.decision.reason).toContain('retry prefers English subtitle title hint');
+  });
+
+  it('uses retry context to prefer stronger audio evidence after missing-audio', () => {
+    const result = selectBestRelease(
+      [
+        {
+          guid: 'higher-weight-unknown',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Movie.2024.1080p.WEB-DL-GROUP',
+          languages: [],
+          qualityWeight: 180,
+          releaseWeight: 40,
+          customFormatScore: 0,
+          size: 1_000,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+        {
+          guid: 'lower-weight-audio',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Movie.2024.1080p.WEB-DL.ENG-GROUP',
+          languages: [{ name: 'English' }],
+          qualityWeight: 80,
+          releaseWeight: 40,
+          customFormatScore: 0,
+          size: 900,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+      ],
+      defaultPreferences,
+      {
+        kind: 'movie',
+        retryReasonCode: 'missing-audio',
+        targetTitle: 'Movie',
+      },
+    );
+
+    expect(result.decision.selected?.guid).toBe('lower-weight-audio');
+    expect(result.decision.reason).toContain('retry prefers English audio metadata');
+  });
+
+  it('does not apply language retry penalties when preferences are Any', () => {
+    const result = selectBestRelease(
+      [
+        {
+          guid: 'unknown',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Movie.2024.1080p.WEB-DL-GROUP',
+          languages: [],
+          qualityWeight: 80,
+          releaseWeight: 40,
+          customFormatScore: 0,
+          size: 1_000,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+      ],
+      {
+        ...defaultPreferences,
+        preferredLanguage: 'Any',
+        subtitleLanguage: 'Any',
+      },
+      {
+        kind: 'movie',
+        retryReasonCode: 'missing-subs',
+        targetTitle: 'Movie',
+      },
+    );
+
+    expect(result.decision.selected?.guid).toBe('unknown');
+    expect(result.decision.reason).not.toContain('retry penalty');
+    expect(result.decision.reason).not.toContain('no clear');
+  });
+
+  it('penalizes releasers and indexers that already failed this acquisition', () => {
+    const result = selectBestRelease(
+      [
+        {
+          guid: 'same-indexer-and-group',
+          indexerId: 10,
+          indexer: 'Indexer',
+          title: 'Movie.2024.1080p.WEB-DL.ENG.SUBS-FAILEDGROUP',
+          languages: [{ name: 'English' }],
+          subtitles: [{ language: { name: 'English' } }],
+          qualityWeight: 120,
+          releaseWeight: 40,
+          customFormatScore: 0,
+          size: 1_000,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+        {
+          guid: 'fresh-indexer-and-group',
+          indexerId: 11,
+          indexer: 'Other Indexer',
+          title: 'Movie.2024.1080p.WEB-DL.ENG.SUBS-FRESHGROUP',
+          languages: [{ name: 'English' }],
+          subtitles: [{ language: { name: 'English' } }],
+          qualityWeight: 80,
+          releaseWeight: 40,
+          customFormatScore: 0,
+          size: 900,
+          protocol: 'torrent',
+          downloadAllowed: true,
+        },
+      ],
+      {
+        ...defaultPreferences,
+        subtitleLanguage: 'English',
+      },
+      {
+        failedIndexerIds: [10],
+        failedReleasers: ['failedgroup'],
+        kind: 'movie',
+        retryReasonCode: 'missing-subs',
+        targetTitle: 'Movie',
+      },
+    );
+
+    expect(result.decision.selected?.guid).toBe('fresh-indexer-and-group');
+    expect(result.decision.reason).toContain('retry prefers English subtitle metadata');
   });
 
   it('rejects blocked releasers and source patterns', () => {
@@ -98,6 +611,68 @@ describe('selectBestRelease', () => {
           size: 1_000,
           protocol: 'torrent',
           downloadAllowed: false,
+        },
+      ],
+      defaultPreferences,
+      {
+        kind: 'movie',
+        targetTitle: 'Movie',
+      },
+    );
+
+    expect(result.decision.selected).toBeNull();
+    expect(result.decision.reason).toContain('No acceptable release');
+  });
+
+  it('accepts existing-file Arr rejections for alternate grabs', () => {
+    const result = selectBestRelease(
+      [
+        {
+          guid: 'replacement',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Movie.2024.1080p.WEB-DL.ENG-FLUX',
+          movieTitles: 'Movie',
+          languages: [{ name: 'English' }],
+          qualityWeight: 50,
+          releaseWeight: 30,
+          customFormatScore: 0,
+          size: 1_000,
+          protocol: 'torrent',
+          downloadAllowed: false,
+          rejected: true,
+          rejections: ['Not an upgrade for existing movie file. Existing quality: WEBDL-1080p.'],
+        },
+      ],
+      defaultPreferences,
+      {
+        kind: 'movie',
+        targetTitle: 'Movie',
+      },
+    );
+
+    expect(result.decision.selected?.guid).toBe('replacement');
+    expect(result.decision.reason).toContain('Not an upgrade for existing movie file');
+  });
+
+  it('keeps unrelated Arr rejections out of automatic selection', () => {
+    const result = selectBestRelease(
+      [
+        {
+          guid: 'blocked',
+          indexerId: 1,
+          indexer: 'Indexer',
+          title: 'Movie.2024.1080p.WEB-DL.ENG-FLUX',
+          movieTitles: 'Movie',
+          languages: [{ name: 'English' }],
+          qualityWeight: 50,
+          releaseWeight: 30,
+          customFormatScore: 0,
+          size: 1_000,
+          protocol: 'torrent',
+          downloadAllowed: false,
+          rejected: true,
+          rejections: ['Rejected by Arr custom format rules'],
         },
       ],
       defaultPreferences,
@@ -211,8 +786,8 @@ describe('selectBestRelease', () => {
           guid: 'wrong',
           indexerId: 1,
           indexer: 'Indexer',
-          title: 'Who.Am.I.1998.1080p.WEBRip.DD2.0.x264-NTb',
-          movieTitles: 'Who Am I',
+          title: 'Fixture.Mistaken.1998.1080p.WEBRip.DD2.0.x264-NTb',
+          movieTitles: 'Fixture Mistaken',
           languages: [{ name: 'English' }],
           qualityWeight: 1701,
           releaseWeight: 220,
@@ -225,8 +800,8 @@ describe('selectBestRelease', () => {
           guid: 'correct',
           indexerId: 1,
           indexer: 'Indexer',
-          title: 'American.History.X.1998.HEVC.1080p.BluRay.DTS-HD.MA.5.1.x265-LEGi0N',
-          movieTitles: 'American History X',
+          title: 'Fixture.History.1998.HEVC.1080p.BluRay.DTS-HD.MA.5.1.x265-LEGi0N',
+          movieTitles: 'Fixture History',
           languages: [{ name: 'English' }],
           qualityWeight: 1701,
           releaseWeight: 180,
@@ -240,7 +815,7 @@ describe('selectBestRelease', () => {
       {
         kind: 'movie',
         preferredReleaser: 'NTB',
-        targetTitle: 'American History X',
+        targetTitle: 'Fixture History',
       },
     );
 
@@ -254,7 +829,7 @@ describe('selectBestRelease', () => {
           guid: 'wrong',
           indexerId: 1,
           indexer: 'Indexer',
-          title: 'Who.Am.I.1998.1080p.WEBRip.DD2.0.x264-NTb',
+          title: 'Fixture.Mistaken.1998.1080p.WEBRip.DD2.0.x264-NTb',
           languages: [{ name: 'English' }],
           qualityWeight: 1701,
           releaseWeight: 220,
@@ -267,7 +842,7 @@ describe('selectBestRelease', () => {
       defaultPreferences,
       {
         kind: 'movie',
-        targetTitle: 'American History X',
+        targetTitle: 'Fixture History',
       },
     );
 
@@ -282,8 +857,8 @@ describe('selectBestRelease', () => {
           guid: 'wrong-season',
           indexerId: 1,
           indexer: 'Indexer',
-          title: 'Andor.S02.1080p.WEB-DL-FLUX',
-          seriesTitles: 'Andor',
+          title: 'Fixture Series.S02.1080p.WEB-DL-FLUX',
+          seriesTitles: 'Fixture Series',
           languages: [{ name: 'English' }],
           qualityWeight: 100,
           releaseWeight: 80,
@@ -296,8 +871,8 @@ describe('selectBestRelease', () => {
           guid: 'target-season',
           indexerId: 1,
           indexer: 'Indexer',
-          title: 'Andor.S01.1080p.WEB-DL-FLUX',
-          seriesTitles: 'Andor',
+          title: 'Fixture Series.S01.1080p.WEB-DL-FLUX',
+          seriesTitles: 'Fixture Series',
           languages: [{ name: 'English' }],
           qualityWeight: 100,
           releaseWeight: 70,
@@ -311,7 +886,7 @@ describe('selectBestRelease', () => {
       {
         kind: 'series',
         targetSeasonNumbers: [1],
-        targetTitle: 'Andor',
+        targetTitle: 'Fixture Series',
       },
     );
 
@@ -325,8 +900,8 @@ describe('selectBestRelease', () => {
           guid: 'complete-series',
           indexerId: 1,
           indexer: 'Indexer',
-          title: 'Andor.Complete.Series.1080p.WEB-DL-FLUX',
-          seriesTitles: 'Andor',
+          title: 'Fixture Series.Complete.Series.1080p.WEB-DL-FLUX',
+          seriesTitles: 'Fixture Series',
           languages: [{ name: 'English' }],
           qualityWeight: 140,
           releaseWeight: 80,
@@ -340,7 +915,7 @@ describe('selectBestRelease', () => {
       {
         kind: 'series',
         targetSeasonNumbers: [1],
-        targetTitle: 'Andor',
+        targetTitle: 'Fixture Series',
       },
     );
 
@@ -355,8 +930,8 @@ describe('selectBestRelease', () => {
           guid: 'season-pack',
           indexerId: 1,
           indexer: 'Indexer',
-          title: 'Andor.S01.1080p.WEB-DL-FLUX',
-          seriesTitles: 'Andor',
+          title: 'Fixture Series.S01.1080p.WEB-DL-FLUX',
+          seriesTitles: 'Fixture Series',
           episodeIds: [101, 102, 103],
           seasonNumbers: [1],
           languages: [{ name: 'English' }],
@@ -373,7 +948,7 @@ describe('selectBestRelease', () => {
         kind: 'series',
         targetEpisodeIds: [101, 102],
         targetSeasonNumbers: [1],
-        targetTitle: 'Andor',
+        targetTitle: 'Fixture Series',
       },
     );
 
@@ -387,8 +962,8 @@ describe('selectBestRelease', () => {
           guid: 'single-episode',
           indexerId: 1,
           indexer: 'Indexer',
-          title: 'Andor.S01E01.1080p.WEB-DL-FLUX',
-          seriesTitles: 'Andor',
+          title: 'Fixture Series.S01E01.1080p.WEB-DL-FLUX',
+          seriesTitles: 'Fixture Series',
           episodeIds: [101],
           seasonNumbers: [1],
           languages: [{ name: 'English' }],
@@ -405,7 +980,7 @@ describe('selectBestRelease', () => {
         kind: 'series',
         targetEpisodeIds: [101, 102],
         targetSeasonNumbers: [1],
-        targetTitle: 'Andor',
+        targetTitle: 'Fixture Series',
       },
     );
 

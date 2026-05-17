@@ -143,7 +143,7 @@ async function waitForAcquisitionVisibility(
 }
 
 function preferredTrackedMovieTitles(config: LiveIntegrationConfig): string[] {
-  return [...new Set(['Sharing the Secret', config.duplicateMovie.title])];
+  return [...new Set(config.trackedMovieCandidates)];
 }
 
 function matchingTrackedMovieQueueEntries(queue: QueueResponse, arrItemId: number) {
@@ -280,9 +280,9 @@ describe.sequential('live stack integration', () => {
     cleanupTargets = [];
   }, 120_000);
 
-  it('searches, adds, and exposes the acquisition lifecycle for Dredd (2012)', async () => {
+  it('searches, adds, and exposes the acquisition lifecycle for the configured live movie', async () => {
     const search = await getJson<MediaItem[]>(
-      `${config.baseUrl}/api/search?q=Dredd&kind=movie&availability=all`,
+      `${config.baseUrl}/api/search?q=${encodeURIComponent(config.untrackedMovie.title)}&kind=movie&availability=all`,
     );
     const item = exactMovieMatch(search, config.untrackedMovie.title, config.untrackedMovie.year);
 
@@ -321,7 +321,7 @@ describe.sequential('live stack integration', () => {
 
   it('removes a newly grabbed movie cleanly from Radarr and the acquisition queue', async () => {
     const search = await getJson<MediaItem[]>(
-      `${config.baseUrl}/api/search?q=Dredd&kind=movie&availability=all`,
+      `${config.baseUrl}/api/search?q=${encodeURIComponent(config.untrackedMovie.title)}&kind=movie&availability=all`,
     );
     const item = exactMovieMatch(search, config.untrackedMovie.title, config.untrackedMovie.year);
 
@@ -367,13 +367,15 @@ describe.sequential('live stack integration', () => {
 
   it('cancels an acquisition job and unmonitors the tracked Radarr item', async () => {
     const search = await getJson<MediaItem[]>(
-      `${config.baseUrl}/api/search?q=Dredd&kind=movie&availability=all`,
+      `${config.baseUrl}/api/search?q=${encodeURIComponent(config.untrackedMovie.title)}&kind=movie&availability=all`,
     );
     const item = exactMovieMatch(search, config.untrackedMovie.title, config.untrackedMovie.year);
 
     expect(item).not.toBeNull();
     if (!item) {
-      throw new Error('Expected Dredd (2012) to be searchable for cancel-path verification.');
+      throw new Error(
+        'Expected the configured live movie to be searchable for cancel-path verification.',
+      );
     }
 
     const request = await postJson<GrabResponse>(`${config.baseUrl}/api/grab`, {
@@ -478,14 +480,14 @@ describe.sequential('live stack integration', () => {
 
   it('reuses the tracked-item path for a stale second live grab after the first create succeeds', async () => {
     const search = await getJson<MediaItem[]>(
-      `${config.baseUrl}/api/search?q=Dredd&kind=movie&availability=all`,
+      `${config.baseUrl}/api/search?q=${encodeURIComponent(config.untrackedMovie.title)}&kind=movie&availability=all`,
     );
     const item = exactMovieMatch(search, config.untrackedMovie.title, config.untrackedMovie.year);
 
     expect(item).not.toBeNull();
     if (!item) {
       throw new Error(
-        'Expected Dredd (2012) to be searchable for stale-repeat live grab verification.',
+        'Expected the configured live movie to be searchable for stale-repeat live grab verification.',
       );
     }
 
@@ -525,13 +527,15 @@ describe.sequential('live stack integration', () => {
 
   it('keeps release submission idempotent across a live app restart after claim', async () => {
     const search = await getJson<MediaItem[]>(
-      `${config.baseUrl}/api/search?q=Dredd&kind=movie&availability=all`,
+      `${config.baseUrl}/api/search?q=${encodeURIComponent(config.untrackedMovie.title)}&kind=movie&availability=all`,
     );
     const item = exactMovieMatch(search, config.untrackedMovie.title, config.untrackedMovie.year);
 
     expect(item).not.toBeNull();
     if (!item) {
-      throw new Error('Expected Dredd (2012) to be searchable for live idempotency verification.');
+      throw new Error(
+        'Expected the configured live movie to be searchable for live idempotency verification.',
+      );
     }
 
     const request = await postJson<GrabResponse>(`${config.baseUrl}/api/grab`, {
@@ -597,14 +601,14 @@ describe.sequential('live stack integration', () => {
     const radarrLogCheckpoint = createLogCheckpoint(config.radarrLogPath);
     const sabLogCheckpoint = createLogCheckpoint(config.sabLogPath);
     const search = await getJson<MediaItem[]>(
-      `${config.baseUrl}/api/search?q=Dredd&kind=movie&availability=all`,
+      `${config.baseUrl}/api/search?q=${encodeURIComponent(config.untrackedMovie.title)}&kind=movie&availability=all`,
     );
     const item = exactMovieMatch(search, config.untrackedMovie.title, config.untrackedMovie.year);
 
     expect(item).not.toBeNull();
     if (!item) {
       throw new Error(
-        'Expected Dredd (2012) to be searchable for downstream handoff verification.',
+        'Expected the configured live movie to be searchable for downstream handoff verification.',
       );
     }
 
@@ -648,14 +652,14 @@ describe.sequential('live stack integration', () => {
     const radarrLogCheckpoint = createLogCheckpoint(config.radarrLogPath);
     const sabLogCheckpoint = createLogCheckpoint(config.sabLogPath);
     const search = await getJson<MediaItem[]>(
-      `${config.baseUrl}/api/search?q=Dredd&kind=movie&availability=all`,
+      `${config.baseUrl}/api/search?q=${encodeURIComponent(config.untrackedMovie.title)}&kind=movie&availability=all`,
     );
     const item = exactMovieMatch(search, config.untrackedMovie.title, config.untrackedMovie.year);
 
     expect(item).not.toBeNull();
     if (!item) {
       throw new Error(
-        'Expected Dredd (2012) to be searchable for concurrent live grab verification.',
+        'Expected the configured live movie to be searchable for concurrent live grab verification.',
       );
     }
 
@@ -729,14 +733,14 @@ describe.sequential('live stack integration', () => {
     const radarrLogCheckpoint = createLogCheckpoint(config.radarrLogPath);
     const sabLogCheckpoint = createLogCheckpoint(config.sabLogPath);
     const search = await getJson<MediaItem[]>(
-      `${config.baseUrl}/api/search?q=Dredd&kind=movie&availability=all`,
+      `${config.baseUrl}/api/search?q=${encodeURIComponent(config.untrackedMovie.title)}&kind=movie&availability=all`,
     );
     const item = exactMovieMatch(search, config.untrackedMovie.title, config.untrackedMovie.year);
 
     expect(item).not.toBeNull();
     if (!item) {
       throw new Error(
-        'Expected Dredd (2012) to be searchable for cancel-after-submit verification.',
+        'Expected the configured live movie to be searchable for cancel-after-submit verification.',
       );
     }
 

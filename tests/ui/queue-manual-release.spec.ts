@@ -111,15 +111,15 @@ test('queue list surfaces release detail for ambiguous same-title external downl
     ...queueItemFixture,
     id: 'radarr:queue:41',
     queueId: 41,
-    title: 'The Matrix',
-    detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+    title: 'Fixture Movie',
+    detail: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
   };
   const secondItem = {
     ...queueItemFixture,
     id: 'radarr:queue:42',
     queueId: 42,
-    title: 'The Matrix',
-    detail: 'The.Matrix.1999.1080p.BluRay-OLD',
+    title: 'Fixture Movie',
+    detail: 'Fixture.Movie.1999.1080p.BluRay-OLD',
   };
   const api = await mockAppApi(page, {
     queue: buildQueueResponse([], [firstItem, secondItem]),
@@ -130,12 +130,12 @@ test('queue list surfaces release detail for ambiguous same-title external downl
   await expect(
     page
       .getByTestId('queue-entry-list-item')
-      .filter({ hasText: 'The.Matrix.1999.1080p.WEB-DL-FLUX' }),
+      .filter({ hasText: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX' }),
   ).toHaveCount(1);
   await expect(
     page
       .getByTestId('queue-entry-list-item')
-      .filter({ hasText: 'The.Matrix.1999.1080p.BluRay-OLD' }),
+      .filter({ hasText: 'Fixture.Movie.1999.1080p.BluRay-OLD' }),
   ).toHaveCount(1);
 });
 
@@ -163,7 +163,7 @@ test('completed managed jobs do not expose manual release actions', async ({ pag
         {
           ...acquisitionJobFixture,
           completedAt: '2026-04-13T12:04:00.000Z',
-          currentRelease: 'Andor.S01.1080p.WEB-DL-FLUX',
+          currentRelease: 'Fixture Series.S01.1080p.WEB-DL-FLUX',
           reasonCode: 'validated',
           status: 'completed',
           validationSummary: 'Ready to watch.',
@@ -190,7 +190,7 @@ test('queued manual selections still expose manual release actions for replaceme
           ...acquisitionJobFixture,
           queueStatus: 'Manual selection queued',
           status: 'queued',
-          validationSummary: 'User selected Andor.S01.1080p.WEB-DL-FLUX',
+          validationSummary: 'User selected Fixture Series.S01.1080p.WEB-DL-FLUX',
         },
       ],
       [],
@@ -211,9 +211,9 @@ test('queued manual selections still expose manual release actions for replaceme
 test('reopening manual release options refreshes queued selection state', async ({ page }) => {
   const replacementRelease = {
     ...manualReleaseFixture,
-    guid: 'guid-andor-replacement',
+    guid: 'guid-Fixture Series-replacement',
     indexerId: 21,
-    title: 'Andor.S01.1080p.WEB-DL-REPLACEMENT',
+    title: 'Fixture Series.S01.1080p.WEB-DL-REPLACEMENT',
   };
   let releaseCall = 0;
   const api = await mockAppApi(page, {
@@ -223,7 +223,7 @@ test('reopening manual release options refreshes queued selection state', async 
           ...acquisitionJobFixture,
           queueStatus: 'Manual selection queued',
           status: 'queued',
-          validationSummary: 'User selected Andor.S01.1080p.WEB-DL-FLUX',
+          validationSummary: 'User selected Fixture Series.S01.1080p.WEB-DL-FLUX',
         },
       ],
       [],
@@ -310,7 +310,7 @@ test('queue item cancel refreshes queue and dashboard state', async ({ page }) =
     title: queueItemFixture.title,
   });
 
-  await expect(page.getByText('"The Matrix" download was cancelled.')).toBeVisible();
+  await expect(page.getByText('"Fixture Movie" download was cancelled.')).toBeVisible();
   await expect
     .poll(() => api.queueRequests.length, {
       message: 'queue should refresh after cancelling a queue item',
@@ -323,16 +323,16 @@ test('download-id-only active queue cancels using the download identity', async 
   let queueCall = 0;
   const activeEntry = {
     kind: 'external' as const,
-    id: 'radarr:download:download-shared:radarr-603-the-matrix-1999-1080p-web-dl-flux-noscope',
+    id: 'radarr:download:download-shared:radarr-603-the-Fixture-1999-1080p-web-dl-flux-noscope',
     canCancel: true,
     canRemove: false,
     item: {
-      id: 'radarr:download:download-shared:radarr-603-the-matrix-1999-1080p-web-dl-flux-noscope',
+      id: 'radarr:download:download-shared:radarr-603-the-Fixture-1999-1080p-web-dl-flux-noscope',
       downloadId: 'download-shared',
       arrItemId: 603,
       canCancel: false,
       kind: 'movie' as const,
-      title: 'The Matrix',
+      title: 'Fixture Movie',
       year: 1999,
       poster: null,
       sourceService: 'radarr' as const,
@@ -343,7 +343,7 @@ test('download-id-only active queue cancels using the download identity', async 
       size: 4_000_000_000,
       sizeLeft: 1_200_000_000,
       queueId: null,
-      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      detail: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
       episodeIds: null,
       seasonNumbers: null,
     },
@@ -363,7 +363,7 @@ test('download-id-only active queue cancels using the download identity', async 
 
   await openQueue(page, api);
 
-  const downloadCard = queueItemCard(page, 'The Matrix');
+  const downloadCard = queueItemCard(page, 'Fixture Movie');
   await expect(downloadCard).toBeVisible();
   await downloadCard.getByRole('button', { name: 'Cancel download' }).click();
 
@@ -376,13 +376,13 @@ test('download-id-only active queue cancels using the download identity', async 
     kind: 'external',
     arrItemId: 603,
     downloadId: 'download-shared',
-    id: 'radarr:download:download-shared:radarr-603-the-matrix-1999-1080p-web-dl-flux-noscope',
+    id: 'radarr:download:download-shared:radarr-603-the-Fixture-1999-1080p-web-dl-flux-noscope',
     queueId: null,
     sourceService: 'radarr',
-    title: 'The Matrix',
+    title: 'Fixture Movie',
   });
 
-  await expect(page.getByText('"The Matrix" download was cancelled.')).toBeVisible();
+  await expect(page.getByText('"Fixture Movie" download was cancelled.')).toBeVisible();
   await expect
     .poll(() => api.queueRequests.length, {
       message: 'queue should refresh after cancelling a download-only active queue row',
@@ -396,16 +396,16 @@ test('stale queue clear targets the selected row when siblings share one downloa
   const sharedDownloadId = 'download-shared';
   const firstEntry = {
     kind: 'external' as const,
-    id: 'radarr:download:download-shared:radarr-603-the-matrix-1999-1080p-web-dl-flux-noscope',
+    id: 'radarr:download:download-shared:radarr-603-the-Fixture-1999-1080p-web-dl-flux-noscope',
     canCancel: false,
     canRemove: true,
     item: {
-      id: 'radarr:download:download-shared:radarr-603-the-matrix-1999-1080p-web-dl-flux-noscope',
+      id: 'radarr:download:download-shared:radarr-603-the-Fixture-1999-1080p-web-dl-flux-noscope',
       downloadId: sharedDownloadId,
       arrItemId: 603,
       canCancel: false,
       kind: 'movie' as const,
-      title: 'The Matrix',
+      title: 'Fixture Movie',
       year: 1999,
       poster: null,
       sourceService: 'radarr' as const,
@@ -419,18 +419,18 @@ test('stale queue clear targets the selected row when siblings share one downloa
       size: 4_000_000_000,
       sizeLeft: 0,
       queueId: null,
-      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      detail: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
       episodeIds: null,
       seasonNumbers: null,
     },
   };
   const secondEntry = {
     ...firstEntry,
-    id: 'radarr:download:download-shared:radarr-603-the-matrix-1999-1080p-bluray-old-noscope',
+    id: 'radarr:download:download-shared:radarr-603-the-Fixture-1999-1080p-bluray-old-noscope',
     item: {
       ...firstEntry.item,
-      id: 'radarr:download:download-shared:radarr-603-the-matrix-1999-1080p-bluray-old-noscope',
-      detail: 'The.Matrix.1999.1080p.BluRay-OLD',
+      id: 'radarr:download:download-shared:radarr-603-the-Fixture-1999-1080p-bluray-old-noscope',
+      detail: 'Fixture.Movie.1999.1080p.BluRay-OLD',
     },
   };
   const api = await mockAppApi(page, {
@@ -445,10 +445,10 @@ test('stale queue clear targets the selected row when siblings share one downloa
 
   await page
     .getByTestId('queue-entry-list-item')
-    .filter({ hasText: 'The.Matrix.1999.1080p.BluRay-OLD' })
+    .filter({ hasText: 'Fixture.Movie.1999.1080p.BluRay-OLD' })
     .click();
-  const downloadCard = queueItemCard(page, 'The Matrix');
-  await expect(downloadCard).toContainText('The.Matrix.1999.1080p.BluRay-OLD');
+  const downloadCard = queueItemCard(page, 'Fixture Movie');
+  await expect(downloadCard).toContainText('Fixture.Movie.1999.1080p.BluRay-OLD');
   page.once('dialog', (dialog) => dialog.accept());
   await downloadCard.getByRole('button', { name: 'Clear stale queue entry' }).click();
 
@@ -460,11 +460,11 @@ test('stale queue clear targets the selected row when siblings share one downloa
   expect(api.mediaDeleteBodies[0]).toEqual({
     deleteMode: 'queue-entry',
     downloadId: sharedDownloadId,
-    id: 'radarr:download:download-shared:radarr-603-the-matrix-1999-1080p-bluray-old-noscope',
+    id: 'radarr:download:download-shared:radarr-603-the-Fixture-1999-1080p-bluray-old-noscope',
     kind: 'movie',
     queueId: null,
     sourceService: 'radarr',
-    title: 'The Matrix',
+    title: 'Fixture Movie',
   });
 });
 
@@ -518,7 +518,9 @@ test('managed queue cancel refreshes queue and dashboard state', async ({ page }
     jobId: acquisitionJobFixture.id,
   });
 
-  await expect(page.getByText('"Andor" download was cancelled and unmonitored.')).toBeVisible();
+  await expect(
+    page.getByText('"Fixture Series" download was cancelled and unmonitored.'),
+  ).toBeVisible();
   await expect
     .poll(() => api.queueRequests.length, {
       message: 'queue should refresh after cancelling a managed queue job',
@@ -586,7 +588,7 @@ test('stale external queue rows expose only the clear action', async ({ page }) 
             arrItemId: 727,
             canCancel: true,
             kind: 'movie',
-            title: 'Dangerous Animals',
+            title: 'Fixture Queue',
             year: 2025,
             poster: null,
             sourceService: 'radarr',
@@ -600,7 +602,7 @@ test('stale external queue rows expose only the clear action', async ({ page }) 
             size: 7_845_710_150,
             sizeLeft: 0,
             queueId: 1996958567,
-            detail: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+            detail: 'Fixture.Queue.2025.1080p.WEB.H264-KBOX',
             episodeIds: null,
             seasonNumbers: null,
           },
@@ -611,7 +613,7 @@ test('stale external queue rows expose only the clear action', async ({ page }) 
 
   await openQueue(page, api);
 
-  const downloadCard = queueItemCard(page, 'Dangerous Animals');
+  const downloadCard = queueItemCard(page, 'Fixture Queue');
   await expect(downloadCard).toBeVisible();
   await expect(downloadCard.getByRole('button', { name: 'Cancel download' })).toHaveCount(0);
   await expect(downloadCard.getByRole('button', { name: 'Clear stale queue entry' })).toBeVisible();
@@ -629,7 +631,7 @@ test('stale external queue clears refresh queue and dashboard state', async ({ p
       arrItemId: 727,
       canCancel: true,
       kind: 'movie' as const,
-      title: 'Dangerous Animals',
+      title: 'Fixture Queue',
       year: 2025,
       poster: null,
       sourceService: 'radarr' as const,
@@ -643,7 +645,7 @@ test('stale external queue clears refresh queue and dashboard state', async ({ p
       size: 7_845_710_150,
       sizeLeft: 0,
       queueId: 1996958567,
-      detail: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+      detail: 'Fixture.Queue.2025.1080p.WEB.H264-KBOX',
       episodeIds: null,
       seasonNumbers: null,
     },
@@ -664,7 +666,7 @@ test('stale external queue clears refresh queue and dashboard state', async ({ p
 
   await openQueue(page, api);
 
-  const downloadCard = queueItemCard(page, 'Dangerous Animals');
+  const downloadCard = queueItemCard(page, 'Fixture Queue');
   await expect(downloadCard).toBeVisible();
   page.once('dialog', (dialog) => dialog.accept());
   await downloadCard.getByRole('button', { name: 'Clear stale queue entry' }).click();
@@ -681,11 +683,11 @@ test('stale external queue clears refresh queue and dashboard state', async ({ p
     kind: 'movie',
     queueId: 1996958567,
     sourceService: 'radarr',
-    title: 'Dangerous Animals',
+    title: 'Fixture Queue',
   });
 
   await expect(
-    page.getByText('"Dangerous Animals" stale queue entry was removed from Radarr.'),
+    page.getByText('"Fixture Queue" stale queue entry was removed from Radarr.'),
   ).toBeVisible();
   await expect
     .poll(() => api.queueRequests.length, {
@@ -703,16 +705,16 @@ test('download-id-only stale queue rows clear using the download identity', asyn
       entries: [
         {
           kind: 'external',
-          id: 'radarr:download:download-shared:radarr-603-the-matrix-1999-1080p-web-dl-flux-noscope',
+          id: 'radarr:download:download-shared:radarr-603-the-Fixture-1999-1080p-web-dl-flux-noscope',
           canCancel: false,
           canRemove: true,
           item: {
-            id: 'radarr:download:download-shared:radarr-603-the-matrix-1999-1080p-web-dl-flux-noscope',
+            id: 'radarr:download:download-shared:radarr-603-the-Fixture-1999-1080p-web-dl-flux-noscope',
             downloadId: 'download-shared',
             arrItemId: 603,
             canCancel: false,
             kind: 'movie',
-            title: 'The Matrix',
+            title: 'Fixture Movie',
             year: 1999,
             poster: null,
             sourceService: 'radarr',
@@ -726,7 +728,7 @@ test('download-id-only stale queue rows clear using the download identity', asyn
             size: 4_000_000_000,
             sizeLeft: 0,
             queueId: null,
-            detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+            detail: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
             episodeIds: null,
             seasonNumbers: null,
           },
@@ -737,7 +739,7 @@ test('download-id-only stale queue rows clear using the download identity', asyn
 
   await openQueue(page, api);
 
-  const downloadCard = queueItemCard(page, 'The Matrix');
+  const downloadCard = queueItemCard(page, 'Fixture Movie');
   await expect(downloadCard).toBeVisible();
   page.once('dialog', (dialog) => dialog.accept());
   await downloadCard.getByRole('button', { name: 'Clear stale queue entry' }).click();
@@ -750,11 +752,11 @@ test('download-id-only stale queue rows clear using the download identity', asyn
   expect(api.mediaDeleteBodies[0]).toEqual({
     deleteMode: 'queue-entry',
     downloadId: 'download-shared',
-    id: 'radarr:download:download-shared:radarr-603-the-matrix-1999-1080p-web-dl-flux-noscope',
+    id: 'radarr:download:download-shared:radarr-603-the-Fixture-1999-1080p-web-dl-flux-noscope',
     kind: 'movie',
     queueId: null,
     sourceService: 'radarr',
-    title: 'The Matrix',
+    title: 'Fixture Movie',
   });
 });
 
@@ -775,7 +777,7 @@ test('stale queue clear errors stay inline on the queue card', async ({ page }) 
             arrItemId: 727,
             canCancel: true,
             kind: 'movie',
-            title: 'Dangerous Animals',
+            title: 'Fixture Queue',
             year: 2025,
             poster: null,
             sourceService: 'radarr',
@@ -789,7 +791,7 @@ test('stale queue clear errors stay inline on the queue card', async ({ page }) 
             size: 7_845_710_150,
             sizeLeft: 0,
             queueId: 1996958567,
-            detail: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+            detail: 'Fixture.Queue.2025.1080p.WEB.H264-KBOX',
             episodeIds: null,
             seasonNumbers: null,
           },
@@ -802,7 +804,7 @@ test('stale queue clear errors stay inline on the queue card', async ({ page }) 
 
   await openQueue(page, api);
 
-  const downloadCard = queueItemCard(page, 'Dangerous Animals');
+  const downloadCard = queueItemCard(page, 'Fixture Queue');
   await expect(downloadCard).toBeVisible();
   page.once('dialog', (dialog) => dialog.accept());
   await downloadCard.getByRole('button', { name: 'Clear stale queue entry' }).click();
@@ -850,7 +852,7 @@ test('managed remove from library refreshes queue and dashboard state', async ({
   });
 
   await expect(
-    page.getByText('"Andor" was deleted from Sonarr and its files were removed.'),
+    page.getByText('"Fixture Series" was deleted from Sonarr and its files were removed.'),
   ).toBeVisible();
   await expect
     .poll(() => api.queueRequests.length, {
@@ -895,7 +897,7 @@ test('dismissing stale queue clear confirmation does not send a delete request',
             arrItemId: 727,
             canCancel: true,
             kind: 'movie',
-            title: 'Dangerous Animals',
+            title: 'Fixture Queue',
             year: 2025,
             poster: null,
             sourceService: 'radarr',
@@ -909,7 +911,7 @@ test('dismissing stale queue clear confirmation does not send a delete request',
             size: 7_845_710_150,
             sizeLeft: 0,
             queueId: 1996958567,
-            detail: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+            detail: 'Fixture.Queue.2025.1080p.WEB.H264-KBOX',
             episodeIds: null,
             seasonNumbers: null,
           },
@@ -920,7 +922,7 @@ test('dismissing stale queue clear confirmation does not send a delete request',
 
   await openQueue(page, api);
 
-  const downloadCard = queueItemCard(page, 'Dangerous Animals');
+  const downloadCard = queueItemCard(page, 'Fixture Queue');
   await expect(downloadCard).toBeVisible();
   page.once('dialog', (dialog) => dialog.dismiss());
   await downloadCard.getByRole('button', { name: 'Clear stale queue entry' }).click();
@@ -955,7 +957,7 @@ test('queue view shows explicit ETA for downloads and matched grab jobs', async 
     kind: acquisitionJobFixture.kind,
     title: acquisitionJobFixture.title,
     year: 2022,
-    poster: 'https://img.example/andor.jpg',
+    poster: 'https://img.example/Fixture Series.jpg',
     sourceService: acquisitionJobFixture.sourceService,
     status: 'Downloading',
     progress: 58,
@@ -964,7 +966,7 @@ test('queue view shows explicit ETA for downloads and matched grab jobs', async 
     size: 4_000_000_000,
     sizeLeft: 1_200_000_000,
     queueId: 2,
-    detail: 'Andor.S01.1080p.WEB-DL-FLUX',
+    detail: 'Fixture Series.S01.1080p.WEB-DL-FLUX',
     episodeIds: [101, 102],
     seasonNumbers: [1],
   };
@@ -991,7 +993,7 @@ test('queue view shows explicit ETA for downloads and matched grab jobs', async 
   await expect(card).toContainText('Downloading');
   await expect(card.getByText('ETA', { exact: true }).first()).toBeVisible();
   await expect(card).toContainText('18m remaining');
-  await expect(card).toContainText('Andor.S01.1080p.WEB-DL-FLUX');
+  await expect(card).toContainText('Fixture Series.S01.1080p.WEB-DL-FLUX');
 });
 
 test('queue keeps out-of-scope same-series downloads as external rows', async ({ page }) => {
@@ -1002,7 +1004,7 @@ test('queue keeps out-of-scope same-series downloads as external rows', async ({
     kind: acquisitionJobFixture.kind,
     title: acquisitionJobFixture.title,
     year: 2022,
-    poster: 'https://img.example/andor.jpg',
+    poster: 'https://img.example/Fixture Series.jpg',
     sourceService: acquisitionJobFixture.sourceService,
     status: 'Downloading',
     progress: 58,
@@ -1011,7 +1013,7 @@ test('queue keeps out-of-scope same-series downloads as external rows', async ({
     size: 4_000_000_000,
     sizeLeft: 1_200_000_000,
     queueId: 2,
-    detail: 'Andor.S01.1080p.WEB-DL-FLUX',
+    detail: 'Fixture Series.S01.1080p.WEB-DL-FLUX',
     episodeIds: [101, 102],
     seasonNumbers: [1],
   };
@@ -1022,7 +1024,7 @@ test('queue keeps out-of-scope same-series downloads as external rows', async ({
     queueId: 3,
     timeLeft: '1h',
     estimatedCompletionTime: '2026-04-13T13:00:00.000Z',
-    detail: 'Andor.S02E01.1080p.WEB-DL-FLUX',
+    detail: 'Fixture Series.S02E01.1080p.WEB-DL-FLUX',
     episodeIds: [201],
     seasonNumbers: [2],
   };
@@ -1034,13 +1036,13 @@ test('queue keeps out-of-scope same-series downloads as external rows', async ({
 
   const managedCard = managedJobCard(page, acquisitionJobFixture.title);
   await expect(managedCard).toBeVisible();
-  await expect(managedCard).toContainText('Andor.S01.1080p.WEB-DL-FLUX');
-  await expect(managedCard).not.toContainText('Andor.S02E01.1080p.WEB-DL-FLUX');
+  await expect(managedCard).toContainText('Fixture Series.S01.1080p.WEB-DL-FLUX');
+  await expect(managedCard).not.toContainText('Fixture Series.S02E01.1080p.WEB-DL-FLUX');
 
   await page.getByTestId('queue-entry-list-item').nth(1).click();
   const externalCard = queueItemCard(page, acquisitionJobFixture.title);
   await expect(externalCard).toBeVisible();
-  await expect(externalCard).toContainText('Andor.S02E01.1080p.WEB-DL-FLUX');
+  await expect(externalCard).toContainText('Fixture Series.S02E01.1080p.WEB-DL-FLUX');
   await expect(externalCard.getByRole('button', { name: 'Cancel download' })).toBeVisible();
 });
 
@@ -1196,7 +1198,7 @@ test('manual release selection refreshes queue and release state', async ({ page
   await expect(dialog.getByText('One manual-search release was selected.')).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Selected' })).toBeDisabled();
   await expect(
-    page.getByText('Manual release selected. Sending Andor to the downloader.'),
+    page.getByText('Manual release selected. Sending Fixture Series to the downloader.'),
   ).toBeVisible();
   await expect(
     managedJobCard(page, acquisitionJobFixture.title)
@@ -1273,7 +1275,7 @@ test('manual release dialog blocks title-mismatched releases separately from Arr
       releases: [
         {
           ...manualReleaseFixture,
-          title: 'Who.Am.I.1998.1080p.WEBRip.DD2.0.x264-NTb',
+          title: 'Fixture.Mistaken.1998.1080p.WEBRip.DD2.0.x264-NTb',
           canSelect: false,
           selectionMode: null,
           blockReason: 'title-mismatch',
@@ -1283,7 +1285,9 @@ test('manual release dialog blocks title-mismatched releases separately from Arr
           explanation: {
             summary: 'Preferred releaser NTB would normally score highest.',
             matchReasons: [],
-            warningReasons: ['Structured movie titles point to a different title: Who Am I'],
+            warningReasons: [
+              'Structured movie titles point to a different title: Fixture Mistaken',
+            ],
             arrReasons: [],
           },
           status: 'locally-rejected',
@@ -1298,7 +1302,7 @@ test('manual release dialog blocks title-mismatched releases separately from Arr
 
   await expect(dialog.getByText('Why this is risky')).toBeVisible();
   await expect(
-    dialog.getByText('Structured movie titles point to a different title: Who Am I'),
+    dialog.getByText('Structured movie titles point to a different title: Fixture Mistaken'),
   ).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Title mismatch' })).toBeDisabled();
 });
@@ -1313,7 +1317,7 @@ test('manual release dialog blocks releases that are outside the targeted series
       releases: [
         {
           ...manualReleaseFixture,
-          title: 'Andor.S02.1080p.WEB-DL-FLUX',
+          title: 'Fixture Series.S02.1080p.WEB-DL-FLUX',
           canSelect: false,
           selectionMode: null,
           blockReason: 'scope-mismatch',

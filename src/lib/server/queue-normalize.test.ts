@@ -16,10 +16,11 @@ describe('normalizeQueueItem', () => {
       sizeleft: 500,
       timeleft: '10m',
       estimatedCompletionTime: '2026-04-02T12:00:00.000Z',
+      added: '2026-04-02T11:40:00.000Z',
       series: {
-        title: 'Andor',
+        title: 'Fixture Series',
         year: 2022,
-        images: [{ coverType: 'poster', remoteUrl: 'https://img.example/andor.jpg' }],
+        images: [{ coverType: 'poster', remoteUrl: 'https://img.example/Fixture Series.jpg' }],
       },
       episode: {
         title: 'One Way Out',
@@ -30,12 +31,13 @@ describe('normalizeQueueItem', () => {
       downloadId: 'sonarr-download-shared',
       id: 'sonarr:download:sonarr-download-shared:sonarr-na-episode-source-title-noscope',
       kind: 'series',
-      title: 'Andor',
+      title: 'Fixture Series',
       year: 2022,
-      poster: 'https://img.example/andor.jpg',
+      poster: 'https://img.example/Fixture Series.jpg',
       status: 'Downloading',
       progress: 75,
       timeLeft: '10m',
+      addedAt: '2026-04-02T11:40:00.000Z',
       detail: 'Episode source title',
     });
   });
@@ -64,26 +66,26 @@ describe('normalizeQueueItem', () => {
     const firstItem = normalizeQueueItem('sonarr', {
       downloadId: 'sonarr-download-shared',
       seriesId: 1445,
-      title: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+      title: 'Fixture Series.S01E01.1080p.WEB-DL-FLUX',
       status: 'downloading',
       trackedDownloadStatus: 'ok',
       trackedDownloadState: 'downloading',
       episodeIds: [101],
       series: {
-        title: 'Andor',
+        title: 'Fixture Series',
         year: 2022,
       },
     });
     const secondItem = normalizeQueueItem('sonarr', {
       downloadId: 'sonarr-download-shared',
       seriesId: 1445,
-      title: 'Andor.S01E02.1080p.WEB-DL-FLUX',
+      title: 'Fixture Series.S01E02.1080p.WEB-DL-FLUX',
       status: 'downloading',
       trackedDownloadStatus: 'ok',
       trackedDownloadState: 'downloading',
       episodeIds: [102],
       series: {
-        title: 'Andor',
+        title: 'Fixture Series',
         year: 2022,
       },
     });
@@ -168,7 +170,7 @@ describe('normalizeQueueItem', () => {
     const item = normalizeQueueItem('radarr', {
       id: 1996958567,
       movieId: 727,
-      title: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+      title: 'Fixture.Queue.2025.1080p.WEB.H264-KBOX',
       status: 'completed',
       trackedDownloadStatus: 'warning',
       trackedDownloadState: 'importPending',
@@ -194,13 +196,13 @@ describe('normalizeQueueItem', () => {
     const item = normalizeQueueItem('radarr', {
       id: 1996958567,
       movieId: 727,
-      title: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+      title: 'Fixture.Queue.2025.1080p.WEB.H264-KBOX',
       status: 'completed',
       trackedDownloadStatus: 'warning',
       trackedDownloadState: 'importPending',
       statusMessages: [
         {
-          title: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+          title: 'Fixture.Queue.2025.1080p.WEB.H264-KBOX',
           messages: ['Not an upgrade for existing movie file. Existing quality: Bluray-2160p.'],
         },
       ],

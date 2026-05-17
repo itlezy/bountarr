@@ -1,4 +1,4 @@
-import { cloneJob, isTerminalJobStatus } from '$lib/server/acquisition-domain';
+import { cloneJob } from '$lib/server/acquisition-domain';
 import { getAcquisitionEventRepository } from '$lib/server/acquisition-event-repository';
 import { getAcquisitionJobRepository } from '$lib/server/acquisition-job-repository';
 import type { AcquisitionJob, AcquisitionResponse, MediaKind } from '$lib/shared/types';
@@ -8,14 +8,7 @@ export function listAllAcquisitionJobs(): AcquisitionJob[] {
 }
 
 export function listQueueAcquisitionJobs(): AcquisitionJob[] {
-  return getAcquisitionJobRepository()
-    .listJobs()
-    .filter(
-      (job) =>
-        !isTerminalJobStatus(job.status) ||
-        Date.now() - Date.parse(job.updatedAt) < 24 * 60 * 60_000,
-    )
-    .map(cloneJob);
+  return getAcquisitionJobRepository().listRunnableJobs().map(cloneJob);
 }
 
 export async function getAcquisitionJobsResponse(): Promise<AcquisitionResponse> {

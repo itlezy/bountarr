@@ -233,7 +233,7 @@ describe('ensureAcquisitionSchema', () => {
         id, item_id, arr_item_id, kind, title, source_service, status, attempt, max_retries,
         preferred_language, subtitle_language, started_at, updated_at
       ) VALUES (
-        'job-index-drift', 'movie:1', 1, 'movie', 'Matrix', 'radarr', 'queued', 1, 3,
+        'job-index-drift', 'movie:1', 1, 'movie', 'Fixture', 'radarr', 'queued', 1, 3,
         'English', 'English', '2026-04-13T12:00:00.000Z', '2026-04-13T12:00:00.000Z'
       );
     `);
@@ -257,7 +257,7 @@ describe('ensureAcquisitionSchema', () => {
         id, item_id, arr_item_id, kind, title, source_service, status, attempt, max_retries,
         preferred_language, subtitle_language, started_at, updated_at
       ) VALUES (
-        'job-pragma-drift', 'movie:1', 1, 'movie', 'Matrix', 'radarr', 'queued', 1, 3,
+        'job-pragma-drift', 'movie:1', 1, 'movie', 'Fixture', 'radarr', 'queued', 1, 3,
         'English', 'English', '2026-04-13T12:00:00.000Z', '2026-04-13T12:00:00.000Z'
       );
     `);

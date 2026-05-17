@@ -5,6 +5,7 @@
     acquisitionJourneySummary,
     acquisitionNextStep,
     acquisitionReasonSummary,
+    acquisitionRecoverySummary,
     acquisitionStatusLabel,
     downloadedSummary,
     queueEtaLabel,
@@ -26,6 +27,19 @@
     liveSummary && !liveSummary.byteMetricsPartial ? downloadedSummary(liveSummary) : null,
   );
   const targetScope = $derived(describeAcquisitionTarget(job));
+  const recoverySummary = $derived(acquisitionRecoverySummary(job));
+  const releaseCandidates = $derived(job.releaseCandidates ?? []);
+  const failedCandidateCount = $derived(
+    releaseCandidates.filter((candidate) => candidate.status === 'failed').length,
+  );
+  const availableCandidateCount = $derived(
+    releaseCandidates.filter((candidate) => candidate.status !== 'failed').length,
+  );
+  const candidateProgress = $derived(
+    releaseCandidates.length > 0
+      ? `release ${Math.min(failedCandidateCount + 1, releaseCandidates.length)} of ${releaseCandidates.length}`
+      : `attempt ${job.attempt}`,
+  );
   const canOpenManualRelease = $derived(
     job.status === 'queued' ||
       job.status === 'failed' ||
@@ -43,7 +57,7 @@
     <div class="min-w-0">
       <div class="overflow-safe-text text-base font-800">{job.title}</div>
       <div class="overflow-safe-text text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">
-        {acquisitionJourneySummary(job)} · attempt {Math.min(job.attempt, job.maxRetries)}/{job.maxRetries}
+        {acquisitionJourneySummary(job)} · {candidateProgress}
       </div>
     </div>
     {#if displayProgress !== null}
@@ -85,6 +99,12 @@
       <div class="min-w-0">
         <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">ETA</div>
         <div class="overflow-safe-text">{etaLabel}</div>
+      </div>
+    {/if}
+    {#if recoverySummary}
+      <div class="min-w-0">
+        <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Recovery</div>
+        <div class="overflow-safe-text">{recoverySummary}</div>
       </div>
     {/if}
     {#if liveSummary}
@@ -148,6 +168,37 @@
             {#if attempt.releaseTitle}
               <div class="mt-1 overflow-safe-text text-sm text-[var(--muted)]">{attempt.releaseTitle}</div>
             {/if}
+          </div>
+        {/each}
+      </div>
+    </div>
+  {/if}
+
+  {#if releaseCandidates.length > 0}
+    <div class="mt-3 rounded-[14px] border border-[var(--line)] bg-[var(--surface)] p-3">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div class="text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">Release candidates</div>
+        <div class="text-xs font-700 text-[var(--muted)]">{availableCandidateCount} untried</div>
+      </div>
+      <div class="mt-2 space-y-2">
+        {#each releaseCandidates.slice(0, 4) as candidate}
+          <div class="rounded-[12px] border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-2">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="overflow-safe-text text-sm font-700">{candidate.title}</div>
+              <div class="text-xs font-700 uppercase tracking-[0.08em] text-[var(--muted)]">{candidate.status}</div>
+            </div>
+            <div class="mt-1 overflow-safe-text text-sm text-[var(--muted)]">
+              Score {candidate.score}
+              {#if candidate.detectedAudioLanguages.length > 0}
+                · audio {candidate.detectedAudioLanguages.join(', ')}
+              {/if}
+              {#if candidate.detectedSubtitleLanguages.length > 0}
+                · subtitles {candidate.detectedSubtitleLanguages.join(', ')}
+              {/if}
+              {#if candidate.failureReason}
+                · {candidate.failureReason}
+              {/if}
+            </div>
           </div>
         {/each}
       </div>

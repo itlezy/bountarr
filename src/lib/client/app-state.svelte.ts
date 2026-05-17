@@ -293,6 +293,34 @@ function sortSearchItems(
   });
 }
 
+function acquisitionTimeMs(value: string | null | undefined): number {
+  if (!value) {
+    return 0;
+  }
+
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function compareMediaTitles(left: MediaItem, right: MediaItem): number {
+  return left.title.localeCompare(right.title, undefined, {
+    sensitivity: 'base',
+    numeric: true,
+  });
+}
+
+function sortAuditItems(items: MediaItem[]): MediaItem[] {
+  return [...items].sort((left, right) => {
+    const acquisitionComparison =
+      acquisitionTimeMs(right.acquiredAt) - acquisitionTimeMs(left.acquiredAt);
+    if (acquisitionComparison !== 0) {
+      return acquisitionComparison;
+    }
+
+    return compareMediaTitles(left, right);
+  });
+}
+
 function seasonNumbersFromItem(item: MediaItem | null): number[] {
   if (!item || item.kind !== 'series') {
     return [];
@@ -447,27 +475,25 @@ export class AppState {
   }
 
   get auditAttentionItems(): MediaItem[] {
-    return [...(this.dashboard?.items ?? [])]
-      .filter((item) => item.auditStatus === 'missing-language' || item.auditStatus === 'no-subs')
-      .sort((left, right) =>
-        left.title.localeCompare(right.title, undefined, { sensitivity: 'base' }),
-      );
+    return sortAuditItems(
+      [...(this.dashboard?.items ?? [])].filter(
+        (item) => item.auditStatus === 'missing-language' || item.auditStatus === 'no-subs',
+      ),
+    );
   }
 
   get auditPendingItems(): MediaItem[] {
-    return [...(this.dashboard?.items ?? [])]
-      .filter((item) => item.auditStatus === 'pending' || item.auditStatus === 'unknown')
-      .sort((left, right) =>
-        left.title.localeCompare(right.title, undefined, { sensitivity: 'base' }),
-      );
+    return sortAuditItems(
+      [...(this.dashboard?.items ?? [])].filter(
+        (item) => item.auditStatus === 'pending' || item.auditStatus === 'unknown',
+      ),
+    );
   }
 
   get auditVerifiedItems(): MediaItem[] {
-    return [...(this.dashboard?.items ?? [])]
-      .filter((item) => item.auditStatus === 'verified')
-      .sort((left, right) =>
-        left.title.localeCompare(right.title, undefined, { sensitivity: 'base' }),
-      );
+    return sortAuditItems(
+      [...(this.dashboard?.items ?? [])].filter((item) => item.auditStatus === 'verified'),
+    );
   }
 
   qualityProfileOptions(item: MediaItem | null): QualityProfileOption[] {

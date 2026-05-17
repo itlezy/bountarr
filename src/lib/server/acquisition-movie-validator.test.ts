@@ -6,12 +6,12 @@ const movieJob: PersistedAcquisitionJob = {
   itemId: 'movie:727',
   arrItemId: 727,
   kind: 'movie',
-  title: 'Dangerous Animals',
+  title: 'Fixture Queue',
   sourceService: 'radarr',
   status: 'validating',
   attempt: 1,
   maxRetries: 4,
-  currentRelease: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+  currentRelease: 'Fixture.Queue.2025.1080p.WEB.H264-KBOX',
   selectedReleaser: 'kbox',
   preferredReleaser: null,
   reasonCode: null,
@@ -52,7 +52,7 @@ describe('validateMovieAttempt', () => {
           {
             date: '2026-04-18T10:46:11Z',
             eventType: 'grabbed',
-            sourceTitle: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+            sourceTitle: 'Fixture.Queue.2025.1080p.WEB.H264-KBOX',
           },
         ]),
         fetchQueueRecords: vi.fn().mockResolvedValue([
@@ -60,13 +60,13 @@ describe('validateMovieAttempt', () => {
             id: 1996958567,
             movieId: 727,
             downloadId: 'SABnzbd_nzo_4lejah9m',
-            title: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+            title: 'Fixture.Queue.2025.1080p.WEB.H264-KBOX',
             status: 'completed',
             trackedDownloadStatus: 'warning',
             trackedDownloadState: 'importPending',
             statusMessages: [
               {
-                title: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+                title: 'Fixture.Queue.2025.1080p.WEB.H264-KBOX',
                 messages: [
                   'Not an upgrade for existing movie file. Existing quality: Bluray-2160p. New Quality WEBDL-1080p.',
                 ],
@@ -76,7 +76,7 @@ describe('validateMovieAttempt', () => {
             sizeleft: 0,
             movie: {
               id: 727,
-              title: 'Dangerous Animals',
+              title: 'Fixture Queue',
               year: 2025,
             },
           },
@@ -91,6 +91,8 @@ describe('validateMovieAttempt', () => {
     const result = await module.validateMovieAttempt(movieJob, '2026-04-18T10:46:04.380Z');
 
     expect(result).toEqual({
+      detectedAudioLanguages: [],
+      detectedSubtitleLanguages: [],
       liveDownloadId: null,
       liveQueueId: null,
       outcome: 'failure',
@@ -117,7 +119,7 @@ describe('validateMovieAttempt', () => {
             id: 1996958567,
             movieId: 727,
             downloadId: 'SABnzbd_nzo_4lejah9m',
-            title: 'Dangerous.Animals.2025.1080p.WEB.H264-KBOX',
+            title: 'Fixture.Queue.2025.1080p.WEB.H264-KBOX',
             status: 'downloading',
             trackedDownloadStatus: 'ok',
             trackedDownloadState: 'downloading',
@@ -125,7 +127,7 @@ describe('validateMovieAttempt', () => {
             sizeleft: 3_922_855_075,
             movie: {
               id: 727,
-              title: 'Dangerous Animals',
+              title: 'Fixture Queue',
               year: 2025,
             },
           },
@@ -140,6 +142,8 @@ describe('validateMovieAttempt', () => {
     const result = await module.validateMovieAttempt(movieJob, '2026-04-18T10:46:04.380Z');
 
     expect(result).toEqual({
+      detectedAudioLanguages: [],
+      detectedSubtitleLanguages: [],
       liveDownloadId: 'SABnzbd_nzo_4lejah9m',
       liveQueueId: 1996958567,
       outcome: 'pending',
@@ -148,6 +152,48 @@ describe('validateMovieAttempt', () => {
       queueStatus: 'Downloading',
       reasonCode: null,
       summary: null,
+    });
+  });
+
+  it('fails when a known live download disappears before Radarr records an import', async () => {
+    vi.doMock('$lib/server/acquisition-validator-shared', async () => {
+      const actual = await vi.importActual<
+        typeof import('$lib/server/acquisition-validator-shared')
+      >('$lib/server/acquisition-validator-shared');
+
+      return {
+        ...actual,
+        fetchHistoryRecords: vi.fn().mockResolvedValue([]),
+        fetchQueueRecords: vi.fn().mockResolvedValue([]),
+      };
+    });
+    vi.doMock('$lib/server/lookup-service', () => ({
+      fetchExistingMovie: vi.fn(),
+    }));
+
+    const module = await import('$lib/server/acquisition-movie-validator');
+    const result = await module.validateMovieAttempt(
+      {
+        ...movieJob,
+        liveDownloadId: 'SABnzbd_nzo_failed',
+        liveQueueId: 44,
+        progress: 12,
+        queueStatus: 'Downloading',
+      },
+      '2026-04-18T10:46:04.380Z',
+    );
+
+    expect(result).toEqual({
+      detectedAudioLanguages: [],
+      detectedSubtitleLanguages: [],
+      liveDownloadId: null,
+      liveQueueId: null,
+      outcome: 'failure',
+      preferredReleaser: null,
+      progress: 100,
+      queueStatus: 'Download failed',
+      reasonCode: 'download-failed',
+      summary: 'The selected download left the Arr queue before any import history was recorded.',
     });
   });
 });

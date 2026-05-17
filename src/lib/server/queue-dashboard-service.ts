@@ -49,6 +49,32 @@ function summarizeDashboard(items: MediaItem[]) {
   };
 }
 
+function acquisitionTimeMs(value: string | null | undefined): number {
+  if (!value) {
+    return 0;
+  }
+
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function newestAcquiredAt(
+  left: string | null | undefined,
+  right: string | null | undefined,
+): string | null {
+  const leftTime = acquisitionTimeMs(left);
+  const rightTime = acquisitionTimeMs(right);
+  if (leftTime === 0 && rightTime === 0) {
+    return left ?? right ?? null;
+  }
+
+  return leftTime >= rightTime ? (left ?? null) : (right ?? null);
+}
+
+function arrHistoryAcquiredAt(record: Record<string, unknown>): string | null {
+  return asString(record.date) ?? asString(record.eventDate) ?? asString(record.added) ?? null;
+}
+
 async function buildMovieHistoryItems(preferences: Preferences): Promise<MediaItem[]> {
   if (!getConfiguredServiceFlags().radarrConfigured) {
     return [];
@@ -94,6 +120,7 @@ async function buildMovieHistoryItems(preferences: Preferences): Promise<MediaIt
         isExisting: true,
         isRequested: true,
         auditStatus: 'pending',
+        acquiredAt: queueItem.addedAt,
         detail: queueItem.detail,
         inArr: true,
         canAdd: false,
@@ -110,11 +137,14 @@ async function buildMovieHistoryItems(preferences: Preferences): Promise<MediaIt
     }
 
     try {
-      items.push(await fetchExistingMovie(movieId, preferences));
+      const acquiredAt = arrHistoryAcquiredAt(record);
+      const item = await fetchExistingMovie(movieId, preferences);
+      items.push({ ...item, acquiredAt: acquiredAt ?? item.acquiredAt ?? null });
     } catch {
       const movie = asRecord(record.movie);
       items.push(
         normalizeItem('movie', movie, preferences, {
+          acquiredAt: arrHistoryAcquiredAt(record),
           arrItemId: movieId,
           id: `movie:history:${movieId}`,
           detail: asString(record.sourceTitle),
@@ -176,6 +206,7 @@ async function buildSeriesHistoryItems(preferences: Preferences): Promise<MediaI
         isExisting: true,
         isRequested: true,
         auditStatus: 'pending',
+        acquiredAt: queueItem.addedAt,
         detail: queueItem.detail ?? asString(episode.title),
         inArr: true,
         canAdd: false,
@@ -195,18 +226,22 @@ async function buildSeriesHistoryItems(preferences: Preferences): Promise<MediaI
     const episodeFileId = asNumber(record.episodeFileId) ?? asNumber(data.episodeFileId);
 
     try {
-      items.push(
-        await fetchExistingSeries(
-          seriesId,
-          preferences,
-          episodeFileId,
-          asString(record.sourceTitle) ?? asString(asRecord(record.episode).title),
-        ),
+      const acquiredAt = arrHistoryAcquiredAt(record);
+      const item = await fetchExistingSeries(
+        seriesId,
+        preferences,
+        episodeFileId,
+        asString(record.sourceTitle) ?? asString(asRecord(record.episode).title),
       );
+      items.push({
+        ...item,
+        acquiredAt: acquiredAt ?? item.acquiredAt ?? null,
+      });
     } catch {
       const series = asRecord(record.series);
       items.push(
         normalizeItem('series', series, preferences, {
+          acquiredAt: arrHistoryAcquiredAt(record),
           arrItemId: seriesId,
           id: `series:history:${seriesId}:${episodeFileId ?? crypto.randomUUID()}`,
           detail: asString(record.sourceTitle) ?? asString(asRecord(record.episode).title),
@@ -257,7 +292,15 @@ function dedupeItems(items: MediaItem[]): MediaItem[] {
     const key = itemKey(item);
     const existing = map.get(key);
     if (!existing || itemRank(item) > itemRank(existing)) {
-      map.set(key, item);
+      map.set(key, {
+        ...item,
+        acquiredAt: newestAcquiredAt(item.acquiredAt, existing?.acquiredAt),
+      });
+    } else if (acquisitionTimeMs(item.acquiredAt) > acquisitionTimeMs(existing.acquiredAt)) {
+      map.set(key, {
+        ...existing,
+        acquiredAt: item.acquiredAt ?? existing.acquiredAt ?? null,
+      });
     }
   }
 
@@ -381,20 +424,12 @@ function queueEntryTitle(entry: QueueEntry): string {
   return entry.kind === 'managed' ? entry.job.title : entry.item.title;
 }
 
-function queueEntryProgress(entry: QueueEntry): number {
-  const progress =
-    entry.kind === 'managed'
-      ? (entry.liveSummary?.progress ?? entry.job.progress)
-      : entry.item.progress;
-  return progress ?? -1;
-}
-
-function queueEntryUpdatedAt(entry: QueueEntry): number {
+function queueEntryAcquiredAt(entry: QueueEntry): number {
   if (entry.kind === 'managed') {
-    return Date.parse(entry.job.updatedAt);
+    return acquisitionTimeMs(entry.job.startedAt);
   }
 
-  return -1;
+  return acquisitionTimeMs(entry.item.addedAt);
 }
 
 function liveQueueItemsForManagedJob(job: AcquisitionJob, items: QueueItem[]): QueueItem[] {
@@ -471,18 +506,9 @@ export function composeQueueEntries(
   const externalEntries = unmatchedItems.map((item) => buildExternalQueueEntry(item));
 
   return [...managedEntries, ...externalEntries].sort((left, right) => {
-    if (left.kind !== right.kind) {
-      return left.kind === 'managed' ? -1 : 1;
-    }
-
-    const progressSort = queueEntryProgress(right) - queueEntryProgress(left);
-    if (progressSort !== 0) {
-      return progressSort;
-    }
-
-    const recencySort = queueEntryUpdatedAt(right) - queueEntryUpdatedAt(left);
-    if (recencySort !== 0) {
-      return recencySort;
+    const acquisitionSort = queueEntryAcquiredAt(right) - queueEntryAcquiredAt(left);
+    if (acquisitionSort !== 0) {
+      return acquisitionSort;
     }
 
     return queueEntryTitle(left).localeCompare(queueEntryTitle(right));
@@ -532,28 +558,19 @@ export async function getDashboard(
         buildMovieHistoryItems(normalizedPreferences),
         buildSeriesHistoryItems(normalizedPreferences),
       ])
-    )
-      .flat()
-      .sort((left, right) => {
-        const attentionScore = (item: MediaItem) =>
-          item.auditStatus === 'missing-language' || item.auditStatus === 'no-subs'
-            ? 0
-            : item.auditStatus === 'pending'
-              ? 1
-              : item.auditStatus === 'unknown'
-                ? 2
-                : 3;
-
-        const statusSort = attentionScore(left) - attentionScore(right);
-        if (statusSort !== 0) {
-          return statusSort;
-        }
-
-        return left.title.localeCompare(right.title);
-      })
-      .slice(0, 14),
+    ).flat(),
   );
-  const items = await mergeDashboardPlexItems(recentArrItems);
+  const items = (await mergeDashboardPlexItems(recentArrItems))
+    .sort((left, right) => {
+      const acquisitionSort =
+        acquisitionTimeMs(right.acquiredAt) - acquisitionTimeMs(left.acquiredAt);
+      if (acquisitionSort !== 0) {
+        return acquisitionSort;
+      }
+
+      return left.title.localeCompare(right.title);
+    })
+    .slice(0, 14);
 
   const value: DashboardResponse = {
     updatedAt: new Date().toISOString(),

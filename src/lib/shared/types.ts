@@ -23,6 +23,7 @@ export type AcquisitionReasonCode =
   | 'missing-audio'
   | 'missing-subs'
   | 'import-blocked'
+  | 'download-failed'
   | 'import-timeout'
   | 'no-release-available'
   | 'no-acceptable-release'
@@ -149,6 +150,7 @@ export interface MediaItem {
   canAdd: boolean;
   canDeleteFromArr?: boolean;
   detail: string | null;
+  acquiredAt?: string | null;
   requestPayload: Record<string, unknown> | null;
 }
 
@@ -181,6 +183,22 @@ export interface ReleaseDecisionCandidate {
   languages: string[];
   score: number;
   reason: string;
+}
+
+export type AcquisitionReleaseCandidateStatus = 'available' | 'selected' | 'failed';
+export type AcquisitionRecoveryStatus = 'queued' | 'grabbing' | 'restored' | 'failed';
+
+export interface AcquisitionReleaseCandidate extends ReleaseDecisionCandidate {
+  arrRejected: boolean;
+  attempt: number | null;
+  detectedAudioLanguages: string[];
+  detectedSubtitleLanguages: string[];
+  failedAt: string | null;
+  failureReason: string | null;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  selectionMode: ManualReleaseSelectionMode | null;
+  status: AcquisitionReleaseCandidateStatus;
 }
 
 export type ReleaseIdentityStatus = 'exact-match' | 'weak-match' | 'mismatch';
@@ -235,6 +253,8 @@ export interface AcquisitionAttempt {
   attempt: number;
   status: AcquisitionStatus;
   reasonCode: AcquisitionReasonCode | null;
+  detectedAudioLanguages?: string[];
+  detectedSubtitleLanguages?: string[];
   releaseTitle: string | null;
   releaser: string | null;
   reason: string | null;
@@ -268,6 +288,8 @@ export interface AcquisitionJob {
   liveQueueId?: number | null;
   liveDownloadId?: string | null;
   qualityProfileId?: number | null;
+  recoveryAttempted?: boolean;
+  recoveryStatus?: AcquisitionRecoveryStatus | null;
   preferences: Pick<Preferences, 'preferredLanguage' | 'subtitleLanguage'>;
   targetSeasonNumbers: number[] | null;
   targetEpisodeIds: number[] | null;
@@ -275,6 +297,7 @@ export interface AcquisitionJob {
   updatedAt: string;
   completedAt: string | null;
   attempts: AcquisitionAttempt[];
+  releaseCandidates?: AcquisitionReleaseCandidate[];
 }
 
 export interface DashboardSummary {
@@ -324,6 +347,7 @@ export interface QueueItem {
   progress: number | null;
   timeLeft: string | null;
   estimatedCompletionTime: string | null;
+  addedAt?: string | null;
   size: number | null;
   sizeLeft: number | null;
   queueId: number | null;

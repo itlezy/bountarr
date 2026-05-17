@@ -6,7 +6,7 @@ describe('queue matching', () => {
   it('keeps movie ownership pinned to the persisted live queue row once it is known', () => {
     const target = {
       arrItemId: 603,
-      currentRelease: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      currentRelease: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
       kind: 'movie' as const,
       liveDownloadId: 'radarr-download-2',
       liveQueueId: 22,
@@ -20,7 +20,7 @@ describe('queue matching', () => {
       arrItemId: 603,
       canCancel: true,
       kind: 'movie',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
       year: 1999,
       poster: null,
       sourceService: 'radarr',
@@ -31,7 +31,7 @@ describe('queue matching', () => {
       size: 3_400_000_000,
       sizeLeft: 1_326_000_000,
       queueId: 22,
-      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      detail: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
       episodeIds: null,
       seasonNumbers: null,
     };
@@ -40,7 +40,7 @@ describe('queue matching', () => {
       id: 'radarr:queue:21',
       downloadId: 'radarr-download-1',
       queueId: 21,
-      detail: 'The.Matrix.1999.1080p.BluRay-OLD',
+      detail: 'Fixture.Movie.1999.1080p.BluRay-OLD',
     };
 
     expect(queueItemMatchesManagedTarget(target, claimedItem)).toBe(true);
@@ -50,7 +50,7 @@ describe('queue matching', () => {
   it('does not fall back to movie release text once live queue identity is known', () => {
     const target = {
       arrItemId: 603,
-      currentRelease: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      currentRelease: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
       kind: 'movie' as const,
       liveDownloadId: 'radarr-download-2',
       liveQueueId: 22,
@@ -64,7 +64,7 @@ describe('queue matching', () => {
       arrItemId: 603,
       canCancel: true,
       kind: 'movie',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
       year: 1999,
       poster: null,
       sourceService: 'radarr',
@@ -75,7 +75,7 @@ describe('queue matching', () => {
       size: 3_400_000_000,
       sizeLeft: 1_972_000_000,
       queueId: 23,
-      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      detail: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
       episodeIds: null,
       seasonNumbers: null,
     };
@@ -86,7 +86,7 @@ describe('queue matching', () => {
   it('does not match sibling movie rows before identity is known unless the release text matches', () => {
     const target = {
       arrItemId: 603,
-      currentRelease: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      currentRelease: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
       kind: 'movie' as const,
       sourceService: 'radarr' as const,
       targetEpisodeIds: null,
@@ -98,7 +98,7 @@ describe('queue matching', () => {
       arrItemId: 603,
       canCancel: true,
       kind: 'movie',
-      title: 'The Matrix',
+      title: 'Fixture Movie',
       year: 1999,
       poster: null,
       sourceService: 'radarr',
@@ -109,7 +109,7 @@ describe('queue matching', () => {
       size: 3_400_000_000,
       sizeLeft: 1_326_000_000,
       queueId: 22,
-      detail: 'The.Matrix.1999.1080p.WEB-DL-FLUX',
+      detail: 'Fixture.Movie.1999.1080p.WEB-DL-FLUX',
       episodeIds: null,
       seasonNumbers: null,
     };
@@ -118,7 +118,7 @@ describe('queue matching', () => {
       id: 'radarr:queue:21',
       downloadId: 'radarr-download-1',
       queueId: 21,
-      detail: 'The.Matrix.1999.1080p.BluRay-OLD',
+      detail: 'Fixture.Movie.1999.1080p.BluRay-OLD',
     };
 
     expect(queueItemMatchesManagedTarget(target, matchingItem)).toBe(true);
@@ -128,7 +128,7 @@ describe('queue matching', () => {
   it('does not match scope-less series rows when the release text is only a partial title match', () => {
     const target = {
       arrItemId: 83867,
-      currentRelease: 'Andor.Release.Alpha.2026',
+      currentRelease: 'Fixture Series.Release.Alpha.2026',
       kind: 'series' as const,
       sourceService: 'sonarr' as const,
       targetEpisodeIds: [101],
@@ -139,7 +139,7 @@ describe('queue matching', () => {
       arrItemId: 83867,
       canCancel: true,
       kind: 'series',
-      title: 'Andor',
+      title: 'Fixture Series',
       year: 2022,
       poster: null,
       sourceService: 'sonarr',
@@ -150,7 +150,7 @@ describe('queue matching', () => {
       size: 2_400_000_000,
       sizeLeft: 1_416_000_000,
       queueId: 14,
-      detail: 'Andor.Release.Alpha',
+      detail: 'Fixture Series.Release.Alpha',
       episodeIds: null,
       seasonNumbers: null,
     };
@@ -161,7 +161,7 @@ describe('queue matching', () => {
   it('matches scope-less series rows only when the release text is exact', () => {
     const target = {
       arrItemId: 83867,
-      currentRelease: 'Andor.Release.Alpha.2026',
+      currentRelease: 'Fixture Series.Release.Alpha.2026',
       kind: 'series' as const,
       sourceService: 'sonarr' as const,
       targetEpisodeIds: [101],
@@ -172,7 +172,7 @@ describe('queue matching', () => {
       arrItemId: 83867,
       canCancel: true,
       kind: 'series',
-      title: 'Andor',
+      title: 'Fixture Series',
       year: 2022,
       poster: null,
       sourceService: 'sonarr',
@@ -183,7 +183,7 @@ describe('queue matching', () => {
       size: 3_400_000_000,
       sizeLeft: 1_326_000_000,
       queueId: 15,
-      detail: 'Andor.Release.Alpha.2026',
+      detail: 'Fixture Series.Release.Alpha.2026',
       episodeIds: null,
       seasonNumbers: null,
     };
@@ -194,7 +194,7 @@ describe('queue matching', () => {
   it('does not match same-scope series rows before identity is known unless the release family matches', () => {
     const target = {
       arrItemId: 83867,
-      currentRelease: 'Andor.S01.1080p.WEB-DL-FLUX',
+      currentRelease: 'Fixture Series.S01.1080p.WEB-DL-FLUX',
       kind: 'series' as const,
       sourceService: 'sonarr' as const,
       targetEpisodeIds: [101, 102],
@@ -206,7 +206,7 @@ describe('queue matching', () => {
       arrItemId: 83867,
       canCancel: true,
       kind: 'series',
-      title: 'Andor',
+      title: 'Fixture Series',
       year: 2022,
       poster: null,
       sourceService: 'sonarr',
@@ -217,7 +217,7 @@ describe('queue matching', () => {
       size: 3_400_000_000,
       sizeLeft: 1_326_000_000,
       queueId: 15,
-      detail: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+      detail: 'Fixture Series.S01E01.1080p.WEB-DL-FLUX',
       episodeIds: [101],
       seasonNumbers: [1],
     };
@@ -226,7 +226,7 @@ describe('queue matching', () => {
       id: 'sonarr:queue:16',
       downloadId: 'sonarr-download-old',
       queueId: 16,
-      detail: 'Andor.S01E01.1080p.WEB-DL-OLD',
+      detail: 'Fixture Series.S01E01.1080p.WEB-DL-OLD',
     };
 
     expect(queueItemMatchesManagedTarget(target, matchingEpisodeRow)).toBe(true);
@@ -248,7 +248,7 @@ describe('queue matching', () => {
       arrItemId: 83867,
       canCancel: true,
       kind: 'series',
-      title: 'Andor',
+      title: 'Fixture Series',
       year: 2022,
       poster: null,
       sourceService: 'sonarr',
@@ -259,7 +259,7 @@ describe('queue matching', () => {
       size: 3_400_000_000,
       sizeLeft: 1_326_000_000,
       queueId: 18,
-      detail: 'Andor.S01E01.1080p.WEB-DL-FLUX',
+      detail: 'Fixture Series.S01E01.1080p.WEB-DL-FLUX',
       episodeIds: [101],
       seasonNumbers: [1],
     };
@@ -270,7 +270,7 @@ describe('queue matching', () => {
   it('still matches same-download sibling Sonarr queue rows after one live row has been claimed', () => {
     const target = {
       arrItemId: 83867,
-      currentRelease: 'Andor.S01.1080p.WEB-DL-FLUX',
+      currentRelease: 'Fixture Series.S01.1080p.WEB-DL-FLUX',
       kind: 'series' as const,
       liveDownloadId: 'sonarr-download-shared',
       liveQueueId: 15,
@@ -284,7 +284,7 @@ describe('queue matching', () => {
       arrItemId: 83867,
       canCancel: true,
       kind: 'series',
-      title: 'Andor',
+      title: 'Fixture Series',
       year: 2022,
       poster: null,
       sourceService: 'sonarr',
@@ -295,7 +295,7 @@ describe('queue matching', () => {
       size: 3_400_000_000,
       sizeLeft: 1_326_000_000,
       queueId: 16,
-      detail: 'Andor.S01E02.1080p.WEB-DL-FLUX',
+      detail: 'Fixture Series.S01E02.1080p.WEB-DL-FLUX',
       episodeIds: [102],
       seasonNumbers: [1],
     };
@@ -306,7 +306,7 @@ describe('queue matching', () => {
   it('does not match same-scope Sonarr sibling rows after one live row has been claimed when the identity differs', () => {
     const target = {
       arrItemId: 83867,
-      currentRelease: 'Andor.S01.1080p.WEB-DL-FLUX',
+      currentRelease: 'Fixture Series.S01.1080p.WEB-DL-FLUX',
       kind: 'series' as const,
       liveDownloadId: 'sonarr-download-shared',
       liveQueueId: 15,
@@ -320,7 +320,7 @@ describe('queue matching', () => {
       arrItemId: 83867,
       canCancel: true,
       kind: 'series',
-      title: 'Andor',
+      title: 'Fixture Series',
       year: 2022,
       poster: null,
       sourceService: 'sonarr',
@@ -331,7 +331,7 @@ describe('queue matching', () => {
       size: 3_400_000_000,
       sizeLeft: 1_326_000_000,
       queueId: 17,
-      detail: 'Andor.S01E02.1080p.WEB-DL-OLD',
+      detail: 'Fixture Series.S01E02.1080p.WEB-DL-OLD',
       episodeIds: [102],
       seasonNumbers: [1],
     };
@@ -342,7 +342,7 @@ describe('queue matching', () => {
   it('does not fall back to scope-less series release text once live queue identity is known', () => {
     const target = {
       arrItemId: 83867,
-      currentRelease: 'Andor.S01.1080p.WEB-DL-FLUX',
+      currentRelease: 'Fixture Series.S01.1080p.WEB-DL-FLUX',
       kind: 'series' as const,
       liveDownloadId: 'sonarr-download-shared',
       liveQueueId: 15,
@@ -356,7 +356,7 @@ describe('queue matching', () => {
       arrItemId: 83867,
       canCancel: true,
       kind: 'series',
-      title: 'Andor',
+      title: 'Fixture Series',
       year: 2022,
       poster: null,
       sourceService: 'sonarr',
@@ -367,7 +367,7 @@ describe('queue matching', () => {
       size: 3_400_000_000,
       sizeLeft: 2_108_000_000,
       queueId: 19,
-      detail: 'Andor.S01.1080p.WEB-DL-FLUX',
+      detail: 'Fixture Series.S01.1080p.WEB-DL-FLUX',
       episodeIds: null,
       seasonNumbers: null,
     };

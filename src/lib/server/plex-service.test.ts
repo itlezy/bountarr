@@ -42,7 +42,7 @@ describe('searchPlex', () => {
               Hub: [
                 {
                   type: 'movie',
-                  Metadata: [{ ratingKey: '522938', title: 'Rambo: Last Blood' }],
+                  Metadata: [{ ratingKey: '522938', title: 'Fixture Action: Last Case' }],
                 },
               ],
             },
@@ -89,8 +89,8 @@ describe('searchPlex', () => {
     }));
 
     const module = await import('$lib/server/plex-service');
-    const firstResults = await module.searchPlex('Rambo', 'movie');
-    const secondResults = await module.searchPlex('Rambo', 'movie');
+    const firstResults = await module.searchPlex('Fixture Action', 'movie');
+    const secondResults = await module.searchPlex('Fixture Action', 'movie');
 
     expect(firstResults).toHaveLength(1);
     expect(secondResults).toHaveLength(1);

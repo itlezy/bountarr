@@ -20,12 +20,12 @@ describe('lookupItems', () => {
           if (path === '/api/v3/series/lookup' && query?.term === 'Office') {
             return [
               {
-                title: 'The Office (US)',
+                title: 'Fixture Workplace (US)',
                 year: 2005,
                 tvdbId: 73244,
                 imdbId: 'tt0386676',
                 monitored: true,
-                folder: 'The Office (US)',
+                folder: 'Fixture Workplace (US)',
                 path: null,
                 added: '0001-01-01T00:00:00Z',
               },
@@ -58,7 +58,7 @@ describe('lookupItems', () => {
 
     expect(results).toHaveLength(1);
     expect(results[0]).toMatchObject({
-      title: 'The Office (US)',
+      title: 'Fixture Workplace (US)',
       inArr: false,
       canAdd: true,
       status: 'Ready to add',
@@ -75,15 +75,15 @@ describe('lookupItems', () => {
           _init: unknown,
           query?: Record<string, string | number>,
         ) => {
-          if (path === '/api/v3/series/lookup' && query?.term === 'Andor') {
+          if (path === '/api/v3/series/lookup' && query?.term === 'Fixture Series') {
             return [
               {
-                title: 'Andor',
+                title: 'Fixture Series',
                 year: 2022,
                 id: 80,
                 tvdbId: 393189,
                 monitored: true,
-                path: 'C:\\TV\\Andor',
+                path: 'C:\\TV\\Fixture Series',
                 added: '2025-04-22T10:28:21Z',
               },
             ];
@@ -92,10 +92,10 @@ describe('lookupItems', () => {
           if (path === '/api/v3/series/80') {
             return {
               id: 80,
-              title: 'Andor',
+              title: 'Fixture Series',
               year: 2022,
               monitored: true,
-              path: 'C:\\TV\\Andor',
+              path: 'C:\\TV\\Fixture Series',
             };
           }
 
@@ -123,14 +123,14 @@ describe('lookupItems', () => {
     }));
 
     const module = await import('$lib/server/lookup-service');
-    const results = await module.lookupItems('Andor', 'series', undefined, {
+    const results = await module.lookupItems('Fixture Series', 'series', undefined, {
       availability: 'all',
     });
 
     expect(arrFetch).toHaveBeenCalledWith('sonarr', '/api/v3/series/80');
     expect(results[0]).toMatchObject({
       id: 'series:80',
-      title: 'Andor',
+      title: 'Fixture Series',
       inArr: true,
       canAdd: false,
     });
@@ -149,22 +149,22 @@ describe('lookupItems', () => {
           if (path === '/api/v3/series/lookup' && query?.term === 'Office') {
             return [
               {
-                title: 'The Office (US)',
+                title: 'Fixture Workplace (US)',
                 year: 2005,
                 tvdbId: 73244,
                 imdbId: 'tt0386676',
                 monitored: true,
-                folder: 'The Office (US)',
+                folder: 'Fixture Workplace (US)',
                 path: null,
                 added: '0001-01-01T00:00:00Z',
               },
               {
-                title: 'Office Joe',
+                title: 'Workplace Joe',
                 year: 2024,
                 tvdbId: 454842,
                 imdbId: 'tt30954909',
                 monitored: true,
-                folder: 'Office Joe',
+                folder: 'Workplace Joe',
                 path: null,
                 added: '0001-01-01T00:00:00Z',
               },
@@ -181,7 +181,7 @@ describe('lookupItems', () => {
           {
             id: 'plex:series:73244',
             kind: 'series',
-            title: 'The Office (US)',
+            title: 'Fixture Workplace (US)',
             year: 2005,
             rating: 8.9,
             poster: null,
@@ -232,8 +232,8 @@ describe('lookupItems', () => {
       availability: 'not-available-only',
     });
 
-    expect(availableResults.map((item) => item.title)).toEqual(['The Office (US)']);
-    expect(notAvailableResults.map((item) => item.title)).toEqual(['Office Joe']);
+    expect(availableResults.map((item) => item.title)).toEqual(['Fixture Workplace (US)']);
+    expect(notAvailableResults.map((item) => item.title)).toEqual(['Workplace Joe']);
   });
 
   it('supplements broad search terms with exact Arr titles to suppress Plex-owned results', async () => {
@@ -246,10 +246,10 @@ describe('lookupItems', () => {
           _init: unknown,
           query?: Record<string, string | number>,
         ) => {
-          if (path === '/api/v3/movie/lookup' && query?.term === 'Rambo') {
+          if (path === '/api/v3/movie/lookup' && query?.term === 'Fixture Action') {
             return [
               {
-                title: 'Rambo: Last Blood',
+                title: 'Fixture Action: Last Case',
                 year: 2019,
                 tmdbId: 522938,
                 imdbId: 'tt1206885',
@@ -264,12 +264,12 @@ describe('lookupItems', () => {
       );
 
     const searchPlex = vi.fn().mockImplementation(async (term: string): Promise<MediaItem[]> => {
-      if (term === 'Rambo: Last Blood') {
+      if (term === 'Fixture Action: Last Case') {
         return [
           {
             id: 'plex:movie:522938',
             kind: 'movie',
-            title: 'Rambo: Last Blood',
+            title: 'Fixture Action: Last Case',
             year: 2019,
             rating: 6.5,
             poster: 'https://plex.example/poster.jpg',
@@ -313,15 +313,15 @@ describe('lookupItems', () => {
     }));
 
     const module = await import('$lib/server/lookup-service');
-    const results = await module.lookupItems('Rambo', 'movie', undefined, {
+    const results = await module.lookupItems('Fixture Action', 'movie', undefined, {
       availability: 'all',
     });
     const match = results[0];
 
-    expect(searchPlex).toHaveBeenCalledWith('Rambo', 'movie');
-    expect(searchPlex).toHaveBeenCalledWith('Rambo: Last Blood', 'movie');
+    expect(searchPlex).toHaveBeenCalledWith('Fixture Action', 'movie');
+    expect(searchPlex).toHaveBeenCalledWith('Fixture Action: Last Case', 'movie');
     expect(match).toBeDefined();
-    expect(match?.title).toBe('Rambo: Last Blood');
+    expect(match?.title).toBe('Fixture Action: Last Case');
     expect(match?.inPlex).toBe(true);
     expect(match?.canAdd).toBe(false);
   });
@@ -336,10 +336,10 @@ describe('lookupItems', () => {
           _init: unknown,
           query?: Record<string, string | number>,
         ) => {
-          if (path === '/api/v3/movie/lookup' && query?.term === 'Rambo: Last Blood 2019') {
+          if (path === '/api/v3/movie/lookup' && query?.term === 'Fixture Action: Last Case 2019') {
             return [
               {
-                title: 'Rambo: Last Blood',
+                title: 'Fixture Action: Last Case',
                 year: 2019,
                 tmdbId: 522938,
                 imdbId: 'tt1206885',
@@ -354,12 +354,12 @@ describe('lookupItems', () => {
       );
 
     const searchPlex = vi.fn().mockImplementation(async (term: string): Promise<MediaItem[]> => {
-      if (term === 'Rambo: Last Blood') {
+      if (term === 'Fixture Action: Last Case') {
         return [
           {
             id: 'plex:movie:522938',
             kind: 'movie',
-            title: 'Rambo: Last Blood',
+            title: 'Fixture Action: Last Case',
             year: 2019,
             rating: 6.5,
             poster: 'https://plex.example/poster.jpg',
@@ -403,15 +403,15 @@ describe('lookupItems', () => {
     }));
 
     const module = await import('$lib/server/lookup-service');
-    const results = await module.lookupItems('Rambo: Last Blood 2019', 'movie', undefined, {
+    const results = await module.lookupItems('Fixture Action: Last Case 2019', 'movie', undefined, {
       availability: 'all',
     });
     const match = results[0];
 
-    expect(searchPlex).toHaveBeenCalledWith('Rambo: Last Blood 2019', 'movie');
-    expect(searchPlex).toHaveBeenCalledWith('Rambo: Last Blood', 'movie');
+    expect(searchPlex).toHaveBeenCalledWith('Fixture Action: Last Case 2019', 'movie');
+    expect(searchPlex).toHaveBeenCalledWith('Fixture Action: Last Case', 'movie');
     expect(match).toBeDefined();
-    expect(match?.title).toBe('Rambo: Last Blood');
+    expect(match?.title).toBe('Fixture Action: Last Case');
     expect(match?.inPlex).toBe(true);
     expect(match?.canAdd).toBe(false);
   });
@@ -426,10 +426,10 @@ describe('lookupItems', () => {
           _init: unknown,
           query?: Record<string, string | number>,
         ) => {
-          if (path === '/api/v3/movie/lookup' && query?.term === 'Rambo') {
+          if (path === '/api/v3/movie/lookup' && query?.term === 'Fixture Action') {
             return [
               {
-                title: 'Rambo: Last Blood',
+                title: 'Fixture Action: Last Case',
                 year: 2019,
                 tmdbId: 522938,
                 imdbId: 'tt1206885',
@@ -437,7 +437,7 @@ describe('lookupItems', () => {
                 monitored: false,
               },
               {
-                title: 'John Rambo',
+                title: 'John Fixture Action',
                 year: 2008,
                 tmdbId: 7555,
                 imdbId: 'tt0462499',
@@ -452,12 +452,12 @@ describe('lookupItems', () => {
       );
 
     const searchPlex = vi.fn().mockImplementation(async (term: string): Promise<MediaItem[]> => {
-      if (term === 'Rambo: Last Blood') {
+      if (term === 'Fixture Action: Last Case') {
         return [
           {
             id: 'plex:movie:522938',
             kind: 'movie',
-            title: 'Rambo: Last Blood',
+            title: 'Fixture Action: Last Case',
             year: 2019,
             rating: 6.5,
             poster: null,
@@ -501,22 +501,25 @@ describe('lookupItems', () => {
     }));
 
     const module = await import('$lib/server/lookup-service');
-    const allResults = await module.lookupItems('Rambo', 'movie', undefined, {
+    const allResults = await module.lookupItems('Fixture Action', 'movie', undefined, {
       availability: 'all',
     });
-    const availableResults = await module.lookupItems('Rambo', 'movie', undefined, {
+    const availableResults = await module.lookupItems('Fixture Action', 'movie', undefined, {
       availability: 'available-only',
     });
     searchPlex.mockClear();
-    const notAvailableResults = await module.lookupItems('Rambo', 'movie', undefined, {
+    const notAvailableResults = await module.lookupItems('Fixture Action', 'movie', undefined, {
       availability: 'not-available-only',
     });
 
-    expect(allResults.map((item) => item.title)).toEqual(['John Rambo', 'Rambo: Last Blood']);
-    expect(availableResults.map((item) => item.title)).toEqual(['Rambo: Last Blood']);
-    expect(notAvailableResults.map((item) => item.title)).toEqual(['John Rambo']);
-    expect(searchPlex).toHaveBeenCalledWith('Rambo', 'movie');
-    expect(searchPlex).toHaveBeenCalledWith('Rambo: Last Blood', 'movie');
+    expect(allResults.map((item) => item.title)).toEqual([
+      'John Fixture Action',
+      'Fixture Action: Last Case',
+    ]);
+    expect(availableResults.map((item) => item.title)).toEqual(['Fixture Action: Last Case']);
+    expect(notAvailableResults.map((item) => item.title)).toEqual(['John Fixture Action']);
+    expect(searchPlex).toHaveBeenCalledWith('Fixture Action', 'movie');
+    expect(searchPlex).toHaveBeenCalledWith('Fixture Action: Last Case', 'movie');
   });
 
   it('merges roman numeral and numeric title variants when Plex lacks stable ids', async () => {
@@ -529,15 +532,15 @@ describe('lookupItems', () => {
           _init: unknown,
           query?: Record<string, string | number>,
         ) => {
-          if (path === '/api/v3/movie/lookup' && query?.term === 'Rambo') {
+          if (path === '/api/v3/movie/lookup' && query?.term === 'Fixture Action') {
             return [
               {
-                title: 'Rambo III',
+                title: 'Fixture Action III',
                 year: 1988,
                 tmdbId: 1370,
                 status: 'released',
                 monitored: false,
-                alternateTitles: [{ title: 'Rambo 3' }],
+                alternateTitles: [{ title: 'Fixture Action 3' }],
               },
             ];
           }
@@ -547,12 +550,12 @@ describe('lookupItems', () => {
       );
 
     const searchPlex = vi.fn().mockImplementation(async (term: string): Promise<MediaItem[]> => {
-      if (term === 'Rambo') {
+      if (term === 'Fixture Action') {
         return [
           {
             id: 'plex:movie:1370',
             kind: 'movie',
-            title: 'Rambo 3',
+            title: 'Fixture Action 3',
             year: 1988,
             rating: 5.8,
             poster: null,
@@ -594,16 +597,16 @@ describe('lookupItems', () => {
     }));
 
     const module = await import('$lib/server/lookup-service');
-    const allResults = await module.lookupItems('Rambo', 'movie', undefined, {
+    const allResults = await module.lookupItems('Fixture Action', 'movie', undefined, {
       availability: 'all',
     });
-    const notAvailableResults = await module.lookupItems('Rambo', 'movie', undefined, {
+    const notAvailableResults = await module.lookupItems('Fixture Action', 'movie', undefined, {
       availability: 'not-available-only',
     });
 
     expect(allResults).toHaveLength(1);
     expect(allResults[0]).toMatchObject({
-      title: 'Rambo III',
+      title: 'Fixture Action III',
       inPlex: true,
       canAdd: false,
     });
@@ -620,15 +623,15 @@ describe('lookupItems', () => {
           _init: unknown,
           query?: Record<string, string | number>,
         ) => {
-          if (path === '/api/v3/movie/lookup' && query?.term === 'Rambo') {
+          if (path === '/api/v3/movie/lookup' && query?.term === 'Fixture Action') {
             return [
               {
-                title: 'Rambo III',
+                title: 'Fixture Action III',
                 year: 1988,
                 tmdbId: 1370,
                 status: 'released',
                 monitored: false,
-                alternateTitles: [{ title: 'Rambo 3' }],
+                alternateTitles: [{ title: 'Fixture Action 3' }],
               },
             ];
           }
@@ -638,12 +641,12 @@ describe('lookupItems', () => {
       );
 
     const searchPlex = vi.fn().mockImplementation(async (term: string): Promise<MediaItem[]> => {
-      if (term === 'Rambo 3') {
+      if (term === 'Fixture Action 3') {
         return [
           {
             id: 'plex:movie:1370',
             kind: 'movie',
-            title: 'Rambo 3',
+            title: 'Fixture Action 3',
             year: 1988,
             rating: 5.8,
             poster: null,
@@ -685,19 +688,19 @@ describe('lookupItems', () => {
     }));
 
     const module = await import('$lib/server/lookup-service');
-    const allResults = await module.lookupItems('Rambo', 'movie', undefined, {
+    const allResults = await module.lookupItems('Fixture Action', 'movie', undefined, {
       availability: 'all',
     });
-    const notAvailableResults = await module.lookupItems('Rambo', 'movie', undefined, {
+    const notAvailableResults = await module.lookupItems('Fixture Action', 'movie', undefined, {
       availability: 'not-available-only',
     });
 
-    expect(searchPlex).toHaveBeenCalledWith('Rambo', 'movie');
-    expect(searchPlex).toHaveBeenCalledWith('Rambo III', 'movie');
-    expect(searchPlex).toHaveBeenCalledWith('Rambo 3', 'movie');
+    expect(searchPlex).toHaveBeenCalledWith('Fixture Action', 'movie');
+    expect(searchPlex).toHaveBeenCalledWith('Fixture Action III', 'movie');
+    expect(searchPlex).toHaveBeenCalledWith('Fixture Action 3', 'movie');
     expect(allResults).toHaveLength(1);
     expect(allResults[0]).toMatchObject({
-      title: 'Rambo III',
+      title: 'Fixture Action III',
       inPlex: true,
       canAdd: false,
     });
@@ -714,22 +717,22 @@ describe('lookupItems', () => {
           _init: unknown,
           query?: Record<string, string | number>,
         ) => {
-          if (path === '/api/v3/movie/lookup' && query?.term === 'Rambo') {
+          if (path === '/api/v3/movie/lookup' && query?.term === 'Fixture Action') {
             return [
               ...Array.from({ length: 13 }, (_, index) => ({
-                title: `Rambo Placeholder ${index + 1}`,
+                title: `Fixture Action Placeholder ${index + 1}`,
                 year: 2025 - index,
                 tmdbId: 9000 + index,
                 status: 'released',
                 monitored: false,
               })),
               {
-                title: 'Rambo III',
+                title: 'Fixture Action III',
                 year: 1988,
                 tmdbId: 1370,
                 status: 'released',
                 monitored: false,
-                alternateTitles: [{ title: 'Rambo 3' }],
+                alternateTitles: [{ title: 'Fixture Action 3' }],
               },
             ];
           }
@@ -739,12 +742,12 @@ describe('lookupItems', () => {
       );
 
     const searchPlex = vi.fn().mockImplementation(async (term: string): Promise<MediaItem[]> => {
-      if (term === 'Rambo 3') {
+      if (term === 'Fixture Action 3') {
         return [
           {
             id: 'plex:movie:1370',
             kind: 'movie',
-            title: 'Rambo 3',
+            title: 'Fixture Action 3',
             year: 1988,
             rating: 5.8,
             poster: null,
@@ -786,12 +789,12 @@ describe('lookupItems', () => {
     }));
 
     const module = await import('$lib/server/lookup-service');
-    const notAvailableResults = await module.lookupItems('Rambo', 'movie', undefined, {
+    const notAvailableResults = await module.lookupItems('Fixture Action', 'movie', undefined, {
       availability: 'not-available-only',
     });
 
-    expect(searchPlex).toHaveBeenCalledWith('Rambo 3', 'movie');
-    expect(notAvailableResults.map((item) => item.title)).not.toContain('Rambo III');
+    expect(searchPlex).toHaveBeenCalledWith('Fixture Action 3', 'movie');
+    expect(notAvailableResults.map((item) => item.title)).not.toContain('Fixture Action III');
   });
 
   it('keeps tracked Arr titles visible in not-available-only when Plex also has them', async () => {
@@ -804,16 +807,20 @@ describe('lookupItems', () => {
           _init: unknown,
           query?: Record<string, string | number>,
         ) => {
-          if (service === 'radarr' && path === '/api/v3/movie/lookup' && query?.term === 'Matrix') {
+          if (
+            service === 'radarr' &&
+            path === '/api/v3/movie/lookup' &&
+            query?.term === 'Fixture'
+          ) {
             return [
               {
-                title: 'The Matrix',
+                title: 'Fixture Movie',
                 year: 1999,
                 id: 42,
                 tmdbId: 603,
                 monitored: true,
                 hasFile: true,
-                path: 'C:\\Media\\Movies\\The Matrix (1999)',
+                path: 'C:\\Media\\Movies\\Fixture Movie (1999)',
                 added: '2025-04-22T10:28:21Z',
               },
             ];
@@ -822,19 +829,19 @@ describe('lookupItems', () => {
           if (service === 'radarr' && path === '/api/v3/movie/42') {
             return {
               id: 42,
-              title: 'The Matrix',
+              title: 'Fixture Movie',
               year: 1999,
               tmdbId: 603,
               monitored: true,
               hasFile: true,
-              path: 'C:\\Media\\Movies\\The Matrix (1999)',
+              path: 'C:\\Media\\Movies\\Fixture Movie (1999)',
             };
           }
 
           if (service === 'radarr' && path === '/api/v3/moviefile/42') {
             return {
               id: 42,
-              path: 'C:\\Media\\Movies\\The Matrix (1999)\\The.Matrix.1999.mkv',
+              path: 'C:\\Media\\Movies\\Fixture Movie (1999)\\Fixture.Movie.1999.mkv',
             };
           }
 
@@ -846,7 +853,7 @@ describe('lookupItems', () => {
       {
         id: 'plex:movie:603',
         kind: 'movie',
-        title: 'The Matrix',
+        title: 'Fixture Movie',
         year: 1999,
         rating: 8.7,
         poster: null,
@@ -886,13 +893,13 @@ describe('lookupItems', () => {
     }));
 
     const module = await import('$lib/server/lookup-service');
-    const notAvailableResults = await module.lookupItems('Matrix', 'movie', undefined, {
+    const notAvailableResults = await module.lookupItems('Fixture', 'movie', undefined, {
       availability: 'not-available-only',
     });
 
     expect(notAvailableResults).toHaveLength(1);
     expect(notAvailableResults[0]).toMatchObject({
-      title: 'The Matrix',
+      title: 'Fixture Movie',
       inArr: true,
       inPlex: true,
     });
@@ -911,18 +918,18 @@ describe('lookupItems', () => {
           if (
             service === 'radarr' &&
             path === '/api/v3/movie/lookup' &&
-            query?.term === 'Dangerous Animals'
+            query?.term === 'Fixture Queue'
           ) {
             return [
               {
-                title: 'Dangerous Animals',
+                title: 'Fixture Queue',
                 year: 2025,
                 id: 727,
                 tmdbId: 1285965,
                 imdbId: 'tt32299316',
                 monitored: true,
                 hasFile: true,
-                path: 'C:\\Media\\Movies\\Dangerous Animals (2025)',
+                path: 'C:\\Media\\Movies\\Fixture Queue (2025)',
                 added: '2026-04-17T11:47:51Z',
                 alternateTitles: [{ title: 'Animales Peligrosos' }],
               },
@@ -932,13 +939,13 @@ describe('lookupItems', () => {
           if (service === 'radarr' && path === '/api/v3/movie/727') {
             return {
               id: 727,
-              title: 'Dangerous Animals',
+              title: 'Fixture Queue',
               year: 2025,
               tmdbId: 1285965,
               imdbId: 'tt32299316',
               monitored: true,
               hasFile: true,
-              path: 'C:\\Media\\Movies\\Dangerous Animals (2025)',
+              path: 'C:\\Media\\Movies\\Fixture Queue (2025)',
               alternateTitles: [{ title: 'Animales Peligrosos' }],
               movieFileId: 349,
             };
@@ -947,7 +954,7 @@ describe('lookupItems', () => {
           if (service === 'radarr' && path === '/api/v3/moviefile/349') {
             return {
               id: 349,
-              path: 'C:\\Media\\Movies\\Dangerous Animals (2025)\\Dangerous.Animals.2025.mkv',
+              path: 'C:\\Media\\Movies\\Fixture Queue (2025)\\Fixture.Queue.2025.mkv',
             };
           }
 
@@ -961,7 +968,7 @@ describe('lookupItems', () => {
           {
             id: 'plex:movie:1285965',
             kind: 'movie',
-            title: 'Dangerous Animals',
+            title: 'Fixture Queue',
             year: 2025,
             rating: 6.4,
             poster: null,
@@ -1005,14 +1012,14 @@ describe('lookupItems', () => {
     }));
 
     const module = await import('$lib/server/lookup-service');
-    const results = await module.lookupItems('Dangerous Animals', 'movie', undefined, {
+    const results = await module.lookupItems('Fixture Queue', 'movie', undefined, {
       availability: 'all',
     });
 
-    expect(searchPlex).toHaveBeenCalledWith('Dangerous Animals', 'movie');
+    expect(searchPlex).toHaveBeenCalledWith('Fixture Queue', 'movie');
     expect(searchPlex).toHaveBeenCalledWith('Animales Peligrosos', 'movie');
     expect(results[0]).toMatchObject({
-      title: 'Dangerous Animals',
+      title: 'Fixture Queue',
       inArr: true,
       inPlex: true,
       plexLibraries: ['Movies ITA'],
@@ -1023,7 +1030,7 @@ describe('lookupItems', () => {
     const plexOnlyItem: MediaItem = {
       id: 'plex:movie:2105',
       kind: 'movie',
-      title: 'American Pie',
+      title: 'Fixture Pie',
       year: 1999,
       rating: 7.0,
       poster: null,
@@ -1058,11 +1065,11 @@ describe('lookupItems', () => {
           if (
             service === 'radarr' &&
             path === '/api/v3/movie/lookup' &&
-            query?.term === 'American Pie'
+            query?.term === 'Fixture Pie'
           ) {
             return [
               {
-                title: 'American Pie',
+                title: 'Fixture Pie',
                 year: 1999,
                 tmdbId: 2105,
                 imdbId: 'tt0163651',
@@ -1095,7 +1102,7 @@ describe('lookupItems', () => {
     const resolved = await module.resolveGrabCandidateFromPlexItem(plexOnlyItem);
 
     expect(resolved).toMatchObject({
-      title: 'American Pie',
+      title: 'Fixture Pie',
       inPlex: true,
       origin: 'merged',
       requestPayload: expect.objectContaining({
