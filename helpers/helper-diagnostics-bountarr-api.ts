@@ -13,12 +13,18 @@ type AcquisitionResponse = {
 };
 
 type ManualRelease = {
+  arrOverrideMode: string | null;
+  autoBlockedReason: string | null;
+  autoDecision: string | null;
   blockReason: string | null;
   canSelect: boolean;
+  guid: string;
+  indexerId: number;
   reason: string;
   selectionMode: string | null;
   status: string;
   title: string;
+  yearMatch: string | null;
 };
 
 type ManualReleaseListResponse = {
@@ -60,8 +66,12 @@ type Expectation =
   | { kind: 'visible'; title: string }
   | { kind: 'recent-hidden'; title: string }
   | { kind: 'audit'; title: string; value: string }
+  | { kind: 'auto-decision'; title: string; value: string }
+  | { kind: 'job-status'; title: string; value: string }
   | { kind: 'releases'; title: string }
-  | { kind: 'review'; title: string };
+  | { kind: 'review'; title: string }
+  | { kind: 'selected-title'; title: string; value: string }
+  | { kind: 'year-match'; title: string; value: string };
 
 const expectations: Expectation[] = [];
 const titles: string[] = [];
@@ -82,15 +92,15 @@ function readFlagValue(index: number, flag: string): { value: string; nextIndex:
   return { value, nextIndex: index + 1 };
 }
 
-function parseTitleStatus(value: string): { title: string; status: string } {
+function parseTitleValue(value: string, flag: string): { title: string; value: string } {
   const separator = value.lastIndexOf('=');
   if (separator <= 0 || separator === value.length - 1) {
-    throw new Error(`Expected TITLE=STATUS for --expect-audit, got ${value}`);
+    throw new Error(`Expected TITLE=VALUE for ${flag}, got ${value}`);
   }
 
   return {
     title: value.slice(0, separator),
-    status: value.slice(separator + 1),
+    value: value.slice(separator + 1),
   };
 }
 
@@ -120,11 +130,24 @@ for (let index = 0; index < args.length; index += 1) {
 
   if (arg === '--expect-audit' || arg.startsWith('--expect-audit=')) {
     const parsed = readFlagValue(index, '--expect-audit');
-    const expectation = parseTitleStatus(parsed.value);
+    const expectation = parseTitleValue(parsed.value, '--expect-audit');
     expectations.push({
       kind: 'audit',
       title: expectation.title,
-      value: expectation.status,
+      value: expectation.value,
+    });
+    titles.push(expectation.title);
+    index = parsed.nextIndex;
+    continue;
+  }
+
+  if (arg === '--expect-job-status' || arg.startsWith('--expect-job-status=')) {
+    const parsed = readFlagValue(index, '--expect-job-status');
+    const expectation = parseTitleValue(parsed.value, '--expect-job-status');
+    expectations.push({
+      kind: 'job-status',
+      title: expectation.title,
+      value: expectation.value,
     });
     titles.push(expectation.title);
     index = parsed.nextIndex;
@@ -147,6 +170,45 @@ for (let index = 0; index < args.length; index += 1) {
     continue;
   }
 
+  if (arg === '--expect-selected-title' || arg.startsWith('--expect-selected-title=')) {
+    const parsed = readFlagValue(index, '--expect-selected-title');
+    const expectation = parseTitleValue(parsed.value, '--expect-selected-title');
+    expectations.push({
+      kind: 'selected-title',
+      title: expectation.title,
+      value: expectation.value,
+    });
+    titles.push(expectation.title);
+    index = parsed.nextIndex;
+    continue;
+  }
+
+  if (arg === '--expect-year-match' || arg.startsWith('--expect-year-match=')) {
+    const parsed = readFlagValue(index, '--expect-year-match');
+    const expectation = parseTitleValue(parsed.value, '--expect-year-match');
+    expectations.push({
+      kind: 'year-match',
+      title: expectation.title,
+      value: expectation.value,
+    });
+    titles.push(expectation.title);
+    index = parsed.nextIndex;
+    continue;
+  }
+
+  if (arg === '--expect-auto-decision' || arg.startsWith('--expect-auto-decision=')) {
+    const parsed = readFlagValue(index, '--expect-auto-decision');
+    const expectation = parseTitleValue(parsed.value, '--expect-auto-decision');
+    expectations.push({
+      kind: 'auto-decision',
+      title: expectation.title,
+      value: expectation.value,
+    });
+    titles.push(expectation.title);
+    index = parsed.nextIndex;
+    continue;
+  }
+
   titles.push(arg);
 }
 
@@ -154,7 +216,7 @@ const uniqueTitles = [...new Set(titles)];
 
 if (uniqueTitles.length === 0) {
   throw new Error(
-    'Usage: node --experimental-strip-types helpers/helper-diagnostics-bountarr-api.ts [--all-bountarr] <title> [title...] [--expect-audit TITLE=STATUS] [--expect-visible TITLE] [--expect-recent-hidden TITLE] [--expect-releases TITLE] [--expect-review TITLE]',
+    'Usage: node --experimental-strip-types helpers/helper-diagnostics-bountarr-api.ts [--all-bountarr] <title> [title...] [--expect-audit TITLE=STATUS] [--expect-job-status TITLE=STATUS] [--expect-selected-title TITLE=TEXT] [--expect-year-match TITLE=MATCH] [--expect-auto-decision TITLE=DECISION] [--expect-visible TITLE] [--expect-recent-hidden TITLE] [--expect-releases TITLE] [--expect-review TITLE]',
   );
 }
 
@@ -178,6 +240,8 @@ async function readJsonOrNull<T>(path: string, init?: RequestInit): Promise<T | 
   return (await response.json()) as T;
 }
 
+const dashboard = await readDashboard(includeAllBountarr);
+const comparisonDashboard = includeAllBountarr ? await readDashboard(false) : null;
 const acquisition = await readJson<AcquisitionResponse>('/api/acquisition');
 const releaseLists = new Map<string, ManualReleaseListResponse | null>();
 
@@ -191,9 +255,6 @@ for (const title of uniqueTitles) {
   );
 }
 
-const dashboard = await readDashboard(includeAllBountarr);
-const comparisonDashboard = includeAllBountarr ? await readDashboard(false) : null;
-
 const result = [];
 for (const title of uniqueTitles) {
   const job = acquisition.jobs.find((entry) => entry.title === title) ?? null;
@@ -201,6 +262,10 @@ for (const title of uniqueTitles) {
   const recentDashboardItem =
     comparisonDashboard?.items.find((entry) => entry.title === title) ?? null;
   const releases = releaseLists.get(title) ?? null;
+  const selectedRelease =
+    releases?.selectedGuid === null
+      ? null
+      : (releases?.releases.find((release) => release.guid === releases.selectedGuid) ?? null);
 
   result.push({
     title,
@@ -236,14 +301,33 @@ for (const title of uniqueTitles) {
       ? {
           count: releases.releases.length,
           selectedGuid: releases.selectedGuid,
+          selected: selectedRelease
+            ? {
+                arrOverrideMode: selectedRelease.arrOverrideMode,
+                autoBlockedReason: selectedRelease.autoBlockedReason,
+                autoDecision: selectedRelease.autoDecision,
+                blockReason: selectedRelease.blockReason,
+                canSelect: selectedRelease.canSelect,
+                reason: selectedRelease.reason,
+                selectionMode: selectedRelease.selectionMode,
+                status: selectedRelease.status,
+                title: selectedRelease.title,
+                yearMatch: selectedRelease.yearMatch,
+              }
+            : null,
+          selectedTitle: selectedRelease?.title ?? null,
           summary: releases.summary,
           first: releases.releases.slice(0, 5).map((release) => ({
+            arrOverrideMode: release.arrOverrideMode,
+            autoBlockedReason: release.autoBlockedReason,
+            autoDecision: release.autoDecision,
             blockReason: release.blockReason,
             canSelect: release.canSelect,
             reason: release.reason,
             selectionMode: release.selectionMode,
             status: release.status,
             title: release.title,
+            yearMatch: release.yearMatch,
           })),
         }
       : null,
@@ -256,6 +340,14 @@ const failures: string[] = [];
 
 function resultFor(title: string): (typeof result)[number] | null {
   return result.find((entry) => entry.title === title) ?? null;
+}
+
+function selectedOrFirstRelease(entry: (typeof result)[number]) {
+  if (entry.releases?.selected) {
+    return entry.releases.selected;
+  }
+
+  return entry.releases?.first[0] ?? null;
 }
 
 for (const expectation of expectations) {
@@ -281,6 +373,14 @@ for (const expectation of expectations) {
     );
   }
 
+  if (expectation.kind === 'job-status' && entry.job?.status !== expectation.value) {
+    failures.push(
+      `${expectation.title}: expected job status ${expectation.value}, got ${
+        entry.job?.status ?? 'missing'
+      }`,
+    );
+  }
+
   if (expectation.kind === 'releases' && (entry.releases?.count ?? 0) <= 0) {
     failures.push(`${expectation.title}: expected at least one manual-search release`);
   }
@@ -298,6 +398,39 @@ for (const expectation of expectations) {
     }
     if ((entry.releases?.count ?? 0) <= 0) {
       failures.push(`${expectation.title}: expected reviewable releases`);
+    }
+  }
+
+  if (
+    expectation.kind === 'selected-title' &&
+    !entry.releases?.selectedTitle?.includes(expectation.value)
+  ) {
+    failures.push(
+      `${expectation.title}: expected selected release title containing ${expectation.value}, got ${
+        entry.releases?.selectedTitle ?? 'missing'
+      }`,
+    );
+  }
+
+  if (expectation.kind === 'year-match') {
+    const release = selectedOrFirstRelease(entry);
+    if (release?.yearMatch !== expectation.value) {
+      failures.push(
+        `${expectation.title}: expected release year match ${expectation.value}, got ${
+          release?.yearMatch ?? 'missing'
+        }`,
+      );
+    }
+  }
+
+  if (expectation.kind === 'auto-decision') {
+    const release = selectedOrFirstRelease(entry);
+    if (release?.autoDecision !== expectation.value) {
+      failures.push(
+        `${expectation.title}: expected release auto decision ${expectation.value}, got ${
+          release?.autoDecision ?? 'missing'
+        }`,
+      );
     }
   }
 }
