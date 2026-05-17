@@ -167,6 +167,7 @@ describe('validateSeriesAttempt', () => {
     });
 
     vi.doMock('$lib/server/acquisition-validator-shared', () => ({
+      disappearedDownloadProbe: vi.fn().mockReturnValue(null),
       fetchHistoryRecords: vi.fn().mockResolvedValue([
         {
           date: '2026-04-13T12:05:00.000Z',
@@ -355,6 +356,7 @@ describe('validateSeriesAttempt', () => {
     const fetchEpisodeFile = vi.fn();
 
     vi.doMock('$lib/server/acquisition-validator-shared', () => ({
+      disappearedDownloadProbe: vi.fn().mockReturnValue(null),
       fetchHistoryRecords: vi.fn().mockResolvedValue([
         {
           date: '2026-04-13T12:05:00.000Z',
