@@ -1752,6 +1752,133 @@ describe('queue dashboard service', () => {
     });
   });
 
+  it('shows no-release jobs with later release candidates as needing manual review', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-17T15:00:00.000Z'));
+
+    acquisitionRepositoryState.jobs = [
+      {
+        id: 'job-lunopolis',
+        itemId: 'movie:959',
+        arrItemId: 959,
+        kind: 'movie',
+        title: 'Lunopolis',
+        sourceService: 'radarr',
+        status: 'failed',
+        attempt: 1,
+        maxRetries: 4,
+        currentRelease: null,
+        selectedReleaser: null,
+        preferredReleaser: null,
+        reasonCode: 'no-release-available',
+        failureReason: 'No manual-search releases were returned by Arr',
+        validationSummary: 'No manual-search releases were returned by Arr',
+        autoRetrying: false,
+        progress: null,
+        queueStatus: 'Search failed',
+        preferences: {
+          preferredLanguage: 'English',
+          subtitleLanguage: 'English',
+        },
+        targetSeasonNumbers: null,
+        targetEpisodeIds: null,
+        startedAt: '2026-05-17T14:30:00.000Z',
+        updatedAt: '2026-05-17T14:40:11.310Z',
+        completedAt: '2026-05-17T14:40:11.310Z',
+        attempts: [],
+        releaseCandidates: [
+          {
+            arrRejected: true,
+            attempt: null,
+            detectedAudioLanguages: [],
+            detectedSubtitleLanguages: [],
+            failedAt: null,
+            failureReason: null,
+            firstSeenAt: '2026-05-17T14:40:11.310Z',
+            guid: 'guid-lunopolis',
+            indexer: 'Indexer',
+            indexerId: 4,
+            languages: ['English'],
+            lastSeenAt: '2026-05-17T14:40:11.310Z',
+            protocol: 'usenet',
+            reason: 'Arr rejected this release.',
+            score: -10_000,
+            selectionMode: 'override-arr-rejection',
+            size: 700_000_000,
+            status: 'available',
+            title: 'Lunopolis.2009.480p.WEB-DL.x264-mSD-ORHk',
+          },
+        ],
+      },
+    ];
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch: vi.fn().mockResolvedValue({ records: [] }),
+    }));
+    vi.doMock('$lib/server/runtime', () => ({
+      getConfiguredServiceFlags: () => ({
+        configured: true,
+        plexConfigured: false,
+        radarrConfigured: true,
+        sonarrConfigured: false,
+      }),
+    }));
+    vi.doMock('$lib/server/lookup-service', () => ({
+      fetchExistingMovie: vi.fn().mockResolvedValue({
+        id: 'movie:959',
+        arrItemId: 959,
+        kind: 'movie',
+        title: 'Lunopolis',
+        year: 2010,
+        rating: null,
+        poster: null,
+        overview: '',
+        status: 'Monitored',
+        isExisting: true,
+        isRequested: true,
+        auditStatus: 'unknown',
+        audioLanguages: [],
+        subtitleLanguages: [],
+        sourceService: 'radarr',
+        origin: 'arr',
+        inArr: true,
+        inPlex: false,
+        plexLibraries: [],
+        canAdd: false,
+        canDeleteFromArr: true,
+        detail: null,
+        acquiredAt: null,
+        requestPayload: {
+          title: 'Lunopolis',
+          tmdbId: 83399,
+        },
+      } satisfies MediaItem),
+      fetchExistingSeries: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-service', () => ({
+      ensureAcquisitionWorkers: vi.fn(),
+      getQueueAcquisitionJobs: () => [],
+    }));
+
+    const module = await import('$lib/server/queue-dashboard-service');
+    const dashboard = await module.getDashboard({
+      cardsView: 'rounded',
+      preferredLanguage: 'English',
+      subtitleLanguage: 'English',
+      theme: 'system',
+    });
+
+    expect(dashboard.items[0]).toMatchObject({
+      auditStatus: 'release-blocked',
+      detail: '1 release option need manual review.',
+      title: 'Lunopolis',
+    });
+    expect(dashboard.summary).toMatchObject({
+      attention: 1,
+      pending: 0,
+    });
+  });
+
   it('keeps dashboard queue card ids stable when Arr later adds a queue id', async () => {
     const arrFetch = vi.fn().mockImplementation(async (_service: string, path: string) => {
       if (path === '/api/v3/history') {

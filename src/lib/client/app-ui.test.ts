@@ -103,6 +103,13 @@ describe('audit labels', () => {
       'No matching release was available from the configured grab sources.',
     );
   });
+
+  it('uses a specific label and detail when release options need manual review', () => {
+    expect(auditLabel('release-blocked')).toBe('Needs manual review');
+    expect(auditDetailSummary({ auditStatus: 'release-blocked' } as MediaItem)).toBe(
+      'Release options are available but need manual review before grabbing.',
+    );
+  });
 });
 
 describe('queueItemNextStep', () => {

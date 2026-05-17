@@ -480,7 +480,8 @@ export class AppState {
         (item) =>
           item.auditStatus === 'missing-language' ||
           item.auditStatus === 'no-subs' ||
-          item.auditStatus === 'not-found',
+          item.auditStatus === 'not-found' ||
+          item.auditStatus === 'release-blocked',
       ),
     );
   }

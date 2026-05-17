@@ -13,6 +13,7 @@ export type AuditStatus =
   | 'missing-language'
   | 'no-subs'
   | 'not-found'
+  | 'release-blocked'
   | 'unknown';
 export type AppView = 'search' | 'queue' | 'dashboard' | 'status' | 'settings';
 export type AcquisitionStatus =

@@ -48,7 +48,8 @@ function summarizeDashboard(items: MediaItem[]) {
       (item) =>
         item.auditStatus === 'missing-language' ||
         item.auditStatus === 'no-subs' ||
-        item.auditStatus === 'not-found',
+        item.auditStatus === 'not-found' ||
+        item.auditStatus === 'release-blocked',
     ).length,
   };
 }
@@ -98,13 +99,31 @@ function acquisitionAuditStatus(job: AcquisitionJob): AuditStatus {
     case 'import-blocked':
     case 'import-timeout':
     case 'manual-selection-lost':
-    case 'no-acceptable-release':
       return 'unknown';
+    case 'no-acceptable-release':
+      return 'release-blocked';
     case 'no-release-available':
+      if ((job.releaseCandidates ?? []).length > 0) {
+        return 'release-blocked';
+      }
       return 'not-found';
     default:
       return 'pending';
   }
+}
+
+function acquisitionJobDetail(job: AcquisitionJob): string | null {
+  const releaseCandidates = job.releaseCandidates ?? [];
+  if (
+    releaseCandidates.length > 0 &&
+    (job.reasonCode === 'no-release-available' || job.reasonCode === 'no-acceptable-release')
+  ) {
+    return `${releaseCandidates.length} release option${
+      releaseCandidates.length === 1 ? '' : 's'
+    } need manual review.`;
+  }
+
+  return job.currentRelease ?? job.validationSummary ?? job.failureReason;
 }
 
 function recentAcquisitionCheckJobs(nowMs = Date.now()): AcquisitionJob[] {
@@ -141,7 +160,7 @@ async function buildAcquisitionHistoryItems(preferences: Preferences): Promise<M
 
   for (const job of recentAcquisitionCheckJobs()) {
     const acquiredAt = acquisitionJobAcquiredAt(job);
-    const detail = job.currentRelease ?? job.validationSummary ?? job.failureReason;
+    const detail = acquisitionJobDetail(job);
     const auditStatus = acquisitionAuditStatus(job);
 
     try {

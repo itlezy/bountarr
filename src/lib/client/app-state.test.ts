@@ -1686,10 +1686,19 @@ describe('app state', () => {
           inArr: true,
           canAdd: false,
         },
+        {
+          ...movieItem,
+          id: 'movie:5',
+          title: 'Manual Review',
+          auditStatus: 'release-blocked',
+          inArr: true,
+          canAdd: false,
+        },
       ],
     };
 
     expect(state.auditAttentionItems.map((item) => item.title)).toEqual([
+      'Manual Review',
       'Needs Audio',
       'No Release',
     ]);
