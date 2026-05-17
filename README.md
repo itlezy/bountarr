@@ -144,6 +144,16 @@ Live media titles and years must stay out of tracked source, tests, and docs. Co
 
 Policy: commit only synthetic fixture names. Real live-wire movie and series names belong in `live-wire-inputs.local.json` or environment variables, never in tracked files.
 
+For live diagnostics, use the TypeScript helper instead of ad hoc API calls:
+
+```powershell
+node --experimental-strip-types .\helpers\helper-diagnostics-bountarr-api.ts --all-bountarr --expect-visible "Fixture Existing Movie"
+node --experimental-strip-types .\helpers\helper-diagnostics-bountarr-api.ts --expect-audit "Fixture Upcoming Movie=not-released"
+node --experimental-strip-types .\helpers\helper-diagnostics-bountarr-api.ts --expect-review "Fixture Blocked Movie"
+```
+
+The helper prints matching acquisition/check/release evidence and exits non-zero when an expectation fails. Keep real household titles out of tracked commands and docs.
+
 ## Security
 
 Bountarr is unauthenticated and should only run on a trusted LAN or behind a VPN. Do not publish it through an open reverse proxy without adding an authentication layer in front of it. See [SECURITY.md](SECURITY.md) for the supported reporting and deployment posture.
