@@ -1,9 +1,32 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { AcquisitionJob, QueueItem } from '$lib/shared/types';
+import type { AcquisitionJob, MediaItem, QueueItem } from '$lib/shared/types';
+
+const acquisitionRepositoryState = vi.hoisted(() => ({
+  jobs: [] as AcquisitionJob[],
+}));
+
+vi.mock('$lib/server/acquisition-job-repository', () => ({
+  getAcquisitionJobRepository: () => ({
+    listJobs: () => acquisitionRepositoryState.jobs,
+    updateJob: (jobId: string, patch: Partial<AcquisitionJob>) => {
+      const index = acquisitionRepositoryState.jobs.findIndex((job) => job.id === jobId);
+      if (index === -1) {
+        throw new Error(`Missing acquisition job ${jobId}`);
+      }
+
+      const current = acquisitionRepositoryState.jobs[index];
+      const next = { ...current, ...patch };
+      acquisitionRepositoryState.jobs[index] = next;
+      return next;
+    },
+  }),
+}));
 
 afterEach(() => {
+  acquisitionRepositoryState.jobs = [];
   vi.resetAllMocks();
   vi.resetModules();
+  vi.useRealTimers();
 });
 
 describe('queue dashboard service', () => {
@@ -1505,6 +1528,123 @@ describe('queue dashboard service', () => {
       '2026-04-13T12:10:00.000Z',
       '2026-04-13T12:00:00.000Z',
     ]);
+  });
+
+  it('shows one check card for a recent Bountarr grab even when Arr history is empty', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-17T15:00:00.000Z'));
+
+    const job: AcquisitionJob = {
+      id: 'job-soylent-green',
+      itemId: 'movie:961',
+      arrItemId: 961,
+      kind: 'movie',
+      title: 'Soylent Green',
+      sourceService: 'radarr',
+      status: 'completed',
+      attempt: 3,
+      maxRetries: 3,
+      currentRelease: 'Soylent.Green.1973.1080p.BluRay.x265.DDP1.0-R1GY3B',
+      selectedReleaser: 'r1gy3b',
+      preferredReleaser: null,
+      reasonCode: 'validated',
+      failureReason: null,
+      validationSummary: 'Verified English audio and English subtitles.',
+      autoRetrying: false,
+      progress: 100,
+      queueStatus: null,
+      preferences: {
+        preferredLanguage: 'English',
+        subtitleLanguage: 'English',
+      },
+      targetSeasonNumbers: null,
+      targetEpisodeIds: null,
+      startedAt: '2026-05-17T14:00:00.000Z',
+      updatedAt: '2026-05-17T14:48:49.113Z',
+      completedAt: '2026-05-17T14:48:49.113Z',
+      attempts: [],
+    };
+    acquisitionRepositoryState.jobs = [
+      {
+        ...job,
+        id: 'job-soylent-green-old',
+        currentRelease: 'Soylent.Green.1973.1080p.BluRay.x264-OLD',
+        completedAt: '2026-05-17T14:10:00.000Z',
+        updatedAt: '2026-05-17T14:10:00.000Z',
+      },
+      job,
+    ];
+
+    const soylentGreen: MediaItem = {
+      id: 'movie:961',
+      arrItemId: 961,
+      kind: 'movie',
+      title: 'Soylent Green',
+      year: 1973,
+      rating: 7.0,
+      poster: null,
+      overview: '',
+      status: 'Downloaded',
+      isExisting: true,
+      isRequested: true,
+      auditStatus: 'verified',
+      audioLanguages: ['English'],
+      subtitleLanguages: ['English'],
+      sourceService: 'radarr',
+      origin: 'arr',
+      inArr: true,
+      inPlex: false,
+      plexLibraries: [],
+      canAdd: false,
+      canDeleteFromArr: true,
+      detail: 'Soylent.Green.1973.1080p.BluRay.x265.DDP1.0-R1GY3B.mkv',
+      acquiredAt: null,
+      requestPayload: {
+        title: 'Soylent Green',
+        tmdbId: 12101,
+      },
+    };
+
+    const arrFetch = vi.fn().mockResolvedValue({ records: [] });
+    const fetchExistingMovie = vi.fn().mockResolvedValue(soylentGreen);
+
+    vi.doMock('$lib/server/arr-client', () => ({
+      arrFetch,
+    }));
+    vi.doMock('$lib/server/runtime', () => ({
+      getConfiguredServiceFlags: () => ({
+        configured: true,
+        plexConfigured: false,
+        radarrConfigured: true,
+        sonarrConfigured: false,
+      }),
+    }));
+    vi.doMock('$lib/server/lookup-service', () => ({
+      fetchExistingMovie,
+      fetchExistingSeries: vi.fn(),
+    }));
+    vi.doMock('$lib/server/acquisition-service', () => ({
+      ensureAcquisitionWorkers: vi.fn(),
+      getQueueAcquisitionJobs: () => [],
+    }));
+
+    const module = await import('$lib/server/queue-dashboard-service');
+    const dashboard = await module.getDashboard({
+      cardsView: 'rounded',
+      preferredLanguage: 'English',
+      subtitleLanguage: 'English',
+      theme: 'system',
+    });
+
+    expect(fetchExistingMovie).toHaveBeenCalledTimes(1);
+    expect(dashboard.items).toHaveLength(1);
+    expect(dashboard.items[0]).toMatchObject({
+      arrItemId: 961,
+      auditStatus: 'verified',
+      detail: 'Soylent.Green.1973.1080p.BluRay.x265.DDP1.0-R1GY3B.mkv',
+      title: 'Soylent Green',
+    });
+    expect(dashboard.items[0]?.acquiredAt).toBe('2026-05-17T14:48:49.113Z');
   });
 
   it('keeps dashboard queue card ids stable when Arr later adds a queue id', async () => {

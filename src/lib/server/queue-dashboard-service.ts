@@ -22,6 +22,7 @@ import { sanitizePreferences } from '$lib/shared/preferences';
 import { managedQueueEntryCapabilities } from '$lib/shared/queue-entry-capabilities';
 import type {
   AcquisitionJob,
+  AuditStatus,
   DashboardResponse,
   ExternalQueueEntry,
   MediaItem,
@@ -73,6 +74,108 @@ function newestAcquiredAt(
 
 function arrHistoryAcquiredAt(record: Record<string, unknown>): string | null {
   return asString(record.date) ?? asString(record.eventDate) ?? asString(record.added) ?? null;
+}
+
+const acquisitionDashboardWindowMs = 7 * 24 * 60 * 60 * 1000;
+
+function acquisitionJobAcquiredAt(job: AcquisitionJob): string | null {
+  return job.completedAt ?? job.updatedAt ?? job.startedAt ?? null;
+}
+
+function acquisitionAuditStatus(job: AcquisitionJob): AuditStatus {
+  switch (job.reasonCode) {
+    case 'validated':
+      return 'verified';
+    case 'missing-audio':
+      return 'missing-language';
+    case 'missing-subs':
+      return 'no-subs';
+    case 'crashed':
+    case 'download-failed':
+    case 'import-blocked':
+    case 'import-timeout':
+    case 'manual-selection-lost':
+    case 'no-acceptable-release':
+    case 'no-release-available':
+      return 'unknown';
+    default:
+      return 'pending';
+  }
+}
+
+function recentAcquisitionCheckJobs(nowMs = Date.now()): AcquisitionJob[] {
+  const cutoffMs = nowMs - acquisitionDashboardWindowMs;
+  const jobsByItem = new Map<string, AcquisitionJob>();
+
+  for (const job of getAcquisitionJobRepository().listJobs()) {
+    if (job.status === 'cancelled') {
+      continue;
+    }
+
+    const acquiredAt = acquisitionJobAcquiredAt(job);
+    const acquiredAtMs = acquisitionTimeMs(acquiredAt);
+    if (acquiredAtMs === 0 || acquiredAtMs < cutoffMs) {
+      continue;
+    }
+
+    const key = `${job.sourceService}:${job.kind}:${job.arrItemId}`;
+    const existing = jobsByItem.get(key);
+    if (!existing || acquiredAtMs > acquisitionTimeMs(acquisitionJobAcquiredAt(existing))) {
+      jobsByItem.set(key, job);
+    }
+  }
+
+  return [...jobsByItem.values()].sort(
+    (left, right) =>
+      acquisitionTimeMs(acquisitionJobAcquiredAt(right)) -
+      acquisitionTimeMs(acquisitionJobAcquiredAt(left)),
+  );
+}
+
+async function buildAcquisitionHistoryItems(preferences: Preferences): Promise<MediaItem[]> {
+  const items: MediaItem[] = [];
+
+  for (const job of recentAcquisitionCheckJobs()) {
+    const acquiredAt = acquisitionJobAcquiredAt(job);
+    const detail = job.currentRelease ?? job.validationSummary ?? job.failureReason;
+
+    try {
+      const item =
+        job.kind === 'movie'
+          ? await fetchExistingMovie(job.arrItemId, preferences)
+          : await fetchExistingSeries(job.arrItemId, preferences, null, detail ?? job.title);
+      items.push({
+        ...item,
+        acquiredAt: acquiredAt ?? item.acquiredAt ?? null,
+        detail: item.detail ?? detail ?? null,
+      });
+    } catch {
+      items.push(
+        normalizeItem(job.kind, {}, preferences, {
+          acquiredAt,
+          arrItemId: job.arrItemId,
+          auditStatus: acquisitionAuditStatus(job),
+          canAdd: false,
+          detail,
+          id: `acquisition:${job.id}`,
+          inArr: true,
+          isExisting: true,
+          isRequested: true,
+          requestPayload: {
+            acquisitionJobId: job.id,
+            currentRelease: job.currentRelease,
+            reasonCode: job.reasonCode,
+            status: job.status,
+          },
+          sourceService: job.sourceService,
+          status: job.status === 'completed' ? 'Downloaded' : job.status,
+          title: job.title,
+        }),
+      );
+    }
+  }
+
+  return items;
 }
 
 async function buildMovieHistoryItems(preferences: Preferences): Promise<MediaItem[]> {
@@ -555,6 +658,7 @@ export async function getDashboard(
   const recentArrItems = dedupeItems(
     (
       await Promise.all([
+        buildAcquisitionHistoryItems(normalizedPreferences),
         buildMovieHistoryItems(normalizedPreferences),
         buildSeriesHistoryItems(normalizedPreferences),
       ])
