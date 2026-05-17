@@ -2188,7 +2188,10 @@ describe('queue dashboard service', () => {
 
     const releaseCandidate = {
       arrRejected: true,
+      arrOverrideMode: 'adjacent-year' as const,
       attempt: null,
+      autoBlockedReason: null,
+      autoDecision: 'auto-selected' as const,
       detectedAudioLanguages: [],
       detectedSubtitleLanguages: [],
       failedAt: null,
@@ -2200,12 +2203,13 @@ describe('queue dashboard service', () => {
       languages: ['English'],
       lastSeenAt: '2026-05-16T12:10:00.000Z',
       protocol: 'usenet',
-      reason: 'Bountarr accepted adjacent release year because no exact-year match was available',
+      reason: 'Structured adjacent-year fallback',
       score: 124,
       selectionMode: 'override-arr-rejection' as const,
       size: 700_000_000,
       status: 'available' as const,
       title: 'Lunopolis.2009.480p.WEB-DL.x264-mSD-ORHk',
+      yearMatch: 'adjacent' as const,
     };
     acquisitionRepositoryState.jobs = [
       missingMovieJob({
@@ -2214,6 +2218,7 @@ describe('queue dashboard service', () => {
     ];
     mockDashboardDependencies();
     acquisitionSelectionState.findReleaseSelection.mockResolvedValue({
+      manualResults: [releaseCandidate],
       selectedGuid: releaseCandidate.guid,
       selectedRelease: releaseCandidate,
       selection: {
@@ -2253,7 +2258,10 @@ describe('queue dashboard service', () => {
 
     const releaseCandidate = {
       arrRejected: true,
+      arrOverrideMode: 'adjacent-year' as const,
       attempt: null,
+      autoBlockedReason: null,
+      autoDecision: 'auto-selected' as const,
       detectedAudioLanguages: [],
       detectedSubtitleLanguages: [],
       failedAt: null,
@@ -2265,12 +2273,13 @@ describe('queue dashboard service', () => {
       languages: ['English'],
       lastSeenAt: '2026-05-16T12:10:00.000Z',
       protocol: 'usenet',
-      reason: 'Bountarr accepted adjacent release year because no exact-year match was available',
+      reason: 'Structured adjacent-year fallback',
       score: 124,
       selectionMode: 'override-arr-rejection' as const,
       size: 700_000_000,
       status: 'available' as const,
       title: 'Lunopolis.2009.480p.WEB-DL.x264-mSD-ORHk',
+      yearMatch: 'adjacent' as const,
     };
     acquisitionRepositoryState.jobs = [
       missingMovieJob({
@@ -2281,6 +2290,7 @@ describe('queue dashboard service', () => {
     ];
     mockDashboardDependencies();
     acquisitionSelectionState.findReleaseSelection.mockResolvedValue({
+      manualResults: [releaseCandidate],
       selectedGuid: releaseCandidate.guid,
       selectedRelease: releaseCandidate,
       selection: {

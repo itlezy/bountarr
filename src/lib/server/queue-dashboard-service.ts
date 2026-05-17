@@ -41,8 +41,6 @@ import type {
 
 const logger = createAreaLogger('queue-dashboard');
 const dailyMissingMovieSearchIntervalMs = 24 * 60 * 60 * 1000;
-const adjacentYearFallbackReason =
-  'Bountarr accepted adjacent release year because no exact-year match was available';
 type DashboardOptions = {
   force?: boolean;
   includeAllBountarr?: boolean;
@@ -379,7 +377,16 @@ async function enqueueAutomaticReleaseRetry(job: AcquisitionJob): Promise<void> 
     return;
   }
 
-  if (!selection.selectedRelease.reason.includes(adjacentYearFallbackReason)) {
+  const selectedManualRelease =
+    selection.manualResults.find(
+      (release) =>
+        release.guid === selection.selectedRelease?.guid &&
+        release.indexerId === selection.selectedRelease.indexerId,
+    ) ?? null;
+  if (
+    selectedManualRelease?.arrOverrideMode !== 'adjacent-year' ||
+    selectedManualRelease.autoDecision !== 'auto-selected'
+  ) {
     return;
   }
 
