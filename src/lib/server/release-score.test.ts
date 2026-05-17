@@ -183,15 +183,11 @@ describe('selectBestRelease', () => {
         rejections: ['Unknown Movie. Unable to match to correct movie using release title.'],
       },
     ];
-    const result = selectBestRelease(
-      releases,
-      defaultPreferences,
-      {
-        kind: 'movie',
-        targetTitle: 'Fixture Movie',
-        targetYear: 1999,
-      },
-    );
+    const result = selectBestRelease(releases, defaultPreferences, {
+      kind: 'movie',
+      targetTitle: 'Fixture Movie',
+      targetYear: 1999,
+    });
     const evaluated = evaluateReleaseCandidates(releases, defaultPreferences, {
       kind: 'movie',
       targetTitle: 'Fixture Movie',
@@ -228,15 +224,11 @@ describe('selectBestRelease', () => {
         rejections: ['Unknown Movie. Unable to match to correct movie using release title.'],
       },
     ];
-    const result = selectBestRelease(
-      releases,
-      defaultPreferences,
-      {
-        kind: 'movie',
-        targetTitle: 'Fixture Movie',
-        targetYear: 1999,
-      },
-    );
+    const result = selectBestRelease(releases, defaultPreferences, {
+      kind: 'movie',
+      targetTitle: 'Fixture Movie',
+      targetYear: 1999,
+    });
     const evaluated = evaluateReleaseCandidates(releases, defaultPreferences, {
       kind: 'movie',
       targetTitle: 'Fixture Movie',
@@ -270,15 +262,11 @@ describe('selectBestRelease', () => {
         rejections: ['Unknown Movie. Unable to match to correct movie using release title.'],
       },
     ];
-    const result = selectBestRelease(
-      releases,
-      defaultPreferences,
-      {
-        kind: 'movie',
-        targetTitle: 'Fixture Movie',
-        targetYear: 1999,
-      },
-    );
+    const result = selectBestRelease(releases, defaultPreferences, {
+      kind: 'movie',
+      targetTitle: 'Fixture Movie',
+      targetYear: 1999,
+    });
     const evaluated = evaluateReleaseCandidates(releases, defaultPreferences, {
       kind: 'movie',
       targetTitle: 'Fixture Movie',
@@ -328,15 +316,11 @@ describe('selectBestRelease', () => {
         downloadAllowed: true,
       },
     ];
-    const result = selectBestRelease(
-      releases,
-      defaultPreferences,
-      {
-        kind: 'movie',
-        targetTitle: 'Fixture Movie',
-        targetYear: 1999,
-      },
-    );
+    const result = selectBestRelease(releases, defaultPreferences, {
+      kind: 'movie',
+      targetTitle: 'Fixture Movie',
+      targetYear: 1999,
+    });
     const evaluated = evaluateReleaseCandidates(releases, defaultPreferences, {
       kind: 'movie',
       targetTitle: 'Fixture Movie',
@@ -373,15 +357,11 @@ describe('selectBestRelease', () => {
         rejections: ['Unknown Movie. Unable to match to correct movie using release title.'],
       },
     ];
-    const result = selectBestRelease(
-      releases,
-      defaultPreferences,
-      {
-        kind: 'movie',
-        targetTitle: 'Fixture Movie',
-        targetYear: 1999,
-      },
-    );
+    const result = selectBestRelease(releases, defaultPreferences, {
+      kind: 'movie',
+      targetTitle: 'Fixture Movie',
+      targetYear: 1999,
+    });
     const evaluated = evaluateReleaseCandidates(releases, defaultPreferences, {
       kind: 'movie',
       targetTitle: 'Fixture Movie',
